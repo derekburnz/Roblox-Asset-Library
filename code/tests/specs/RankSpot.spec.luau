@@ -1,0 +1,112 @@
+--!strict
+-- #3555: the first rank up's walk-through (shared/RankSpot).
+
+return function()
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local Shared = ReplicatedStorage:WaitForChild("Shared")
+	local LiveFlags = require(Shared:WaitForChild("LiveFlags"))
+	local RankSpot = require(Shared:WaitForChild("RankSpot"))
+	local Tips = require(Shared:WaitForChild("Tips"))
+
+	describe("RankSpot", function()
+		it("has no switch any more (#4654 batch 6)", function()
+			expect(table.find(LiveFlags.KEYS, "rankUpSpotlight")).to.equal(nil)
+			expect(LiveFlags.OFF_BY_DEFAULT.rankUpSpotlight).to.equal(nil)
+		end)
+
+		it(
+			"is due only for a Tier 1 cafe the server would rank up, in the safe area, not put away",
+			function()
+				expect(RankSpot.due(true, 1, false, nil, nil)).to.equal(true)
+				expect(RankSpot.due(false, 1, false, nil, nil)).to.equal(false) -- the switch
+				expect(RankSpot.due(true, 2, false, nil, nil)).to.equal(false) -- later rank ups: no dim
+				expect(RankSpot.due(true, 1, true, nil, nil)).to.equal(false) -- put away
+				expect(RankSpot.due(true, 1, false, "Not enough coins", nil)).to.equal(false)
+				expect(RankSpot.due(true, 1, false, nil, "alley")).to.equal(false) -- a catching area
+				-- #5516 rankSpotStay: put away before shows again, the other rules hold
+				expect(RankSpot.due(true, 1, true, nil, nil, true)).to.equal(true)
+				expect(RankSpot.due(true, 2, true, nil, nil, true)).to.equal(false)
+				expect(RankSpot.due(true, 1, true, nil, "alley", true)).to.equal(false)
+				expect(RankSpot.due(true, 1, true, "Not enough coins", nil, true)).to.equal(false)
+			end
+		)
+
+		it("waits until the player has been free for 2 seconds", function()
+			expect(RankSpot.FREE_SECONDS).to.equal(0.5)
+			expect(RankSpot.phase(true, "none", 0.4, nil)).to.equal("none")
+			expect(RankSpot.phase(true, "none", 0.5, nil)).to.equal("button")
+			expect(RankSpot.phase(false, "none", 10, nil)).to.equal("none")
+		end)
+
+		it("closes at once when the server's word goes or something else starts", function()
+			expect(RankSpot.phase(false, "button", 10, nil)).to.equal("none")
+			expect(RankSpot.phase(false, "confirm", 10, RankSpot.WINDOW)).to.equal("none")
+			expect(RankSpot.phase(true, "button", 0, nil)).to.equal("none") -- a catch, a rescue, a carry
+			expect(RankSpot.phase(true, "button", 10, "Store")).to.equal("none") -- another window
+		end)
+
+		-- #4188 (Tier 2 at 3 kinds): the first bait cat is the third kind. Its scene and card count as a card ("other"),
+		-- so the free seconds run under them (RankSpotController ticks every 0.25 s) and the goal card lights on the
+		-- first tick after they go. When the coins come a beat later, it lights on the tick the server's word arrives.
+		it(
+			"lights the goal card the moment the bait cat's card closes, or the moment ready lands after",
+			function()
+				local free = 0
+				local function step(due: boolean, window: string?, was: string): string
+					free += 0.25
+					return RankSpot.phase(due, was :: any, free, window)
+				end
+				local was = "none"
+				for _ = 1, 12 do -- the scene and the card, 3 s, ready from the start
+					was = step(true, "other", was)
+					expect(was).to.equal("none")
+				end
+				expect(step(true, nil, was)).to.equal("button") -- first tick after the card
+				free, was = 0, "none"
+				for _ = 1, 12 do
+					was = step(false, "other", was)
+				end
+				for _ = 1, 4 do -- the card closed, the coins not there yet
+					was = step(false, nil, was)
+					expect(was).to.equal("none")
+				end
+				expect(step(true, nil, was)).to.equal("button") -- the tick the server's word arrives
+			end
+		)
+
+		it("lights the rank up window's button once the window is open", function()
+			expect(RankSpot.phase(true, "button", 0.25, RankSpot.WINDOW)).to.equal("confirm")
+			expect(RankSpot.phase(true, "confirm", 5, RankSpot.WINDOW)).to.equal("confirm")
+			expect(RankSpot.phase(true, "confirm", 5, nil)).to.equal("button") -- the window closed
+			expect(RankSpot.phase(true, "none", 0.4, RankSpot.WINDOW)).to.equal("none")
+			expect(RankSpot.phase(true, "none", 2, RankSpot.WINDOW)).to.equal("confirm")
+		end)
+
+		it("puts it away for good only for a press after 2 seconds on screen", function()
+			expect(RankSpot.putsAway(0.3)).to.equal(false)
+			expect(RankSpot.putsAway(RankSpot.KEEP_SECONDS)).to.equal(true)
+			-- a press while another card is up (a gift card's Close) never puts it away for good
+			expect(RankSpot.putsAway(10, "button", "other")).to.equal(false)
+			expect(RankSpot.putsAway(10, "button", RankSpot.WINDOW)).to.equal(false)
+			expect(RankSpot.putsAway(10, "confirm", "other")).to.equal(false)
+			expect(RankSpot.putsAway(10, "confirm", RankSpot.WINDOW)).to.equal(true)
+			expect(RankSpot.putsAway(10, "button", nil)).to.equal(true)
+		end)
+
+		it("says only what to do", function()
+			expect(RankSpot.WORDS.button).to.equal("You can rank up!")
+			expect(RankSpot.WORDS.confirm).to.equal("Press to rank up")
+			expect(RankSpot.words("confirm", "touch")).to.equal("Tap to rank up")
+			expect(RankSpot.words("confirm", "gamepad")).to.equal("Select to rank up")
+			expect(RankSpot.words("confirm", nil)).to.equal("Click to rank up")
+			expect(RankSpot.words("button", "touch")).to.equal("You can rank up!")
+		end)
+
+		it("is saved in tipsSeen through TipSeen and kept by a load", function()
+			expect(Tips.seenId(RankSpot.SEEN)).to.equal(true)
+			expect(Tips.sanitizeSeen({ [RankSpot.SEEN] = true }, false)[RankSpot.SEEN]).to.equal(
+				true
+			)
+		end)
+	end)
+end

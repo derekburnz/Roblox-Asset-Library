@@ -1,0 +1,1121 @@
+--!strict
+-- Config.luau against the tuning table in data-model.md section 17 (DesignParity), design v0.3.1.
+-- `expected` holds what is built: v0.2 values the code still uses plus the v0.3 changes whose feature has landed.
+-- `pending` lists the v0.3 values still to come, by feature; move a row into `expected` when its feature lands
+-- (and delete the v0.2 row it replaces). World layout numbers in Config.World are the engineer's.
+return function()
+	local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+	local Catalog = require(Shared.Catalog)
+	local Config = require(Shared.Config)
+
+	local expected: { [string]: any } = {
+		ServerPlayers = 8,
+		StartCoins = 1000, -- #4674: was 250 (#4097: was 850; #1796: was 50)
+		FavoriteMultiplier = 1.5,
+		TableBonus = 0.10,
+		EspressoBonus = 0.15,
+		-- F95 (economy-ladder.md sections 5 and 7): half pay for up to 8 hours away, the Long Nap pass full pay for 16
+		OfflineRate = 0.5,
+		OfflineCapSeconds = 28800,
+		OfflineRatePass = 1.0,
+		OfflineCapPassSeconds = 57600,
+		AwayNotifyOn = true,
+		AwayNotifySeconds = 43200,
+		AwayNotifyGraceSeconds = 21600,
+		AwayNotifyMinCoins = 1000,
+		LongNapPassId = 2064345084, -- Tools-Agent made it 2026-11-02 (off sale until launch)
+		AutosaveSeconds = 60,
+		-- the clock and night waves (section 9, v0.3 in F23): no trickle spawns, so SpawnIntervalSeconds and
+		-- MaxStraysPerArea are gone, and the wave size lives per area in Catalog.areas (Catalog.spec)
+		DayLengthSeconds = 345, -- #2192: was 300; #3195: was 320
+		NightLengthSeconds = 45, -- v0.9 (F66): a short night between hunts; #2192: was 90; #3195: was 70
+		ServerStartDaySeconds = 345, -- v0.9: a new server opens at sunrise; #1437: the global clock's first day; #3195: was 320
+		ClockEpoch = 1793491200, -- #1437
+		DuskWarningSeconds = 15,
+		NightSweepSeconds = 2,
+		StrayDespawnSeconds = 120,
+		-- rescue minigames (F27, section 10b); RescueBarSpeed and RescueZoneWidth are tables, checked below
+		RescueSpawnChance = 0.6,
+		RescueMinStuck = 1,
+		RescueSpotSpacingStuds = 25,
+		RescueTolerance = 0.03,
+		RescuePatience = 3,
+		RescueRetrySeconds = 3,
+		StarterRescueRefillSeconds = 30, -- #3049: the starter trap's refill wait
+		StarterRescueRefillsPerDay = 4, -- #3049: refills an area a day at most
+		RescueSelfRetrySeconds = 6,
+		RescueAttemptMaxSeconds = 22, -- #2566 (was 15)
+		GoldChanceRescue = 0.12,
+		RescuedTipsMultiplier = 1.0, -- v0.3 (F22): a rescue pays no more; its reward is the gold chance
+		GrabRangeStuds = 10,
+		CatchHoldSeconds = 0.5, -- Derek 2026-10-27: hold E to start a catch (a rescue is one press since #2335)
+		GrabRetrySeconds = 2,
+		-- v0.4 catching stakes (F34, section 10 step 5); v0.5 the chase after a miss (F40)
+		StrayFleeSpeed = 26,
+		StrayRestSeconds = 1.5,
+		StraySelfRetrySeconds = 3, -- v0.5.1 (S44); v0.8 F57: the first of the steps {3, 6, 10}
+		StrayMissStreakResetSeconds = 60, -- v0.8 F57
+		StartledWalkSpeed = 12, -- v0.8 F57
+		StartledSeconds = 2, -- v0.8 F57
+		PerfectCharmBonus = 4,
+		PurrfectCharmMultiplier = 2,
+		AutoPressFlagRate = 0.95,
+		AutoPressClearRate = 0.85,
+		-- v0.3 net circles (F26, section 10)
+		CircleLeadInSeconds = 0.6,
+		CircleGapMin = 0.55, -- #2060
+		CircleGapMax = 0.75,
+		-- #1884 (catch-rework.md 7b): the trust bar
+		TrustStart = 2,
+		TrustPerfect = 3,
+		TrustGood = 2,
+		TrustMiss = -2,
+		CatchSpareRings = 16, -- #2332
+		DoubleRingChance = 0.25,
+		DoubleRingGap = 0.35,
+		PawRingChance = 1 / 6,
+		TrustPawLeft = 1,
+		CuriousTrustBonus = 1,
+		CuriousRangeStuds = 12,
+		CuriousWalkStuds = 4,
+		CuriousBonusSeconds = 2,
+		SkittishRangeStuds = 10,
+		SkittishArcDegrees = 90,
+		SkittishHopStuds = 6,
+		SkittishCooldown = 8,
+		MoodIconStuds = 20,
+		CircleScorePerfect = 1.0,
+		CircleScoreGood = 0.5,
+		CatchLatencyCapSeconds = 0.15,
+		-- the bait bowl (F28, section 8)
+		LureWaitSeconds = 600,
+		LureWaitSecondsNight = 300, -- F60: night bait, half the wait
+		BaitBowlRangeStuds = 12,
+		GoldChanceBait = 0.05, -- v0.5 F42 (was 0.02)
+		GoldChanceNet = 0.05, -- F30, v0.5 F42 (was 0.02)
+		CarryWalkSpeed = 16, -- v0.4
+		CatchBurstRadiusStuds = 10, -- v0.8 F55
+		CatchBurstStuds = 8,
+		CatchRushWalkSpeed = 24,
+		CatchRushSeconds = 10, -- Derek's notes: longer for the bigger areas (was 5)
+		CheckInRangeStuds = 10,
+		CustomerSpawnSeconds = 6,
+		CustomerStayMin = 20,
+		CustomerStayMax = 40,
+		RemoteRateLimitPerSecond = 10,
+		AnnounceMinRarity = "Mythical", -- Derek 2026-11-12: was Legendary (#2205), Epic before
+		GrabCooldownSeconds = 2,
+		TravelCooldownSeconds = 1, -- v0.4 (F19) 3; #1434 1
+		SyncIntervalSeconds = 10,
+		NormalWalkSpeed = 20, -- v0.4
+		TownWalkSpeedBonus = 4, -- #2706
+		CameraMaxZoomStuds = 60, -- Derek 2026-11-02, the zoom card
+		StrayWanderRadius = 5,
+		StrayWanderSpeed = 3,
+		CustomerCoinPopSeconds = 3,
+		CustomerWalkSpeed = 7,
+		SeatsPerTable = 2,
+		MaxIdLength = 40,
+		TutorialGuaranteedStrayStep = 2,
+		-- F87 (easy-start.md section 6); IntroAutoPlay is false again since #3162, checked below
+		TutorialShrinkSeconds = 1.6,
+		TutorialWindowScale = 2,
+		TutorialRetrySeconds = 1.0,
+		FirstRingHoldSeconds = 60, -- #2920
+		StuckNudgeSeconds = 40,
+		StuckHelpSeconds = 90,
+		TipGapSeconds = 150, -- #2407
+		TipCutMaxSeconds = 4,
+		FeedbackAskMinutes = 12,
+		TipStartSeconds = 10,
+		FeedbackSessionLimit = 5,
+		-- cat stats (data-model section 4b)
+		CatMaxLevel = 50, -- v0.12 (F75)
+		CatLevelBonus = 0.02,
+		CatXpBase = 120,
+		CatXpPerSecondPlaced = 1,
+		CatXpFavoriteMultiplier = 1.5,
+		CatXpPerSecondResting = 0.25,
+		CharmSpread = 0.20,
+		GoldMultiplier = 1.5, -- v0.3 (F22)
+		-- the night dealer (F32, section 8b)
+		DealerRangeStuds = 20,
+		FreshCatchWindowSeconds = 390, -- F94 300; #1437: one game day, a restock at every global sunrise
+		-- #1052 (corner-shop.md section 5): the Corner Shop's window, its reach and the daily Cat Snack cap
+		CornerShopWindowSeconds = 390, -- #1437 (was 300)
+		CornerShopRange = 22,
+		CatFoodMax = 999,
+		CatchSnackChance = 0.10, -- corner-shop-v2.md section 3: a Small Snack 1 catch in 10
+		-- night income and rich customers (F31, sections 11 and 12)
+		NightIncomeMultiplier = 1, -- F60: full pay at night (0.6 until v0.8)
+		RichEveryMin = 240, -- #1135: a random timer; #2107: 480 s on average (was 300 to 900, 600 s)
+		RichEveryMax = 720,
+		RichTipSeconds = 120, -- F61: was 45
+		TipPileSeconds = 30, -- F61: tip piles (section 12)
+		TipPileRateSeconds = 6,
+		TipPilesMax = 6,
+		TipPileShowSeconds = 90, -- F97 section 1: a paid pile shows this long
+		-- #3360 (rich-money-bags.md section 6): the money bag replaces RichTipStaySeconds (90)
+		RichBagSeconds = 180,
+		RichBagsMax = 3,
+		RichCustomerSitSeconds = 20,
+		RichBagFadeSeconds = 5,
+		-- the Mystery Visitor and potions (F64, section 12b)
+		MysteryEveryMin = 750, -- 1250 s on average, a fifth more often than #1135's 1500 (2026-11-05)
+		MysteryEveryMax = 1750,
+		MysteryStaySeconds = 120,
+		MysteryGiftKeepSeconds = 900, -- #2614 (was 600)
+		MysteryRareStreak = 4,
+		RareCustomerSeconds = 6, -- #3889: one street customer every 6 s, each a rare one at RareChance
+		PotionMaxMinutes = 1440, -- F95 (economy-ladder.md section 6b): potions stack to 24 hours
+		-- quests and achievements and their potions (F73, quests.md section 6)
+		TimedTipsMax = 1.0,
+		QuestDailyCount = 5,
+		QuestWeeklyCount = 3,
+		QuestWeekOffsetSeconds = 345600,
+		QuestRollCheckSeconds = 60,
+		QuestClaimAll = true,
+		IndexClaimAll = true,
+		TipJarClaimAll = true,
+		-- bedtime (F79, sections 12c and 17)
+		CafeCatWalkSpeed = 6,
+		BedtimeStaggerSeconds = 0.3,
+		BedtimeStretchSeconds = 1,
+		HopSeconds = 0.45,
+		HopMaxRise = 2.6,
+		BedtimeTimeoutSeconds = 15,
+		-- the Cat Collector (F63, section 12b); CollectorValue is a table, checked in Collector.spec
+		CollectorEveryMin = 200, -- #1135; #2272: 300 s on average (#2107: 360 to 840, was 600 to 1400)
+		CollectorEveryMax = 400,
+		VisitRetrySeconds = 15,
+		CollectorStaySeconds = 180,
+		CollectorGoldMultiplier = 3,
+		CollectorRollMin = 0.8,
+		CollectorRollMax = 1.5,
+		-- #2798 (retention-ideas.md idea 10): Cozy Cafe
+		CozyStartSeconds = 60,
+		CozyBagSeconds = 180,
+		CozyBagsPerDay = 8,
+		CozyCoinSeconds = 60,
+		CozyLureChance = 0.25,
+		CozyFishChance = 0.05,
+		CozyFishMin = 1,
+		CozyFishMax = 3,
+		FirstVisitStaySeconds = 300, -- #2792 (retention-ideas.md section 2): a first visit waits 5 minutes
+		FirstVisitWindowSeconds = 1800, -- #2792: the schedule only inside an account's first 30 minutes of play
+		-- #2797 (retention-ideas.md 5d): the invite reward
+		InviteRewardFish = 20,
+		InviteQualifySeconds = 300,
+		InviteDailyMax = 5,
+		InviteRewardedMax = 50,
+		InviteCardFromSeconds = 300,
+		InviteCardBySeconds = 900,
+		InvitePendingCheckSeconds = 60,
+		-- the Spin Wheel station (F49, section 11c, design v0.6)
+		SpinStationRange = 22,
+		SpinCooldownSeconds = 4,
+		SpinAllMax = 51, -- #1078 (Derek 2026-11-04): Use all spins; 51 since #1414
+		SpinBankCap = 50, -- #1414 (was 20)
+		-- golden fish and crates (F52, F53, golden-fish.md section 8)
+		CrateLuckyEvery = 20,
+		CratePrice = 40,
+		CrateBundleCount = 5,
+		CrateBundlePrice = 180,
+		FishMarketRange = 22,
+		CrateOpenCooldownSeconds = 0.3,
+		DecorIndexBonus = 0.05,
+		DecorEquipBest = true,
+		ResetSaveGroupRank = 254, -- testers' Reset my save once the game is group-owned
+		GoldenEspressoBonus = 0.05, -- section 3: +5% tips per Golden Espresso level
+		BigBowlWaitCutSeconds = 120, -- F95 (economy-ladder.md section 6b): the Big Bowl takes 2 minutes off
+		FirstBaitWaitSeconds = 5, -- #1895: the account's first bait; #3161: was 1 (#2946), 45 (#2774), 120 before
+		FirstBaitCatLeadSeconds = 4, -- #3161: the first bait's cat stands at the bowl this long before its timer ends
+		FirstBaitReadySeconds = 3, -- #4920: the account's first bait is ready this long after the food
+		RecapAfterSeconds = 2400, -- #1920: seconds of play before the session recap card
+		RecapFirstSessionSeconds = 480, -- #2123: sooner in the account's first session; #3772: 8 minutes
+		LikeGiftMinutes = 10, -- #1947 (like-prompts.md section 3): the like card's play time
+		LikeGiftIncomeMinutes = 15, -- #1947 (Set 10 Q3): minutes of income in the like gift
+		FavGiftMinutes = 30, -- #1947: the favourite card's play time
+		FavGiftIncomeMinutes = 30, -- #1947 (Set 10 Q3): minutes of income in the favourite gift
+		GiftIdleSeconds = 3, -- #1947: the card waits for this long of calm
+		KeepUpStepsBehind = 1, -- section 17 (v0.13.16, F86): an older Legendary or Mythical earns one area behind
+		DecorIndexHalfFish = 15, -- F54: a Decor Index page's decor5 prize (#2237: was 25)
+		GoldLuckMax = 1.5, -- F54 (v0.10): the cap on summed Index gold luck
+		BaitSpeedMax = 0.5, -- F54 (v0.10): the cap on summed Index bait speed
+		-- codes (F65, section 11d, v0.10 circle and group codes)
+		CodesCatRange = 20,
+		CodesCircleRadius = 8,
+		CodeMaxLength = 20,
+		CodeWrongLimit = 5,
+		CodeLockSeconds = 60,
+		GroupId = 0, -- your Roblox group id
+		StarterCatRangeStuds = 12, -- F96 (starter-cat.md section 4)
+		StarterCatTutorialStep = 5,
+		StarterCatCharm = 60,
+		-- Luck and Lucky Days (F88, luck-and-rare-moments.md 1f)
+		LuckPerStatueLevel = 0.1,
+		LuckMax = 3,
+		LuckyPotionLuck = 0.5,
+		LuckyDayChance = 0.33, -- #1572 (1g): the day rolls that replace LuckyDayEvery
+		GoldenDayChance = 0.2,
+		RainbowDayChance = 0.1,
+		GoldenDayGoldMultiplier = 3, -- #1954: x3 (was 2)
+		RainbowDayMultiplier = 3,
+		LuckyDayWaveLuck = 2,
+		LuckyDayPlayerLuck = 0.5,
+		LuckyDayWarnSeconds = 15,
+		PityLegendarySeconds = 900, -- #1572 (1h): the global pity cat (shared/Pity); #2796: halved for now, was 1800
+		-- #2486 Cafe Events (live-events.md section 4)
+		EventPollSeconds = 60,
+		EventMinSeconds = 300,
+		EventMaxSeconds = 7200,
+		EventMoneyMax = 2,
+		PetMoneyBoost = 2, -- #3651
+		PetSeconds = 3600,
+		PetCooldownSeconds = 3,
+		PetRangeStuds = 10,
+		EventLuckMax = 1.0,
+		EventShowerMax = 12,
+		EventShowerGapMinSeconds = 300,
+		EventCountdownSeconds = 10800,
+		EventRepeatGiftIncomeMinutes = 10,
+		EventBigMinGapSeconds = 518400,
+		EventScheduleMax = 10,
+		PityMythicalEvery = 4,
+		PityMythicalSeconds = 3600, -- #1946 (1i): the restarting Mythical timer; #2796: halved for now, was 7200
+		PityClaimRetries = 3,
+		-- Pals (F92, playing-together.md 6)
+		PalTipBonus = 0.10,
+		PalTipBonusStep = 0.05, -- #1165: +5% for each more pal
+		PalTipBonusMax = 0.20, -- #1165 (#1347): was 0.15
+		TeamRescueRangeStuds = 10,
+		TeamRescueExtraSeconds = 5,
+		HelperTipSeconds = 60,
+		TeamRescueTipCooldown = 120,
+		-- Leaderboards (F98, leaderboards.md 5)
+		LeaderboardWrites = true,
+		LeaderboardWriteSeconds = 300,
+		LeaderboardRefreshSeconds = 120,
+		LeaderboardSize = 50,
+		LeaderboardBoardRows = 10,
+		LeaderboardRateMax = 1000000000000000, -- #3688
+		LeaderboardCrownRank = 10,
+		LeaderboardFaceSwapSeconds = 15,
+		-- #3466: the top player join notice
+		LeaderboardJoinNotice = true,
+		LeaderboardJoinNoticeRank = 10,
+		LeaderboardJoinNoticeDelay = 5,
+		LeaderboardJoinNoticeRejoinSeconds = 600,
+		-- The crate reel (F103, crate-reel.md 4)
+		CrateReelTiles = 40,
+		CrateReelLandingTile = 34,
+		CrateReelProtectFrom = 26,
+		CrateReelProtectTo = 37,
+		CrateReelTopSpeed = 15,
+		CrateReelRampSeconds = 0.3,
+		CrateReelStopSeconds = 0.8,
+		CrateReelHoldSeconds = 0.25,
+		RainbowChanceNet = 0.015, -- F99 (rainbow-coat.md section 5); v2 section 4b
+		RainbowChanceBait = 0.015,
+		RainbowChanceRescue = 0.036,
+		RainbowMultiplier = 2,
+		RainbowLuckMax = 0.4, -- #2269: was 1.0
+		CollectorRainbowMultiplier = 10,
+		RainbowAnimateMax = 10,
+		RainbowSpawnToastSeconds = 60,
+		FishFirstRainbowMultiplier = 3, -- F99 section 1: three first catches (#2237: was 5)
+		-- F102 (trading.md section 6)
+		TradeMinTier = 3,
+		TradeMaxCats = 9,
+		TradeMaxDecor = 9, -- #1574: decor pieces each side may offer
+		TradeMaxCrateKinds = 6, -- #2745 (trading.md section 1c): crate kinds each side may offer
+		TradeMaxCrates = 20, -- #2745: crates in all each side may offer
+		TradeMaxFish = 1000000, -- #4623 (Derek 2026-11-15): no fish cap a trade, only the remote's sanity bound
+		TradeFishPerDay = 0, -- #4623 (Derek 2026-11-15): no daily cap on fish received (250 before)
+		TradeFishValue = 0.075, -- #2745: 40 fish count as one Rare (3)
+		TradeCountdownSeconds = 5,
+		TradeLopsidedRatio = 3,
+		TradeConfirmWaitSeconds = 2,
+		TradeRequestSeconds = 20,
+		TradeReaskSeconds = 3,
+		TradeDeclinesToStop = 2,
+		TradeCooldownSeconds = 10,
+		TradesPerDay = 50,
+		TradeFlagCheckSeconds = 60,
+		TradeLogMax = 20,
+		TradeIdsMax = 100,
+		PicnicEverySeconds = 21600, -- F100 (camp-extras.md section 4); LostFoundTable is checked in CampExtras.spec
+		PicnicHold = 2,
+		PicnicTreatSeconds = 14400, -- #3715
+		PicnicTreatHold = 1,
+		PicnicPotion = "tip_potion", -- Design-Agent 11-02: one 10 minute Money Potion a fill, not a 15 minute one
+		YardSaleClaimHours = 4, -- #1154
+		PondFishPerStep = 1, -- #1232: was 2
+		PondStepSeconds = 900, -- #2237: was 600 (#1232: was 1800)
+		PondHold = 24, -- #2237: was 36
+		LostFoundEverySeconds = 7200, -- #1732: a find every 2 h, was one a UTC day
+		LostFoundHold = 3,
+		CampExtraRangeStuds = 18,
+		BinFirstUses = 3, -- #3050 (the Rummage Bin); BinTable is checked in RummageBin.spec
+		BinFirstRepeatSeconds = 180,
+		BinCooldownSeconds = 900,
+		BinMissRetrySeconds = 10,
+		BinZoneWidth = 0.18, -- Design-Agent on #3050: absolute, never the rescue bars' width or speed; #3458: 0.42 before; #4284: 0.22 before
+		BinBarSpeed = 0.80, -- #3458: 0.64 before
+		BinHits = 5, -- #3458: the bin's own hit count
+		BinPadRadius = 7, -- #3608: the pad in front of the bin; #4862: 4 before
+		BinPadDwellSeconds = 0.5,
+		BinRollSeconds = 2.5, -- #3608: the roll before the bar
+		BinRevealSeconds = 1,
+		SpaSeconds = 3600, -- #2651 part 4 (late-stations.md); SpaSlotPrices is checked in LateStations.spec
+		SpaMaxHours = 24, -- #2904: a level an hour, up to a day
+		MuseumRoomTipBonus = 0.05, -- #2908
+		RallyStartWeekday = 6, -- F101 (rescue-rally.md section 5); RallyPoints is checked in Rally.spec
+		RallyHours = 48,
+		RallyExtendFrom = 1794009600, -- #2227: Saturday 2026-11-07 00:00 UTC
+		RallyExtendUntil = 1794787200, -- #2227: Monday 2026-11-16 00:00 UTC
+		RallyPointsPerPlayer = 22,
+		RallyMinPlayers = 3,
+		RallyMinPoints = 3,
+		RallyMaxLaps = 10, -- #2608 (was 4)
+		RallyLapFishStep = 0.10,
+		RallyLapCap = 4,
+		RallyStateSeconds = 0.5,
+		-- Shove (F29 and v0.5 F41, section 10c; v0.5 same target cooldown 20, v0.5.1 target immunity S45; v0.8 F56)
+		BumpEnabled = true,
+		BumpChance = 1.0, -- v0.8 F56: a shove always drops the cat
+		BumpGraceSeconds = 0, -- #2193 (was 3): a landed tackle always drops the cat
+		BumpSafeRadiusStuds = 15,
+		BumpSameTargetSeconds = 0,
+		ShoveKnockbackStuds = 10,
+		ShoveTargetImmuneSeconds = 0,
+		TackleShieldSeconds = 900, -- #3342, #3475: a new join can't be tackled for its first 15 minutes (5 before)
+		-- a dropped cat walks home (v0.10 F67, section 10c)
+		DropReturnWalkSpeed = 8,
+		DropHomeRadiusStuds = 2,
+		DropReturnMaxSeconds = 60,
+		-- the Tackle (v0.11 F74, section 10c)
+		TackleLungeStuds = 12,
+		TackleLungeSeconds = 0.35,
+		TackleHitGraceSeconds = 0.25,
+		TackleHitRadiusStuds = 3,
+		TackleHitSlackStuds = 1.5,
+		TackleCooldownSeconds = 5,
+		TackleHitRecoverSeconds = 0.4,
+		TackleMissRecoverSeconds = 1.2,
+		TackledDownSeconds = 0.8,
+		-- the Cat Cannon (F84, section 17 v0.13.17)
+		CannonLaunchSeconds = 3.75,
+		CannonTeleportAtSeconds = 2.2,
+		CannonCloudsAt = 2.0,
+		CannonTouchdownAt = 3.5,
+		CannonCooldownSeconds = 3,
+		CloudHopSeconds = 1.6,
+		CloudHopMoveAtSeconds = 0.6,
+		-- naming cats (F33, section 4)
+		CatNameMaxLength = 20,
+		RenameCooldownSeconds = 5,
+		-- the net swing and rescue rework (F93, catch-rework.md section 5)
+		CircleJitter = 0.10,
+		NetSwingCooldown = 0.8,
+		NetSmackDelay = 0.22,
+		NetReachStuds = 7,
+		NetSlackStuds = 1.5,
+		NetArcDegrees = 60,
+		NetNearStuds = 4,
+		NetNearArcDegrees = 80,
+		NetFrontArcDegrees = 25,
+		NetFrontExtraStuds = 0.5,
+		NetMissHopStuds = 12,
+		NetMissHopShare = 0.25,
+		RescueSpeedUpPerHit = 0.08,
+		-- #1645 (cafe-pass.md section 1)
+		PassLevels = 34,
+		PassXpPerLevel = 800,
+		-- #1624 (economy-ladder.md section 6a v2.4): the store passes
+		VipCafeBonus = 0.10,
+		VipBoostCafeBonus = 0.50,
+		CafeStyleCafeBonus = 0.50,
+		GrandCafeBonus = 1.50,
+		AccessoriesStaffMultiplier = 1.15,
+		UniformsStaffMultiplier = 1.15,
+		CafeStyleRichRate = 0.25,
+		GrandRichRate = 1.0,
+		GrandExtraSlots = 1,
+		AutoEquipEverySeconds = 3, -- #1955 (auto-equip.md): one Auto Equip run every 3 s at most
+		AutoEquipHoldSeconds = 600, -- #1955: a cat placed by hand stays 10 minutes
+		-- #3062 (the Cat Arcade's Circle Streak, shared/Arcade; the milestones are checked in Circles.spec)
+		ArcadeCostFish = 1,
+		ArcadeMaxPoints = 100,
+		ArcadeStepEvery = 5, -- #3359: was 10
+		ArcadeShrinkStep = 0.96,
+		ArcadeWindowStep = 0.97,
+		ArcadeJitterMax = 0.20,
+		ArcadeStartShrinkSeconds = 0.60, -- #3359: was 1.20 (a Common's)
+		ArcadeShrinkFloorSeconds = 0.30, -- #3359
+		ArcadeBlockLeadIn = 0.9,
+		-- #3296 (Mouse Dash, mouse-dash.md section 6)
+		MouseDashHearts = 3,
+		MouseDashRunSeconds = 240, -- #3553: a run ends on the clock (3 minutes until 2026-11-13, now 4)
+		MouseDashStepEvery = 5,
+		MouseDashWindowStart = 1.10,
+		MouseDashWindowStep = 0.96,
+		MouseDashWindowFloor = 0.45,
+		MouseDashGapStart = 0.50,
+		MouseDashGapStep = 0.95,
+		MouseDashGapFloor = 0.25,
+		MouseDashGoldenFrom = 10,
+		MouseDashGoldenChance = 1 / 12,
+		MouseDashGoldenPoints = 3,
+		MouseDashGoldenWindowScale = 0.75,
+		MouseDashKittenFrom = 20,
+		MouseDashKittenChance = 0.125,
+		MouseDashPairFrom = 30,
+		MouseDashPairChance = 0.20,
+		MouseDashPairKittenFrom = 40,
+		MouseDashHeartBackEvery = 10,
+		MouseDashDizzySeconds = 0.40,
+		MouseDashFirstRunMice = 3,
+		MouseDashFirstRunWindow = 2.0,
+		MouseDashMouserAt = 50,
+	}
+
+	-- v0.3 section 17 values not built yet: name -> { value, feature }
+	local pending: { [string]: { any } } = {}
+
+	describe("data-model section 17 constants", function()
+		for name, value in pairs(expected) do
+			it(name .. " = " .. tostring(value), function()
+				local actual = (Config :: any)[name]
+				expect(actual).to.be.ok()
+				if type(value) == "number" then
+					expect(actual).to.be.near(value, 1e-9)
+				else
+					expect(actual).to.equal(value)
+				end
+			end)
+		end
+
+		for name, row in pairs(pending) do
+			it(string.format("%s = %s (%s)", name, tostring(row[1]), row[2]))
+		end
+
+		it(
+			"RenovateBonus is gone: tiers replace rebirth and nothing resets (section 5b)",
+			function()
+				expect((Config :: any).RenovateBonus).never.to.be.ok()
+			end
+		)
+
+		it(
+			"FoodTierPriceFactor = 1, 1, 4, 8, 16 by tier (F97, notes-10-28-to-10-30.md section 3)",
+			function()
+				expect(Config.FoodTierPriceFactor :: any).to.deepEqual({ 1, 1, 4, 8, 16 })
+			end
+		)
+
+		it(
+			"IntroAutoPlay = false: no intro on a first join, the ? tile replays it (#3162; true from #1575 until then)",
+			function()
+				expect(Config.IntroAutoPlay).to.equal(false)
+			end
+		)
+
+		it("has no extra top level tuning numbers the doc does not know about", function()
+			-- LureReserveSeconds: the doc now says a lured stray is reserved until despawn, so the constant is optional.
+			local known = {
+				World = true,
+				OwnerTestUserIds = true, -- #1770: checked in OwnerTest.spec
+				OwnerUserIds = true, -- #3324: checked in ChatTags.spec
+				Badges = true, -- #1934: a table, checked in Badges.spec
+				ForcedDays = true, -- #1974: a table of drop windows, checked in Luck.spec
+				NetWindows = true, -- a table, checked below
+				CatchCurve = true, -- #5392: a table, checked in CatchCurve.spec
+				CoatSpeed = true, -- #5392: a table, checked in CatchCurve.spec
+				CharmStarOdds = true, -- a table, checked below
+				RescueBarSpeed = true, -- a table, checked below
+				RescueZoneWidth = true, -- a table, checked below
+				ProfileStoreName = true,
+				ProfileKeyPrefix = true,
+				GrabRateLimitSeconds = true,
+				LureReserveSeconds = true,
+				IntroAutoPlay = true, -- false since #3162, checked below
+				StartTables = true, -- #3660
+				StartBowls = true, -- #4097
+				MysteryOpen = true, -- #2565: the Mystery Market buy switch, checked in MysteryMarket.spec
+				MysteryEpoch = true, -- #2565: checked in MysteryMarket.spec (mystery-market.md section 2)
+				MysteryRotateSeconds = true, -- #2565: checked in MysteryMarket.spec (mystery-market.md section 2)
+				MysterySaleShare = true, -- #2565: checked in MysteryMarket.spec (mystery-market.md section 2)
+				MysteryFeatured = true, -- #3535: a table, the dated featured weeks, checked in MysteryMarket.spec
+				SpeedShoesCarryBonus = true, -- #3535: checked in SpeedShoes.spec
+				MysteryMarketRange = true, -- #2565: checked in MysteryMarket.spec (mystery-market.md section 2)
+				TicketBoothTier = true, -- #4061: checked in TicketBooth.spec (the Water Park taken as Tier 9)
+				CatchPressStampSeconds = true, -- #4609: checked in Circles.spec (the late tap stamp window)
+				SecretNextMythicTimes = true, -- #4618: checked in SecretCats.spec (a Secret earns 10x the next area's Mythic)
+				HarvestStallRange = true, -- #4251: the Harvest Stall prompt and BuyHarvest range
+				LongNetReachStuds = true, -- #2565: the Long Net's extra reach, checked in NetSwing.spec
+				TutorialNetExtraStuds = true, -- #4815: the walk-through net's extra reach, checked in NetSwing.spec
+				RichTipRangeStuds = true, -- sections 12 and 15: ClaimRichTip within 12 studs of RichTipAnchor
+				WaveMinRareRerollOdds = true, -- a table, checked in Catching.spec (F97 section 7)
+				FoodTierPriceFactor = true, -- a table, checked below (F97 section 3)
+				FishFirstCatch = true, -- a table, checked below
+				FishRepeatCatch = true, -- a table, checked below
+				FishRankUp = true, -- a table, checked below
+				CratePieceBonus = true, -- a table, checked below
+				FreshCatchAmountWeights = true, -- a table, checked in FreshCatch.spec
+				DayCartQtyOdds = true, -- #1577: a table, checked in CornerShop.spec
+				DayCartTopChance = true, -- #1577: the Day Cart's in-stock odds by list place, checked in CornerShop.spec
+				DayCartStep = true,
+				DayCartFloor = true,
+				CornerDailyLimits = true, -- a table, checked in CornerShop.spec
+				CrateDuplicateRefund = true, -- a table, checked below
+				DecorSpots = true, -- a table, checked below
+				CodeWrongWindowSeconds = true, -- section 11d: "5 wrong codes in a minute"
+				GroupCheckSeconds = true, -- section 11d: IsInGroup "cached per player for 60 s"
+				GroupJoinTrustSeconds = true, -- #4679: checked in StarterCat.spec
+				GroupJoinRetries = true, -- #4679: checked in StarterCat.spec
+				GroupJoinRetrySeconds = true, -- #4679: checked in StarterCat.spec
+				StraySpawnSpacingStuds = true, -- Derek 22:38: strays spawn spread out; the designer logs it in section 17
+				StrayFloorBase = true, -- #1159: top-ups, checked in StrayTopUp.spec
+				StrayFloorPerPlayer = true,
+				StrayLiveMax = true,
+				StrayEntryFloor = true, -- #1621: the strays kept near each gate, checked in StrayTopUp.spec
+				StrayEntryStuds = true,
+				StrayEntryTopUpSeconds = true,
+				StrayTopUpMinSeconds = true,
+				StrayTopUpMaxSeconds = true,
+				WaveAtOnce = true, -- #3661: the sunrise wave placed over time, checked in StrayTopUp.spec
+				WaveSpreadSeconds = true,
+				MysteryRangeStuds = true, -- sections 12b and 15: the gift opens "within 12 studs"
+				CollectorValue = true, -- section 17's "1, 3, 8, 20, 50 by rarity", checked in Collector.spec
+				CollectorAskWeight = true, -- #1144: a table, checked in Collector.spec
+				CollectorRangeStuds = true, -- section 12b: his card opens "within 12 studs"
+				TipPotionBonus = true, -- section 12b's potion table: "+25% tips"
+				SwiftPotionSpeed = true, -- section 12b's potion table: "+4 walk and carry speed"
+				LuckyPotionGoldScale = true, -- section 12b's potion table: "double the chance"
+				StraySelfRetrySteps = true, -- section 17's StraySelfRetrySeconds {3, 6, 10}, checked below
+				BowlWaitSeconds = true, -- a table, checked below (F82)
+				BowlLuck = true, -- a table, checked below (F82)
+				KeepUpRarities = true, -- F95: empty (was section 17's "Legendary, Mythical"), checked below
+				MoneyPassIds = true, -- F95 (economy-ladder.md section 7): a table, checked below
+				ExtraSlotPassIds = true, -- F95 (economy-ladder.md section 7): a table, checked below
+				ProductIds = true, -- #1182: a table of developer product ids, checked in Products.spec
+				RareChance = true, -- #3889: a table, checked in Economy.spec
+				SeasonStarts = true, -- #1645: a list of UTC dates, checked in CafePass.spec
+				VipPassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				CatAccessoriesPassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				UniformStylesPassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				CafeStylePassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				GrandThemePassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				RoyalCatPassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				KingPackPassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				KingCatPassId = true, -- #1822: the King Cat alone, 0 until made, checked below
+				JukeboxPassId = true, -- #1168 row 2: a pass id of its own, checked below
+				SignStylePackPassId = true, -- #1168 row 1: a pass id of its own, checked below
+				GardenDecorPackPassId = true, -- #1168 row 3: a pass id of its own, checked below
+				GoldenPondPassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				SecondBowlPassId = true, -- #1197: an off-sale placeholder pass id, checked below
+				LostFoundTable = true, -- F100 (camp-extras.md section 2): a table, checked in CampExtras.spec
+				RallyPoints = true, -- F101 (rescue-rally.md section 2): a table, checked in Rally.spec
+				RallyForce = true, -- F101: false, checked in Rally.spec (a false value reads as missing above)
+				RescueTreeCircle = true, -- Derek 2026-11-03: false, checked in Rescue.spec (a false value reads as missing)
+				RescueSnack = true,
+				LawnRarityBonus = true, -- #1283 (lawn-nursery.md section 6a): a table, checked in Lawn.spec
+				YardDecorRows = true, -- #1537 (lawn-nursery.md section 7): checked in YardSale.spec
+				YardDecorRarityWeights = true, -- #1537: a table, checked in YardSale.spec
+				PityAreaWeights = true, -- #1572 (luck-and-rare-moments.md 1h): a table, checked in Pity.spec
+				EventShowerDefaults = true, -- #2486 (live-events.md section 4): a table, checked in CafeEvents.spec
+				EventShowerAreaWeights = true, -- #2486: a table, checked in CafeEvents.spec
+				UpdateEvents = true, -- #2766: the listed Roblox Events (id, start), a table, checked in EventRsvp.spec
+				CozyLure = true, -- #2798: a lure id, checked in CozyCafe.spec
+				PlaytimeGiftSteps = true, -- #2791: a table, checked in PlaytimeGifts.spec
+				FirstVisitAt = true, -- #2792: a table, checked in FirstVisits.spec
+				SpaSlotPrices = true, -- #2651 part 4 (late-stations.md): a table, checked in LateStations.spec
+				LateStationsOpen = true, -- #2651 part 4: on since the Spa and Museum cards are in (#2931)
+				CatchHoldFirstRing = true, -- #2920: on since the Catch screen draws the hold (#2922)
+				RescueAreaEase = true, -- #2786: a table, checked in Rescue.spec
+				RescueFirstUses = true, -- #3120: an account's first rescues, checked in Rescue.spec
+				RescueFirstZone = true, -- #3120: their wider zone, checked in Rescue.spec
+				RescueFirstSpeed = true, -- #3180: their slower marker, checked in Rescue.spec
+				CoatDifficulty = true, -- #3135: a table, checked in Rescue.spec and Circles.spec
+				QuickRingTier = true, -- #3140: checked in Circles.spec
+				QuickRingScale = true, -- #3140: a table, checked in Circles.spec
+				DealerDryNights = true, -- #3011: a table, checked in Dealer.spec
+				BinTable = true, -- #3050: a table, checked in RummageBin.spec
+				BinRollTable = true, -- #3608: a table, checked in RummageBin.spec
+				BinFirstEase = true, -- #3050: a table, checked in RummageBin.spec
+				BinFirstPrizes = true, -- #3460: fixed prize rows, checked in RummageBin.spec
+				ArcadeMilestones = true, -- #3062: a table, checked in Circles.spec
+				UpdateGift = true, -- #2997: the update gift, a table, checked in Codes.spec
+				UpdateGiftNext = true, -- #3535: the gift after it, checked in Codes.spec
+				Giveaways = true, -- Derek 2026-11-13: the 15:30 UTC giveaways, checked in Codes.spec
+				StoreWasPrice = true, -- #3572: the Sale badge's true old prices, checked in StoreLogic.spec
+				StoreSaleEnds = true, -- #3572: checked in StoreLogic.spec
+				UpdateFeature = true, -- #4175: checked in StoreLogic.spec
+				EarlyCatchCount = true, -- #2913 follow-up: checked in Circles.spec
+				EarlyCatchWindowScale = true, -- #2913 follow-up: checked in Circles.spec and S24 here
+				TouchCatchWindowScale = true, -- #4299: checked in Circles.spec and S24 here
+				AfkCafeSeconds = true, -- #3573: checked in AfkCafe.spec
+				AutoRejoinSeconds = true, -- #3602: checked in AfkCafe.spec
+				AfkCafeMoney = true, -- #3573: checked in AfkCafe.spec
+				YardSaleRollHours = true, -- #3614: checked in YardPick.spec
+				YardSaleTable = true, -- #3614: a table, checked in YardPick.spec
+				SecretWanderSpeed = true, -- #3545: checked in SecretCats.spec
+				SecretWanderRadius = true, -- #3545: checked in SecretCats.spec
+				SecretWanderPauseScale = true, -- #3545: checked in SecretCats.spec
+				ReturnGiftFromDay = true, -- #3772: checked in ReturnGift.spec
+				StylishPackPassId = true, -- #4026: the outfit packs' pass ids, 0 until made, checked in StoreLogic.spec
+				WinterPackPassId = true,
+				ChefPackPassId = true,
+				SpacePackPassId = true,
+				AutoBowlPassId = true, -- #4266: the Auto Bowl pass id, its Store card hidden while 0
+				FusionCopies = true, -- #4104: checked in Fusion.spec
+				FusionGoldSeconds = true,
+				FusionRainbowSeconds = true,
+				FusionTier = true,
+				TradeFishPassHoldSeconds = true, -- #4521: the Golden Pond fish hold, checked in Trade.spec
+			}
+			for name, value in pairs(Config :: any) do
+				if expected[name] == nil and not known[name] then
+					error(
+						string.format(
+							"Config.%s = %s is not in data-model section 17; add it to the doc or remove it",
+							name,
+							tostring(value)
+						)
+					)
+				end
+			end
+		end)
+	end)
+
+	describe("internal consistency", function()
+		it("golden fish by rarity and rank (F52, golden-fish.md section 2)", function()
+			expect(Config.FishFirstCatch :: any).to.deepEqual({
+				Common = 1,
+				Rare = 2,
+				Epic = 5,
+				Legendary = 12,
+				Mythical = 25,
+				Secret = 100, -- #3470
+			}) -- #2237
+			expect(Config.FishRepeatCatch :: any).to.deepEqual({
+				Epic = 1,
+				Legendary = 2,
+				Mythical = 5,
+				Secret = 20, -- #3470
+			})
+			expect(Config.FishRankUp :: any).to.deepEqual({ 5, 15, 30, 60, 100, 150, 300, 300, 300 }) -- #2651: Tiers 6 and 7; #4055: 8 to 10
+		end)
+
+		it(
+			"crate bonuses, refunds and decor spots (F53, golden-fish.md sections 4 and 8)",
+			function()
+				expect(Config.CratePieceBonus :: any).to.deepEqual({
+					Common = 0.02,
+					Rare = 0.04,
+					Epic = 0.08,
+					Legendary = 0.15,
+					Mythical = 0.25,
+				})
+				expect(Config.CrateDuplicateRefund :: any).to.deepEqual({
+					Common = 10,
+					Rare = 20,
+					Epic = 40,
+					Legendary = 80,
+					Mythical = 150,
+				})
+				expect(Config.DecorSpots :: any).to.deepEqual({ 2, 3, 4, 5, 6 })
+			end
+		)
+
+		it("F95's pass ids and keep up (economy-ladder.md section 7)", function()
+			-- the ids Tools-Agent made on 2026-11-02 and 2026-11-04 (tools/opencloud/passes.json), all different
+			expect(Config.MoneyPassIds :: any).to.deepEqual({
+				[2] = 2064604577,
+				[3] = 2064670602,
+				[4] = 2064357148,
+			})
+			expect(Config.ExtraSlotPassIds :: any).to.deepEqual({ 2066816325 })
+			local ids: { [number]: boolean } = { [Config.LongNapPassId] = true }
+			for _, id in Config.MoneyPassIds do
+				expect(ids[id]).never.to.be.ok()
+				ids[id] = true
+			end
+			local c = Config :: any
+			for _, id in
+				{
+					c.ExtraSlotPassIds[1],
+					c.VipPassId,
+					c.CatAccessoriesPassId,
+					c.UniformStylesPassId,
+					c.CafeStylePassId,
+					c.GrandThemePassId,
+					c.RoyalCatPassId,
+					c.KingPackPassId,
+					c.GoldenPondPassId,
+					c.SecondBowlPassId,
+				}
+			do
+				expect(type(id)).to.equal("number")
+				expect(ids[id]).never.to.be.ok()
+				ids[id] = true
+			end
+			-- #1822: the King Cat alone is 0 until Tools-Agent makes it, then a pass id of its own
+			expect(type(c.KingCatPassId)).to.equal("number")
+			expect(c.KingCatPassId == 0 or ids[c.KingCatPassId] == nil).to.equal(true)
+			-- #1168 row 2: the Jukebox Pass (off sale since #1875) keeps a pass id of its own
+			expect(type(c.JukeboxPassId)).to.equal("number")
+			expect(c.JukeboxPassId == 0 or ids[c.JukeboxPassId] == nil).to.equal(true)
+			-- #1168 row 1: the Sign Style Pack is 0 until made, then a pass id of its own
+			expect(type(c.SignStylePackPassId)).to.equal("number")
+			expect(c.SignStylePackPassId == 0 or ids[c.SignStylePackPassId] == nil).to.equal(true)
+			-- #1168 row 3: the Garden Decor Pack is 0 until made, then a pass id of its own
+			expect(type(c.GardenDecorPackPassId)).to.equal("number")
+			expect(c.GardenDecorPackPassId == 0 or ids[c.GardenDecorPackPassId] == nil).to.equal(
+				true
+			)
+			-- keep up is off: the shop-only cats use areaMultiplier instead, and it can come back by config
+			expect(next(Config.KeepUpRarities)).to.equal(nil)
+		end)
+
+		it(
+			"bowl levels (F82, section 8 v0.13.15): waits from 10:00 to 8:00 and luck from 0 to 16%",
+			function()
+				expect(Config.BowlWaitSeconds :: any).to.deepEqual({ 600, 570, 540, 510, 480 })
+				expect(Config.BowlLuck :: any).to.deepEqual({ 0, 0.04, 0.08, 0.12, 0.16 })
+				expect(Config.BowlWaitSeconds[1]).to.equal(Config.LureWaitSeconds)
+				-- section 3's Big Bowl wait of 8:00 on a level 1 bowl, 2 minutes off any bowl since F95
+				expect(Config.BowlWaitSeconds[1] - Config.BigBowlWaitCutSeconds).to.equal(480)
+				expect(#Config.BowlLuck).to.equal(Catalog.upgradesById.lure_bowl.maxLevel)
+				expect(#Config.BowlWaitSeconds).to.equal(Catalog.upgradesById.lure_bowl.maxLevel)
+			end
+		)
+
+		it(
+			"NetWindows matches the section 10 net table, levels 0 to 3, with no jitter column (F93)",
+			function()
+				local expectedWindows = {
+					[0] = { perfect = 0.045, good = 0.11 },
+					[1] = { perfect = 0.055, good = 0.13 },
+					[2] = { perfect = 0.065, good = 0.155 },
+					[3] = { perfect = 0.08, good = 0.18 },
+					[4] = { perfect = 0.09, good = 0.20 }, -- #5170 netTiers
+					[5] = { perfect = 0.10, good = 0.22 },
+				}
+				local levels = 0
+				for level, row in pairs(Config.NetWindows) do
+					levels += 1
+					local want = expectedWindows[level]
+					expect(want).to.be.ok()
+					assert(want)
+					expect(row.perfect).to.be.near(want.perfect, 1e-9)
+					expect(row.good).to.be.near(want.good, 1e-9)
+					expect((row :: any).jitter).never.to.be.ok()
+				end
+				expect(levels).to.equal(6) -- #5170: Net 4 and 5, reached only with netTiers on
+				local net = Catalog.getUpgrade("net")
+				assert(net)
+				expect(net.maxLevel).to.equal(3)
+			end
+		)
+
+		-- Holds through any retune of the numbers above (from the engineer's spec, 067b953).
+		it("net windows: Perfect inside Good, and a better net is never harder", function()
+			for level = 0, 3 do
+				local windows = Config.NetWindows[level]
+				expect(windows.perfect < windows.good).to.equal(true)
+				if level > 0 then
+					local previous = Config.NetWindows[level - 1]
+					expect(windows.perfect >= previous.perfect).to.equal(true)
+					expect(windows.good >= previous.good).to.equal(true)
+				end
+			end
+		end)
+
+		it("S24: CircleGapMin is above the widest good window plus the latency cap", function()
+			-- Otherwise a late press for one circle could land on the next. Widening good means raising the gap. Since
+			-- F93 a Common's catchWindow (1.1) widens the net's Good, so the widest is the Master Net Common's.
+			local widest = 0
+			for _, row in pairs(Config.NetWindows) do
+				for _, rarity in pairs(Catalog.rarities) do
+					-- #2913 follow-up: a new player's early catches widen it by EarlyCatchWindowScale, in the widest area
+					local area = 1
+					for _, def in Catalog.areas do
+						area = math.max(area, (def :: any).catchWindowScale or 1)
+					end
+					widest = math.max(
+						widest,
+						row.good
+							* rarity.catchWindow
+							* math.max(Config.EarlyCatchWindowScale, Config.TouchCatchWindowScale) -- #4299
+							* area
+					)
+				end
+			end
+			expect(Config.CircleGapMin > widest + Config.CatchLatencyCapSeconds).to.equal(true)
+			expect(Config.CircleGapMin <= Config.CircleGapMax).to.equal(true)
+		end)
+
+		it("circle scores: Perfect beats Good beats a miss, and Perfect is a sure catch", function()
+			expect(Config.CircleScorePerfect).to.equal(1)
+			expect(Config.CircleScoreGood > 0 and Config.CircleScoreGood < 1).to.equal(true)
+		end)
+
+		it(
+			"v0.5 chase: a missed stray outruns a walking player and the one who missed waits a little longer",
+			function()
+				expect(Config.StrayFleeSpeed > Config.NormalWalkSpeed).to.equal(true)
+				expect(Config.StrayRestSeconds > 0).to.equal(true)
+				expect(Config.StraySelfRetrySeconds > 0).to.equal(true)
+			end
+		)
+
+		it(
+			"v0.8 F57: the wait after a miss grows 3, 6, then 10 s, and a Startled player walks slower",
+			function()
+				expect(Config.StraySelfRetrySteps :: any).to.deepEqual({ 3, 6, 10 })
+				expect(Config.StraySelfRetrySeconds).to.equal(Config.StraySelfRetrySteps[1])
+				expect(Config.StartledWalkSpeed < Config.NormalWalkSpeed).to.equal(true)
+			end
+		)
+
+		it("v0.5 chase: the v0.4 wary wait and jump back are gone (F40)", function()
+			local config = Config :: any
+			expect(config.StrayWarySeconds).never.to.be.ok()
+			expect(config.StrayJumpBackMin).never.to.be.ok()
+			expect(config.StrayJumpBackMax).never.to.be.ok()
+		end)
+
+		it("v0.5 night: the cafe closes, so the night owls' spawn time is gone (F44)", function()
+			expect((Config :: any).CustomerSpawnSecondsNight).never.to.be.ok()
+		end)
+
+		it("v0.8 night (F60): full pay, and night bait waits half the day wait", function()
+			expect(Config.NightIncomeMultiplier).to.equal(1)
+			expect(Config.LureWaitSecondsNight * 2).to.equal(Config.LureWaitSeconds)
+		end)
+
+		it("v0.4 stakes: the scripted-press flag clears well below where it sets", function()
+			expect(Config.AutoPressClearRate > 0).to.equal(true)
+			expect(Config.AutoPressClearRate < Config.AutoPressFlagRate).to.equal(true)
+			expect(Config.AutoPressFlagRate < 1).to.equal(true)
+		end)
+
+		it("v0.4 stakes: a Purrfect Mythical catch adds charm well inside the 100 cap", function()
+			local most = Config.PerfectCharmBonus
+				* Catalog.rarities.Mythical.circles
+				* Config.PurrfectCharmMultiplier
+			expect(most).to.equal(56) -- F93: seven circles
+			expect(most < 100).to.equal(true)
+		end)
+
+		it("carry speed is about 80% of normal walk speed (features F07)", function()
+			expect(Config.CarryWalkSpeed / Config.NormalWalkSpeed).to.be.near(0.8, 0.02)
+		end)
+
+		it(
+			"the Catch Rush outruns a walking player and the burst stays inside its own radius (F55)",
+			function()
+				expect(Config.CatchRushWalkSpeed > Config.NormalWalkSpeed).to.equal(true)
+				expect(Config.CatchBurstStuds <= Config.CatchBurstRadiusStuds).to.equal(true)
+			end
+		)
+
+		it(
+			"the lock covers the late-press allowance, so nobody can take a stray mid-catch",
+			function()
+				-- The lock runs to the last target + good + 1 s; the last press is accepted to target + good + cap.
+				expect(Config.CatchLatencyCapSeconds < 1).to.equal(true)
+			end
+		)
+
+		it(
+			"the v0.1 names are gone (night waves replace the trickle, the net replaces gloves)",
+			function()
+				local config = Config :: any
+				expect(config.SpawnIntervalSeconds).never.to.be.ok()
+				expect(config.MaxStraysPerArea).never.to.be.ok()
+				expect(config.GlovesBonus).never.to.be.ok()
+			end
+		)
+
+		it(
+			"v0.3: the hold ring and flat chance constants are gone (F26, section 17 Removed)",
+			function()
+				local config = Config :: any
+				for _, name in ipairs({
+					"GrabHoldSeconds",
+					"GrabMinHoldSeconds",
+					"GrabLockSeconds",
+					"NetBonus",
+					"LureBonus",
+					"RingBonusPerfect",
+					"RingBonusGood",
+					"RingPerfectWindow",
+					"RingGoodWindow",
+					"CatchChanceMin",
+					"CatchChanceMax",
+					"RenovateBonus",
+				}) do
+					expect(config[name]).never.to.be.ok()
+				end
+			end
+		)
+
+		it("the v0.2 rescue hold's constants are gone (F27)", function()
+			local config = Config :: any
+			expect(config.RescueHoldSeconds).never.to.be.ok()
+			expect(config.RescueLockSeconds).never.to.be.ok()
+			expect(config.RingLatencyGraceSeconds).never.to.be.ok()
+		end)
+		it("LureDespawnSeconds and LureReserveSeconds are gone (F28)", function()
+			local config = Config :: any
+			expect(config.LureDespawnSeconds).never.to.be.ok()
+			expect(config.LureReserveSeconds).never.to.be.ok()
+		end)
+
+		it(
+			"clock (v0.9, F66): a new server opens at sunrise, nights are short, the warning fits in the day",
+			function()
+				expect(Config.ServerStartDaySeconds > 0).to.equal(true)
+				expect(Config.ServerStartDaySeconds <= Config.DayLengthSeconds).to.equal(true)
+				expect(Config.NightLengthSeconds > 0).to.equal(true)
+				expect(Config.NightLengthSeconds < Config.DayLengthSeconds).to.equal(true)
+				expect(Config.DuskWarningSeconds < Config.ServerStartDaySeconds).to.equal(true)
+				expect(Config.NightSweepSeconds > 0).to.equal(true)
+				expect(Config.NightSweepSeconds < Config.NightLengthSeconds).to.equal(true)
+				-- the loop test still sees one full night inside its ten minutes
+				expect(Config.ServerStartDaySeconds + Config.NightLengthSeconds <= 600).to.equal(
+					true
+				)
+			end
+		)
+
+		it(
+			"#1437: one global clock, and both shops restock at its sunrise once a game day",
+			function()
+				local cycle = Config.DayLengthSeconds + Config.NightLengthSeconds
+				expect(Config.ClockEpoch).to.equal(1793491200) -- 2026-11-01 00:00 UTC
+				-- every sunrise falls on a whole number of cycles from the epoch, so a window of one cycle turns at sunrise
+				expect(Config.ServerStartDaySeconds + Config.NightLengthSeconds).to.equal(cycle)
+				expect(Config.FreshCatchWindowSeconds).to.equal(cycle)
+				expect(Config.CornerShopWindowSeconds).to.equal(cycle)
+			end
+		)
+
+		it(
+			"rescue: the player who failed waits longer, the chances are probabilities, a rescue pays no more",
+			function()
+				expect(Config.RescueSelfRetrySeconds > Config.RescueRetrySeconds).to.equal(true)
+				expect(Config.RescueSpawnChance > 0 and Config.RescueSpawnChance <= 1).to.equal(
+					true
+				)
+				expect(Config.GoldChanceRescue > 0 and Config.GoldChanceRescue < 1).to.equal(true)
+				expect(Config.RescuedTipsMultiplier).to.equal(1)
+			end
+		)
+
+		it(
+			"the rescue bar matches the section 10b table: rarer has less time in the zone (v0.13.15 F83, #2219, #2320, #2566, #3223)",
+			function()
+				local rows = {
+					-- #3120: the zones were 0.30, 0.23, 0.15, 0.12 and 0.14
+					-- #3223: Common and Rare were 0.85 and 0.735
+					Common = { 1.00, 0.17 },
+					Rare = { 0.90, 0.135 }, -- #2566 made the Rare slower than the Common; #3223 keeps a little of that
+					Epic = { 0.98, 0.105 },
+					Legendary = { 1.12, 0.105 },
+					Mythical = { 1.26, 0.125 },
+				}
+				-- how long the marker stays inside a zone (tolerance included) on its first pass
+				local function inZoneSeconds(row: { number }): number
+					return (row[2] + 2 * Config.RescueTolerance) / row[1]
+				end
+				local previous: { number }? = nil
+				for _, rarity in Catalog.rarityOrder do
+					local row = rows[rarity]
+					expect(Config.RescueBarSpeed[rarity]).to.be.near(row[1], 1e-9)
+					expect(Config.RescueZoneWidth[rarity]).to.be.near(row[2], 1e-9)
+					if previous ~= nil then
+						-- #2566: the Rare's marker is slower than the Common's (Rare and up x0.7); from Rare up rarer is
+						-- still faster, and every step up still has less time in the zone
+						if rarity ~= "Rare" then
+							expect(row[1] > previous[1]).to.equal(true)
+						end
+						expect(inZoneSeconds(row) < inZoneSeconds(previous)).to.equal(true)
+					end
+					previous = row
+				end
+			end
+		)
+
+		it(
+			"bait bowl: gold is a probability (Tame and Let go work from anywhere since 2026-10-28)",
+			function()
+				expect((Config :: any).BaitResolveRangeStuds).never.to.be.ok()
+				expect(Config.GoldChanceBait > 0 and Config.GoldChanceBait < 1).to.equal(true)
+			end
+		)
+
+		it(
+			"CharmStarOdds has five shares that sum to 100 (pinned to rollCharm in CatStats.spec)",
+			function()
+				expect(#Config.CharmStarOdds).to.equal(5)
+				local total = 0
+				for _, share in Config.CharmStarOdds do
+					total += share
+				end
+				expect(total).to.be.near(100, 1e-6)
+			end
+		)
+
+		it("customers never stay a negative or zero time", function()
+			expect(Config.CustomerStayMin > 0).to.equal(true)
+			expect(Config.CustomerStayMin <= Config.CustomerStayMax).to.equal(true)
+		end)
+
+		it("the grab remote limit matches the grab cooldown", function()
+			expect(Config.GrabRateLimitSeconds).to.equal(Config.GrabCooldownSeconds)
+		end)
+
+		it("data store names are set and ids are bounded", function()
+			expect(#Config.ProfileStoreName > 0).to.equal(true)
+			expect(#Config.ProfileKeyPrefix > 0).to.equal(true)
+			expect(Config.MaxIdLength >= 20).to.equal(true)
+		end)
+	end)
+
+	describe("the rainbow coat (F99, rainbow-coat.md section 1)", function()
+		it(
+			"is three tenths of gold everywhere (v2, section 4b) and earns x2 (Derek2 2026-11-07, was x3)",
+			function()
+				expect(Config.RainbowChanceNet).to.be.near(Config.GoldChanceNet * 0.3, 1e-9)
+				expect(Config.RainbowChanceBait).to.be.near(Config.GoldChanceBait * 0.3, 1e-9)
+				expect(Config.RainbowChanceRescue).to.be.near(Config.GoldChanceRescue * 0.3, 1e-9)
+				expect(Config.RainbowMultiplier).to.equal(2)
+				expect(Config.RainbowMultiplier > Config.GoldMultiplier).to.equal(true)
+				expect(Config.CollectorRainbowMultiplier > Config.CollectorGoldMultiplier).to.equal(
+					true
+				)
+			end
+		)
+	end)
+
+	describe("the crate reel (F103, crate-reel.md section 4)", function()
+		it(
+			"keeps the won tile inside the protected run and the stop's view on the strip",
+			function()
+				local landing = Config.CrateReelLandingTile
+				expect(
+					landing >= Config.CrateReelProtectFrom and landing <= Config.CrateReelProtectTo
+				).to.equal(true)
+				-- the seven tiles in view at the stop (three either side of the won one) are all on the strip
+				expect(
+					Config.CrateReelProtectTo <= Config.CrateReelTiles
+						and landing + 3 <= Config.CrateReelTiles
+				).to.equal(true)
+			end
+		)
+	end)
+end

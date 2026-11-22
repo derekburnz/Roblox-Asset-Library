@@ -1,0 +1,158 @@
+--!strict
+-- A stray's rarity gem (Derek 2026-10-28 01:25): which strays show one, when it hides and that it stays readable.
+-- Written by the vfx-animator; QA moved it into tests/specs and added the edges.
+return function()
+	local Client =
+		game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"):WaitForChild("Client")
+	local Effects = Client:WaitForChild("Effects")
+	local Logic = require(Effects:WaitForChild("Logic")) :: any
+	local Presets = require(Effects:WaitForChild("Presets")) :: any
+
+	describe("Effects stray rarity gem", function()
+		it("shows on every stray with a known rarity, none for a missing or unknown one", function()
+			for _, rarity in { "Common", "Rare", "Epic", "Legendary", "Mythical" } do
+				expect(Logic.rarityMarkShows(rarity, 0, 40, false)).to.equal(true)
+				expect(Presets.rarity[rarity] ~= nil).to.equal(true)
+			end
+			expect(Logic.rarityMarkShows(nil, 0, 40, false)).to.equal(false) -- Rarity not replicated yet
+			expect(Logic.rarityMarkShows("Sparkly", 0, 40, false)).to.equal(false)
+			expect(Presets.rarityMark.glints.Mythical).to.equal(true)
+		end)
+
+		it(
+			"stays visible up close while the cat is free, hides only while it is being caught",
+			function()
+				local r = Presets.rarityMark
+				expect(Logic.rarityMarkShows("Epic", 123456, 40, true)).to.equal(false)
+				expect(Logic.rarityMarkShows("Epic", nil, 40, false)).to.equal(true) -- LockedBy not replicated yet
+				expect(Logic.rarityMarkShows("Epic", 0, r.maxDistance, true)).to.equal(true)
+				expect(Logic.rarityMarkShows("Epic", 0, r.maxDistance + 1, true)).to.equal(false)
+				expect(r.hideWithin).to.equal(0) -- no close-up hiding: the gem stays over a free cat you stand next to
+				expect(Logic.rarityMarkShows("Epic", 0, 0.5, true)).to.equal(true)
+				expect(Logic.rarityMarkShows("Epic", 0, 5, true)).to.equal(true)
+				expect(Logic.rarityMarkShows("Epic", 0, 5, false)).to.equal(true)
+				expect(Logic.rarityMarkShows("Epic", 123456, 2, true)).to.equal(false) -- still hidden while LockedBy is set
+				expect(Logic.rarityMarkShows("Epic", 123456, 2, false)).to.equal(false)
+				-- the hysteresis still reads hideWithin + showAfter for a hidden gem, so a tuned hideWithin never flickers
+				expect(Logic.rarityMarkShows("Epic", 0, r.hideWithin + r.showAfter * 0.5, false)).to.equal(
+					false
+				)
+				expect(Logic.rarityMarkShows("Epic", 0, r.hideWithin + r.showAfter + 0.1, false)).to.equal(
+					true
+				)
+			end
+		)
+
+		it("is small but readable far away", function()
+			local r = Presets.rarityMark
+			expect(r.size > 0 and r.size <= 2).to.equal(true) -- #2231: the gem in its halo
+			expect(r.pixels >= 12).to.equal(true)
+			expect(r.gem > 0 and r.gem * math.sqrt(2) <= 1).to.equal(true) -- the turned square fits its gui
+			expect(r.bob > 0 and r.bob < r.above).to.equal(true)
+			for _, every in r.glintEvery do
+				expect(every > 2 * r.glintSeconds).to.equal(true)
+			end
+			expect(r.most >= 1 and r.most <= 16).to.equal(true)
+		end)
+	end)
+
+	describe("Effects stray rarity gem edges (QA)", function()
+		it("wears each rarity's colour from data-model section 2, Common grey included", function()
+			local Catalog = require(
+				game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Catalog")
+			)
+			for rarity, def in Catalog.rarities do
+				local colour = Presets.rarity[rarity]
+				expect(colour ~= nil).to.equal(true)
+				local hex = string.format(
+					"#%02X%02X%02X",
+					math.round(colour.R * 255),
+					math.round(colour.G * 255),
+					math.round(colour.B * 255)
+				)
+				expect(hex).to.equal(def.color)
+				expect(Presets.rarityMark.shows[rarity]).to.equal(true)
+			end
+		end)
+
+		it(
+			"matches the effects list: never hidden up close, back at once when the lock clears, to 80 studs for the 12 nearest",
+			function()
+				local r = Presets.rarityMark
+				expect(r.hideWithin).to.equal(0)
+				expect(r.hideWithin + r.showAfter).to.equal(0)
+				expect(r.maxDistance).to.equal(80)
+				expect(r.most).to.equal(12)
+				expect(r.above).to.equal(0.9)
+				expect(r.bob).to.equal(0.15)
+				expect(r.bobSeconds * 2).to.equal(1.8)
+				expect(r.glintEvery.Mythical).to.equal(1.6) -- #2231: Legendary glints too, Mythical the most often
+				expect(r.glintEvery.Legendary).to.equal(2.6)
+				expect(r.checkEvery).to.equal(0.25)
+			end
+		)
+
+		it("never shows for a broken distance and only Legendary and Mythical glint", function()
+			for _, shown in { true, false } do
+				expect(Logic.rarityMarkShows("Mythical", 0, 0 / 0, shown)).to.equal(false)
+				expect(Logic.rarityMarkShows("Mythical", 0, math.huge, shown)).to.equal(false)
+				expect(Logic.rarityMarkShows("Mythical", 0, -5, shown)).to.equal(false)
+			end
+			for _, rarity in { "Common", "Rare", "Epic" } do
+				expect(Presets.rarityMark.glints[rarity] == true).to.equal(false)
+			end
+		end)
+
+		it("hides for any catcher and shows again once the lock clears", function()
+			expect(Logic.rarityMarkShows("Rare", -1, 40, true)).to.equal(false)
+			expect(Logic.rarityMarkShows("Rare", 7, 40, true)).to.equal(false)
+			expect(Logic.rarityMarkShows("Rare", 0, 40, true)).to.equal(true)
+			expect(Logic.rarityMarkShows("rare", 0, 40, true)).to.equal(false)
+		end)
+
+		it(
+			"gemsShrink: a far gem's pixel part tapers off, and nothing changes with the switch off",
+			function()
+				local r = Presets.rarityMark
+				local s = r.shrink
+				expect(Logic.gemPixels(5, false, false)).to.equal(r.pixels)
+				expect(Logic.gemPixels(300, false, false)).to.equal(r.pixels)
+				expect(Logic.gemPixels(300, true, false)).to.equal(
+					math.max(r.pixels, r.finder.pixels)
+				)
+				expect(Logic.gemPixels(s.near, false, true)).to.equal(r.pixels)
+				expect(Logic.gemPixels(s.far, false, true)).to.equal(s.least)
+				expect(Logic.gemPixels(300, false, true)).to.equal(s.least)
+				expect(Logic.gemPixels(300, true, true)).to.equal(s.finderLeast)
+				local mid = Logic.gemPixels((s.near + s.far) / 2, false, true)
+				expect(mid < r.pixels and mid > s.least).to.equal(true)
+			end
+		)
+
+		it(
+			"#5034: the Park finder reaches further only for Park strays before the first Park cat",
+			function()
+				local r = Presets.rarityMark
+				local f = r.finder
+				expect(f.maxDistance > r.maxDistance).to.equal(true)
+				expect(f.pixels >= r.pixels).to.equal(true)
+				expect(Logic.rarityFinder(true, f.area, false)).to.equal(true)
+				expect(Logic.rarityFinder(false, f.area, false)).to.equal(false) -- switch off
+				expect(Logic.rarityFinder(true, f.area, true)).to.equal(false) -- a Park cat is caught
+				expect(Logic.rarityFinder(true, "woods", false)).to.equal(false)
+				expect(Logic.rarityFinder(true, nil, false)).to.equal(false) -- Area not replicated yet
+				local beyond = r.maxDistance + 10
+				expect(Logic.rarityMarkShows("Common", 0, beyond, false)).to.equal(false)
+				expect(Logic.rarityMarkShows("Common", 0, beyond, false, f.maxDistance)).to.equal(
+					true
+				)
+				expect(Logic.rarityMarkShows("Common", 0, f.maxDistance + 1, true, f.maxDistance)).to.equal(
+					false
+				)
+				expect(Logic.rarityMarkShows("Common", 5, beyond, false, f.maxDistance)).to.equal(
+					false
+				) -- still locked
+			end
+		)
+	end)
+end

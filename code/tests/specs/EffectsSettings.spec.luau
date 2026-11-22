@@ -1,0 +1,204 @@
+--!strict
+-- The Settings switches the client Effects module follows (Derek 2026-10-27): Screen shake and Low performance.
+-- Written by the vfx-animator for QA to move into tests/specs next to EffectsLogic.spec.luau.
+return function()
+	local Client =
+		game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"):WaitForChild("Client")
+	local Effects = Client:WaitForChild("Effects")
+	local Logic = require(Effects:WaitForChild("Logic")) :: any
+	local Presets = require(Effects:WaitForChild("Presets")) :: any
+
+	describe("Effects settings", function()
+		it(
+			"puts a tablet in a keyboard case on the low tier, and a touch screen laptop on high (#3918)",
+			function()
+				expect(Logic.tier(true, false)).to.equal("low")
+				expect(Logic.tier(true, false, false)).to.equal("low")
+				expect(Logic.tier(true, true, false)).to.equal("low")
+				expect(Logic.tier(true, true, true)).to.equal("high")
+				expect(Logic.tier(true, true)).to.equal("high")
+				expect(Logic.tier(false, true, true)).to.equal("high")
+				expect(Logic.tier(false, false, false)).to.equal("high")
+			end
+		)
+
+		it("keeps shake on and Low performance off until the player flips them", function()
+			local shake, low = Logic.readSettings(nil)
+			expect(shake == true and low == false).to.equal(true)
+			shake, low = Logic.readSettings({})
+			expect(shake == true and low == false).to.equal(true)
+			shake, low = Logic.readSettings({ music = false, sfx = false })
+			expect(shake == true and low == false).to.equal(true)
+			shake, low = Logic.readSettings({ screenShake = false, lowPerformance = true })
+			expect(shake == false and low == true).to.equal(true)
+			-- anything but a real false or true keeps the default
+			shake, low = Logic.readSettings({ screenShake = 0, lowPerformance = "yes" })
+			expect(shake == true and low == false).to.equal(true)
+		end)
+
+		it("runs on the Low performance budget on any device and reads as low", function()
+			for _, device in { "low", "high" } do
+				local tier, budget = Logic.budgetFor(device, true)
+				expect(tier).to.equal("low")
+				expect(budget).to.equal(Presets.budget.lowPerformance)
+				tier, budget = Logic.budgetFor(device, false)
+				expect(tier).to.equal(device)
+				expect(budget).to.equal(Presets.budget[device])
+			end
+		end)
+
+		it("keeps the Low performance budget at or under the phone budget everywhere", function()
+			local low, saver = Presets.budget.low, Presets.budget.lowPerformance
+			for field, value in low do
+				expect(type(saver[field])).to.equal("number")
+				expect(saver[field] <= value).to.equal(true)
+			end
+			expect(saver.animatedCats < low.animatedCats).to.equal(true)
+			expect(saver.burstScale < low.burstScale and saver.rateScale < low.rateScale).to.equal(
+				true
+			)
+		end)
+
+		it(
+			"gives a console the high tier with a budget between the phone's and the PC's (#2871)",
+			function()
+				local tier, budget = Logic.budgetFor("high", false, true)
+				expect(tier).to.equal("high")
+				expect(budget).to.equal(Presets.budget.console)
+				-- Low performance still wins on a console, and a console flag never lifts a phone
+				tier, budget = Logic.budgetFor("high", true, true)
+				expect(budget).to.equal(Presets.budget.lowPerformance)
+				tier, budget = Logic.budgetFor("low", false, true)
+				expect(budget).to.equal(Presets.budget.low)
+				local low, console, high =
+					Presets.budget.low, Presets.budget.console, Presets.budget.high
+				for field, value in high do
+					expect(type(console[field])).to.equal("number")
+					expect(console[field] <= value).to.equal(true)
+					expect(console[field] >= low[field]).to.equal(true)
+				end
+				expect(
+					console.animatedCats < high.animatedCats and console.maxBurst < high.maxBurst
+				).to.equal(true)
+			end
+		)
+
+		it("scales steady rates within the preset and keeps every burst at one to eight", function()
+			for _, budget in Presets.budget do
+				expect(budget.rateScale > 0 and budget.rateScale <= 1).to.equal(true)
+			end
+			local saver = Presets.budget.lowPerformance
+			for _, count in Presets.catchSparkle do
+				local n = math.clamp(math.floor(count * saver.burstScale + 0.5), 1, saver.maxBurst)
+				expect(n >= 1 and n <= 8).to.equal(true)
+			end
+		end)
+		-- #3794: the lighter budget for phones and graphics quality 1 to 3, behind the fxLite switch
+		it("takes the lite budget under Low performance and over the phone's", function()
+			local tier, budget = Logic.budgetFor("high", false, false, true)
+			expect(tier).to.equal("low")
+			expect(budget).to.equal(Presets.budget.lite)
+			tier, budget = Logic.budgetFor("low", true, false, true)
+			expect(budget).to.equal(Presets.budget.lowPerformance)
+			tier, budget = Logic.budgetFor("low", false, false, false)
+			expect(tier).to.equal("low")
+			expect(budget).to.equal(Presets.budget.low)
+			local low, lite, saver =
+				Presets.budget.low, Presets.budget.lite, Presets.budget.lowPerformance
+			for field, value in low do
+				expect(type(lite[field])).to.equal("number")
+				expect(lite[field] <= value).to.equal(true)
+				expect(lite[field] >= saver[field]).to.equal(true)
+			end
+			expect(lite.animatedCats < low.animatedCats and lite.animHz < low.animHz).to.equal(true)
+		end)
+
+		it("wants lite on a struggling phone and on graphics quality 1 to 3", function()
+			-- Derek 2026-11-14: "turn it on for phones/tablets if they are struggling ... not if they are doing fine"
+			expect(Logic.wantsLite("low", 0, true)).to.equal(true)
+			expect(Logic.wantsLite("low", 0, false)).to.equal(false)
+			expect(Logic.wantsLite("low", 0)).to.equal(false)
+			expect(Logic.wantsLite("low", 2, false)).to.equal(true)
+			expect(Logic.wantsLite("high", 2)).to.equal(true)
+			expect(Logic.wantsLite("high", 3)).to.equal(true)
+			expect(Logic.wantsLite("high", 4)).to.equal(false)
+			expect(Logic.wantsLite("high", 0, true)).to.equal(false)
+			expect(Logic.wantsLite("high", nil)).to.equal(false)
+		end)
+
+		-- #4311: Logic.slowStep with Presets.slow
+		local function run(state: any, fps: number, seconds: number, hold: boolean?): boolean
+			local tripped = false
+			for _ = 1, math.floor(fps * seconds + 0.5) do
+				tripped = Logic.slowStep(state, 1 / fps, Presets.slow, hold) or tripped
+			end
+			return tripped
+		end
+
+		it("finds a device struggling after two slow windows in a row, past loading", function()
+			local p = Presets.slow
+			local state = Logic.slowStart()
+			expect(run(state, 20, p.after)).to.equal(false) -- loading does not count
+			expect(run(state, 20, p.window + 0.5)).to.equal(false) -- one slow window
+			expect(state.slow).to.equal(1)
+			expect(run(state, 20, p.window + 0.5)).to.equal(true)
+			expect(state.struggling).to.equal(true)
+			expect(run(state, 20, p.window * 3)).to.equal(false) -- it says so once, and stays
+			-- #4307: a struggling phone gets the lighter budget inside its first minute
+			expect(p.after + p.window * p.windows <= 60).to.equal(true)
+			expect(state.struggling).to.equal(true)
+		end)
+
+		it(
+			"leaves a device that is doing fine alone, and a good window starts the count again",
+			function()
+				local p = Presets.slow
+				local state = Logic.slowStart()
+				run(state, 60, p.after)
+				expect(run(state, 50, p.window * 5)).to.equal(false)
+				expect(run(state, 20, p.window + 0.5)).to.equal(false)
+				expect(run(state, 50, p.window + 0.5)).to.equal(false)
+				expect(state.slow).to.equal(0)
+				expect(run(state, 20, p.window + 0.5)).to.equal(false)
+				expect(state.struggling).to.equal(false)
+			end
+		)
+
+		it("catches a little laggy phone but not an average one (#4857 read)", function()
+			local p = Presets.slow
+			local laggy = Logic.slowStart()
+			run(laggy, 60, p.after)
+			expect(run(laggy, 35, p.window * p.windows + 1)).to.equal(true)
+			local average = Logic.slowStart()
+			run(average, 60, p.after)
+			expect(run(average, 49, p.window * 5)).to.equal(false)
+			expect(p.after + p.window * p.windows <= 30).to.equal(true)
+		end)
+
+		it("reports when it tripped and how slow it ran, for fx_lite (#4945)", function()
+			local p = Presets.slow
+			local laggy = Logic.slowStart()
+			run(laggy, 60, p.after)
+			expect(run(laggy, 35, p.window * p.windows + 1)).to.equal(true)
+			local value = Logic.liteReport(laggy)
+			local seconds, fps = value // 100, value % 100
+			expect(seconds).to.equal(math.floor(laggy.age))
+			expect(seconds >= p.after and seconds <= 60).to.equal(true)
+			expect(fps >= 33 and fps <= 35).to.equal(true)
+			expect(Logic.liteReport(Logic.slowStart())).to.equal(0)
+		end)
+
+		it("does not count pauses or cutscenes", function()
+			local p = Presets.slow
+			local state = Logic.slowStart()
+			run(state, 60, p.after)
+			for _ = 1, 100 do -- the app in the background: long frames are pauses, not slow frames
+				expect(Logic.slowStep(state, p.pause + 1, p, false)).to.equal(false)
+			end
+			expect(state.slow).to.equal(0)
+			expect(run(state, 20, p.window * 4, true)).to.equal(false) -- a cutscene holds the count
+			expect(state.slow).to.equal(0)
+			expect(state.struggling).to.equal(false)
+		end)
+	end)
+end

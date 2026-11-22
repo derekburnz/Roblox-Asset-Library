@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+# Read or change the live switches in the data store CatCafe_Flags through Open Cloud, so trading can be turned off
+# (or its minimum tier changed) in every running server without a publish. TradeVault.flags
+# (src/server/Services/TradeVault.luau) reads both keys every Config.TradeFlagCheckSeconds (60 s):
+#   trading       false turns trading off everywhere; anything else (or no entry) leaves it on
+#   tradeMinTier  a number 0 to 99 is the live minimum cafe tier; anything else (or no entry) means Config.TradeMinTier
+# and LiveFlagService (src/shared/LiveFlags.luau) reads five more the same way, true or false. Only false turns off:
+#   codes         false pauses code redeeming
+#   rally         false stops the Rescue Rally
+#   tradeCrates   false takes crates out of trading (#2745, trading.md section 1c); cat and decor trades go on
+#   awayNotes     false stops the game noting who is due an away notification (#2768), if the notes crowd MemoryStore
+#   starterRefill false stops the starting areas' camp trap refilling by day for players who never rescued (#3049)
+#   swiftPaws     false hides the Golden Fish Market's Swift Paws perk and drops its speed (#3063); levels are kept
+#   alleyBin      false hides the Rummage Bin at the Alleyway camp and refuses a rummage (#3050); its waits are kept
+#   arcade        false hides the Cat Arcade's prompt and menu tile (#3062); a game already running finishes and pays
+# and some start off, so only true turns them on (LiveFlags.OFF_BY_DEFAULT):
+#   nightCatch    true lets a Tier 1 player in their first session keep catching in the Alleyway at night (#3035);
+#                 false or no entry is the normal night for them
+#   goldenDrops   true starts the rare drop-only Golden lawn pieces from freed cats (#3222); only once no older
+#                 server is running
+#   luckyCharm    true shows and sells the Fish Market's Lucky Charm perk and counts its Luck (#3298); only once
+#                 every server runs a build that has it (an older one drops the saved perk level)
+#   introSplit    true plays the intro scene by itself for half of new players, by account number, and tags
+#                 their funnel steps intro_on or intro_off (#3666); false or no entry is no test
+#   parkGateTrail true shows the "Visit the Park" goal and the paw trail after Tier 2, until the first Park catch
+#                 (#3554); false or no entry shows nothing
+#   loadingScreen true brings back the loading screen before the opening scenes (#3179: Derek had it removed);
+#                 false or no entry is no loading screen. Players who join after the change see it
+#   tradeFish     true lets golden fish into trades (#2745, section 1d). Turn it on only after QA and the security
+#                 review pass, and after a restart publish, so no old server settles a fish record without the fish
+# Run by .github/workflows/flags.yml; also works from Git Bash on a PC with the same variables set.
+#
+#   ROBLOX_PUBLISH_KEY   Open Cloud API key that also has universe-datastores.objects:read, :create and :update on
+#                        the Cat Cafe experience (docs/setup-guide.md step 24)
+#   UNIVERSE_ID          default below
+#
+# Usage:  tools/opencloud/flags.sh show
+#         tools/opencloud/flags.sh set trading true|false
+#         tools/opencloud/flags.sh set tradeMinTier <0-99>
+#         tools/opencloud/flags.sh set <any LiveFlags.KEYS switch> true|false
+#         tools/opencloud/flags.sh clear trading|tradeMinTier|<any LiveFlags.KEYS switch>
+# clear writes the text "config" for trading and tradeMinTier, which TradeVault reads as unset (trading on, Config's
+# minimum tier), and each switch's default for the rest (false for those in LiveFlags.OFF_BY_DEFAULT, true otherwise), so no key needs delete
+# permission. Every change reads both keys back. Needs curl and jq (both on GitHub's ubuntu runners).
+set -euo pipefail
+
+UNIVERSE_ID=${UNIVERSE_ID:?set UNIVERSE_ID}
+STORE=CatCafe_Flags # TradeVault.FLAGS
+: "${ROBLOX_PUBLISH_KEY:?set ROBLOX_PUBLISH_KEY (docs/setup-guide.md step 24)}"
+entries=https://apis.roblox.com/cloud/v2/universes/$UNIVERSE_ID/data-stores/$STORE/entries
+
+usage() {
+	echo "usage: flags.sh show | set trading true|false | set tradeMinTier <0-99> | set <switch> true|false | clear trading|tradeMinTier|<switch>" >&2
+	echo "switches (src/shared/LiveFlags.luau KEYS): ${KEYS[*]}" >&2
+	exit 2
+}
+
+# #4141: the switches come from LiveFlags.luau itself (KEYS, and OFF_BY_DEFAULT for the ones that start off), so a new
+# switch can be set the moment it merges, with no list here to keep in step. LIVEFLAGS points at the file.
+LIVEFLAGS=${LIVEFLAGS:-$(dirname "$0")/../../src/shared/LiveFlags.luau}
+[ -f "$LIVEFLAGS" ] || { echo "LiveFlags.luau not found at $LIVEFLAGS" >&2; exit 1; }
+mapfile -t KEYS < <(awk '/^LiveFlags.KEYS = \{/{on=1;next} on&&/^\}/{exit} on' "$LIVEFLAGS" | grep -o '^[[:space:]]*"[A-Za-z0-9]*"' | tr -d ' \t"')
+mapfile -t OFF_KEYS < <(awk '/^LiveFlags.OFF_BY_DEFAULT = \{/{on=1;next} on&&/^\}/{exit} on' "$LIVEFLAGS" | grep -o '^[[:space:]]*[A-Za-z0-9]* = true' | awk '{print $1}')
+[ "${#KEYS[@]}" -gt 0 ] || { echo "no switches read from $LIVEFLAGS" >&2; exit 1; }
+is_key() {
+	local k
+	for k in "${KEYS[@]}"; do [ "$k" = "$1" ] && return 0; done
+	return 1
+}
+starts_off() {
+	local k
+	for k in "${OFF_KEYS[@]}"; do [ "$k" = "$1" ] && return 0; done
+	return 1
+}
+
+reply=$(mktemp)
+trap 'rm -f "$reply"' EXIT
+# call method url [curl args...] -> sets $status and $body. Roblox answers 5xx or 429 now and then, so those get
+# three more tries over about half a minute.
+call() {
+	local method=$1 url=$2 wait
+	shift 2
+	for wait in 5 10 20 0; do
+		status=$(curl -sS -o "$reply" -w '%{http_code}' -X "$method" "$url" -H "x-api-key: $ROBLOX_PUBLISH_KEY" "$@") ||
+			status=000
+		case "$status" in
+		5?? | 429 | 000) ;;
+		*) break ;;
+		esac
+		[ "$wait" = 0 ] && break
+		echo "Open Cloud answered HTTP $status; trying again in ${wait}s." >&2
+		sleep "$wait"
+	done
+	body=$(cat "$reply")
+}
+
+fail() {
+	echo "Open Cloud answered HTTP $status: $body" >&2
+	case "$status" in
+	401 | 403) echo "The key needs universe-datastores.objects:read, :create and :update on universe $UNIVERSE_ID (docs/setup-guide.md step 24)." >&2 ;;
+	esac
+	exit 1
+}
+
+# show_key key -> prints "key = value" as the servers will read it
+show_key() {
+	local key=$1 raw meaning
+	call GET "$entries/$key"
+	if [ "$status" = 404 ]; then
+		raw="(no entry)"
+	elif [ "$status" = 200 ]; then
+		raw=$(jq -c '.value' <<<"$body")
+	else
+		fail
+	fi
+	case "$key" in
+	trading)
+		if [ "$raw" = false ]; then meaning="trading OFF in every server"; else meaning="trading on"; fi
+		;;
+	codes) if [ "$raw" = false ]; then meaning="code redeeming PAUSED in every server"; else meaning="codes on"; fi ;;
+	rally) if [ "$raw" = false ]; then meaning="Rescue Rally OFF in every server"; else meaning="rally on"; fi ;;
+	tradeCrates) if [ "$raw" = false ]; then meaning="crate trading OFF in every server"; else meaning="crate trading on"; fi ;;
+	awayNotes) if [ "$raw" = false ]; then meaning="away notes OFF in every server (no new away notifications)"; else meaning="away notes on"; fi ;;
+	starterRefill) if [ "$raw" = false ]; then meaning="starter trap refill OFF in every server (one cat a day there)"; else meaning="starter trap refill on"; fi ;;
+	swiftPaws) if [ "$raw" = false ]; then meaning="Swift Paws OFF in every server (row hidden, no speed)"; else meaning="Swift Paws on"; fi ;;
+	alleyBin) if [ "$raw" = false ]; then meaning="Rummage Bin OFF in every server (prompt hidden)"; else meaning="Rummage Bin on"; fi ;;
+	arcade) if [ "$raw" = false ]; then meaning="Cat Arcade OFF in every server (no new games)"; else meaning="Cat Arcade on"; fi ;;
+	tradeFish) if [ "$raw" = true ]; then meaning="golden fish trading ON in every server"; else meaning="golden fish trading off (its default)"; fi ;;
+	nightCatch) if [ "$raw" = true ]; then meaning="first-session night catching ON in every server"; else meaning="first-session night catching off (its default)"; fi ;;
+	loadingScreen) if [ "$raw" = true ]; then meaning="loading screen ON before the opening scenes in every server"; else meaning="no loading screen (its default)"; fi ;;
+	goldenDrops) if [ "$raw" = true ]; then meaning="Golden lawn drops ON from freed cats in every server"; else meaning="Golden lawn drops off (its default)"; fi ;;
+	luckyCharm) if [ "$raw" = true ]; then meaning="Lucky Charm perk ON in every server"; else meaning="Lucky Charm perk off (its default)"; fi ;;
+	introSplit) if [ "$raw" = true ]; then meaning="intro scene test ON: half of new players get the scene"; else meaning="intro scene test off (its default)"; fi ;;
+	parkGateTrail) if [ "$raw" = true ]; then meaning="Park goal and paw trail after Tier 2 ON"; else meaning="Park goal and paw trail off (its default)"; fi ;;
+	tradeMinTier)
+		if [[ $raw =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+			meaning="live minimum tier $(jq -n "[[$raw | floor, 0] | max, 99] | min")"
+		else
+			meaning="Config.TradeMinTier"
+		fi
+		;;
+	*)
+		if starts_off "$key"; then
+			if [ "$raw" = true ]; then meaning="ON in every server"; else meaning="off (its default)"; fi
+		elif [ "$raw" = false ]; then meaning="OFF in every server"; else meaning="on"; fi
+		;;
+	esac
+	echo "$key = $raw ($meaning)"
+	[ -z "${GITHUB_STEP_SUMMARY:-}" ] || echo "- \`$key\` = \`$raw\`: $meaning" >>"$GITHUB_STEP_SUMMARY"
+}
+
+show() {
+	echo "== $STORE (servers pick a change up within about 60 s)"
+	[ -z "${GITHUB_STEP_SUMMARY:-}" ] || echo "### $STORE" >>"$GITHUB_STEP_SUMMARY"
+	show_key trading
+	show_key tradeMinTier
+	local key
+	for key in "${KEYS[@]}"; do
+		show_key "$key"
+	done
+}
+
+# write key json-value
+write() {
+	local key=$1 value=$2
+	call PATCH "$entries/$key?allowMissing=true" -H "Content-Type: application/json" \
+		--data "$(jq -cn --argjson v "$value" '{value: $v}')"
+	[ "$status" = 200 ] || fail
+	echo "Wrote $key = $value"
+}
+
+action=${1:-show}
+case "$action" in
+show)
+	[ $# -le 1 ] || usage
+	;;
+set)
+	[ $# -eq 3 ] || usage
+	case "$2" in
+	trading) [[ $3 == true || $3 == false ]] || usage ;;
+	tradeMinTier) [[ $3 =~ ^[0-9]{1,2}$ ]] || usage ;;
+	*) is_key "$2" && [[ $3 == true || $3 == false ]] || usage ;;
+	esac
+	write "$2" "$3"
+	;;
+clear)
+	[ $# -eq 2 ] || usage
+	case "$2" in
+	trading | tradeMinTier) write "$2" '"config"' ;;
+	*)
+		is_key "$2" || usage
+		if starts_off "$2"; then write "$2" false; else write "$2" true; fi
+		;;
+	esac
+	;;
+*) usage ;;
+esac
+show

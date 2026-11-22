@@ -1,0 +1,2750 @@
+--!strict
+-- Cat Cafe client audio (sound-designer). Builds the four SoundGroup channels, plays cues from Cues.luau, runs the
+-- day and night music and the zone ambience, and turns moments into sounds. Client only: the server never plays a
+-- sound. Asset ids live only in Cues.luau; a cue with no ids yet, or a file that fails to load, stays silent.
+-- Rules: .claude/skills/audio-pipeline/SKILL.md section 7. How to wire it in: README.md next to this file.
+--
+-- Roblox terms: a Sound plays one audio asset. Parented to a part or attachment it plays in 3D (from that spot,
+-- fading with distance); anywhere else it plays flat (2D). A SoundGroup is a mixer channel: every Sound points
+-- at one, and the channel's Volume scales them all, which is how the settings toggles mute music or effects.
+
+local CollectionService = game:GetService("CollectionService")
+local ContentProvider = game:GetService("ContentProvider")
+local GuiService = game:GetService("GuiService")
+local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local AdminDrops = require(script.Parent.Effects.AdminDrops)
+local AdminFlash = require(script.Parent.Effects.AdminFlash)
+local AreaFx = require(script.Parent.Effects.AreaFx)
+local Beats = require(script.Beats)
+local BigTraitCut = require(script.Parent.Effects.BigTraitCut)
+local BinRoll = require(script.Parent.Effects.BinRoll)
+local CardFlip = require(script.Parent.Effects.CardFlip)
+local CatchFx = require(script.Parent.Effects.Catch)
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Cues = require(script.Cues)
+local DragonRise = require(script.Parent.Effects.DragonRise)
+local Effects = require(script.Parent.Effects)
+local EventBanner = require(script.Parent.Effects.EventBanner)
+local FlightClock = require(script.Parent.Effects.FlightClock)
+local FusionFx = require(script.Parent.Effects.FusionFx)
+local HarvestFx = require(script.Parent.Effects.HarvestFx)
+local LoadGate = require(script.Parent.Effects.LoadGate)
+local Logic = require(script.Logic)
+local MysticIntroCut = require(script.Parent.Effects.MysticIntroCut)
+local MysticPool = require(script.Parent.Effects.MysticPool)
+local PetCat = require(script.Parent.Effects.PetCat)
+local Rally = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Rally"))
+local Remotes = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Remotes"))
+local RiftRun = require(script.Parent.Effects.RiftRun)
+local Signature = require(script.Parent.Effects.Signature)
+local Splash = require(script.Parent.Effects.Splash)
+local StormFall = require(script.Parent.Effects.StormFall)
+local TradeUnlock = require(script.Parent.Effects.TradeUnlock)
+local Trampoline = require(script.Parent.Effects.Trampoline)
+local WaitingCat = require(script.Parent.Effects.WaitingCat)
+
+local Audio = {}
+
+export type Target = BasePart | Attachment | Vector3
+-- musicVolume and sfxVolume are the settings sliders, 0 to 1 (missing means full volume).
+export type Settings = { music: boolean, sfx: boolean, musicVolume: number?, sfxVolume: number? }
+
+-- Channel start volumes and the setting that mutes each; its slider is musicVolume or sfxVolume (sound list section 2).
+local GROUPS: { [string]: { volume: number, mutedBy: "music" | "sfx" } } = {
+	Music = { volume = 0.5, mutedBy = "music" },
+	Ambience = { volume = 0.6, mutedBy = "sfx" },
+	Sfx = { volume = 0.8, mutedBy = "sfx" },
+	Ui = { volume = 0.7, mutedBy = "sfx" },
+}
+
+local MUSIC_FADE = 2
+local AMBIENCE_FADE = 1.5
+local LOOP_FADE = 0.3
+local DUCK_FADE = 0.3
+local STINGER_DUCK = 0.4 -- music level under a stinger, the rank up jingle, a gold reveal, the big fanfares
+local CATCH_MUSIC = 0.6 -- music level during a catch or rescue
+local CATCH_AMBIENCE = 0.5
+local CATCH_DUCK_LIMIT = 30 -- seconds; a catch that never reports back still lets the music up again
+local SCENE_DUCK = 0.35 -- #3942: music level under a Mythic or Secret trait roll's whole scene
+local SCENE_DUCK_LIMIT = 16 -- seconds; Presets.bigTrait.cap, so a lost "done" still lets the music up
+local DRAGON_DUCK_LIMIT = 16 -- seconds; past the longest stage-up (12 s) and its cap
+local RIFT_DUCK_LIMIT = 34 -- seconds; past Presets.riftRun.cap and its hand back
+local DUCK_LIMIT = 8 -- seconds; a stinger that never loads (so never ends) still lets the music up again
+local LUCKY_DAY_AFTER = 3.4 -- seconds after a Lucky Day's sunrise, so its chime follows the 3.2 s sunrise sting
+local ROLL_OFF_MIN = 8 -- studs of full volume around a 3D sound
+local DEFAULT_RANGE = 60 -- studs at which a 3D sound fades out when its cue sets no range
+
+type Voice = { sound: Sound, anchor: Attachment?, startedAt: number }
+type Bed = { cue: string?, sound: Sound?, ducks: { [any]: number } }
+
+local built = false
+local started = false
+local groups: { [string]: SoundGroup } = {}
+local holder: Folder? = nil
+local pools: { [string]: { Voice } } = {}
+local bedSounds: { [string]: Sound } = {}
+-- #3656: when each kept bed Sound was made, and how many times its cue has been rebuilt after failing to load
+local bedMade: { [string]: number } = {}
+local bedReloads: { [string]: number } = {}
+local lastPlayed: { [string]: number } = {}
+local warned: { [string]: boolean } = {}
+local rng = Random.new()
+
+local ready = false -- set by the first applySettings
+local enabled: { [string]: boolean } = { Music = true, Ambience = true, Sfx = true, Ui = true }
+local phase: string? = nil
+local bedGeneration = 0
+local catchToken = 0
+local zone: string? = nil
+local areaSong: string? = nil -- #2651: the area song the music follows (Audio.setZone), nil for the cafe music
+local inHarvest = false -- #4251: in Harvest Hollow (Effects/HarvestFx.onArea), which has no zone box
+local followAreaSong: () -> () -- defined with Audio.setZone, used by the Harvest hook above it
+local AREA_LEAVE_DELAY = 4 -- seconds out of an area before its song gives way
+local areaLeaveRun = 0 -- bumped on every area change, so a stale leave timer does nothing
+local music: Bed = { cue = nil, sound = nil, ducks = {} }
+local ambience: Bed = { cue = nil, sound = nil, ducks = {} }
+
+local function warnOnce(key: string, message: string)
+	if warned[key] then
+		return
+	end
+	warned[key] = true
+	warn("[Audio] " .. message)
+end
+
+-- A cue's files. A sound sheet's part (Cues `sheet`) plays its sheet's file, only its `region` of it.
+local function idsOf(cue: Cues.Cue): { string }
+	local sheet = if cue.sheet ~= nil then Cues[cue.sheet] else nil
+	return if sheet ~= nil then sheet.ids else cue.ids
+end
+
+-- True when the cue has at least one uploaded file.
+local function has(cueId: string): boolean
+	local cue = Cues[cueId]
+	return cue ~= nil and #idsOf(cue) > 0
+end
+
+local function tweenVolume(sound: Sound, volume: number, seconds: number): Tween
+	local info = TweenInfo.new(seconds, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	local tween = TweenService:Create(sound, info, { Volume = volume })
+	tween:Play()
+	return tween
+end
+
+-- The four channels live in SoundService; Sounds that play flat wait in one folder next to them.
+local function build()
+	if built then
+		return
+	end
+	built = true
+	for name, def in GROUPS do
+		local existing = SoundService:FindFirstChild(name)
+		local group: SoundGroup
+		if existing ~= nil and existing:IsA("SoundGroup") then
+			group = existing :: SoundGroup
+		else
+			group = Instance.new("SoundGroup")
+			group.Name = name
+			group.Parent = SoundService
+		end
+		group.Volume = def.volume
+		groups[name] = group
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "CueSounds"
+	folder.Parent = SoundService
+	holder = folder
+end
+
+local function newSound(cueId: string, cue: Cues.Cue): Sound
+	build()
+	local sound = Instance.new("Sound")
+	sound.Name = cueId
+	sound.SoundGroup = groups[cue.group]
+	sound.Volume = cue.volume
+	sound.Looped = cue.looped == true
+	sound.RollOffMode = Enum.RollOffMode.InverseTapered
+	sound.RollOffMinDistance = ROLL_OFF_MIN
+	sound.RollOffMaxDistance = cue.range or DEFAULT_RANGE
+	local region = cue.region
+	if region ~= nil then
+		sound.PlaybackRegionsEnabled = true -- a sound sheet's part: plays only its stretch of the file
+		sound.PlaybackRegion = NumberRange.new(region[1], region[2])
+	end
+	sound.Parent = holder
+	return sound
+end
+
+-- Flat (nil), on a part or attachment, or at a point in the world (through an attachment in Terrain).
+local function place(voice: Voice, at: Target?)
+	local sound = voice.sound
+	if at == nil then
+		sound.Parent = holder
+	elseif typeof(at) == "Vector3" then
+		local anchor = voice.anchor
+		if anchor == nil or anchor.Parent == nil then
+			local fresh = Instance.new("Attachment")
+			fresh.Name = sound.Name
+			fresh.Parent = Workspace.Terrain
+			voice.anchor = fresh
+			anchor = fresh
+		end
+		(anchor :: Attachment).WorldPosition = at
+		sound.Parent = anchor
+	else
+		sound.Parent = at
+	end
+end
+
+local function dropVoice(voice: Voice)
+	if voice.anchor ~= nil then
+		voice.anchor:Destroy()
+	end
+	voice.sound:Destroy()
+end
+
+-- #3918: every REAP_EVERY seconds, voices idle for REAP_IDLE seconds are destroyed (a cue marked preload keeps
+-- one warm, so the first net swing stays on time); the next play of that cue makes a fresh Sound.
+local REAP_EVERY = 20
+local REAP_IDLE = 45
+
+local function reapIdleVoices()
+	local now = os.clock()
+	for cueId, pool in pools do
+		local states: { Logic.VoiceState } = {}
+		for index, voice in pool do
+			states[index] = {
+				playing = voice.sound.Parent ~= nil and voice.sound.IsPlaying,
+				startedAt = voice.startedAt,
+			}
+		end
+		local keep = if Cues[cueId] ~= nil and Cues[cueId].preload then 1 else 0
+		for _, index in Logic.idleVoices(states, now, REAP_IDLE) do
+			if #pool <= keep then
+				break
+			end
+			dropVoice(table.remove(pool, index) :: Voice)
+		end
+		if #pool == 0 then
+			pools[cueId] = nil
+		end
+	end
+end
+
+-- The pooled Sound for the next play of a cue: an idle one, a new one while under `voices`, else the oldest.
+local function voiceFor(cueId: string, cue: Cues.Cue): Voice
+	local pool = pools[cueId]
+	if pool == nil then
+		pool = {}
+		pools[cueId] = pool
+	end
+	-- A part that streams out or is destroyed takes its Sound with it; forget those voices.
+	for index = #pool, 1, -1 do
+		if pool[index].sound.Parent == nil then
+			dropVoice(table.remove(pool, index) :: Voice)
+		end
+	end
+	local states: { Logic.VoiceState } = {}
+	for index, voice in pool do
+		states[index] = { playing = voice.sound.IsPlaying, startedAt = voice.startedAt }
+	end
+	local index = Logic.pickVoice(states, cue.voices or 1)
+	local voice: Voice? = pool[index]
+	if voice ~= nil then
+		return voice
+	end
+	local fresh: Voice = { sound = newSound(cueId, cue), anchor = nil, startedAt = 0 }
+	pool[index] = fresh
+	return fresh
+end
+
+-- Ducking: a bed plays at its cue volume times the lowest active duck.
+local function applyDucks(bed: Bed)
+	local sound, cueId = bed.sound, bed.cue
+	if sound ~= nil and cueId ~= nil then
+		tweenVolume(sound, Cues[cueId].volume * Logic.duckLevel(bed.ducks), DUCK_FADE)
+	end
+end
+
+-- Ducks the music to 40 % until `sound` ends, or DUCK_LIMIT seconds if it never loads.
+local function duckWhile(sound: Sound)
+	local key = {}
+	music.ducks[key] = STINGER_DUCK
+	applyDucks(music)
+	local released = false
+	local connections: { RBXScriptConnection } = {}
+	local function release()
+		if released then
+			return
+		end
+		released = true
+		for _, connection in connections do
+			connection:Disconnect()
+		end
+		music.ducks[key] = nil
+		applyDucks(music)
+	end
+	table.insert(connections, sound.Ended:Once(release))
+	-- Stopped too: a sheet part stopped at its region's end, or a sting replaced by a bigger one
+	table.insert(connections, sound.Stopped:Once(release))
+	task.delay(DUCK_LIMIT, release)
+end
+
+-- Music to 60 % and ambience to 50 % while a catch or rescue runs, so the circles are easy to hear.
+local function duckForCatch(on: boolean)
+	catchToken += 1
+	local token = catchToken
+	if on then
+		music.ducks["catch"] = CATCH_MUSIC
+		ambience.ducks["catch"] = CATCH_AMBIENCE
+		task.delay(CATCH_DUCK_LIMIT, function()
+			if token == catchToken then
+				duckForCatch(false)
+			end
+		end)
+	else
+		music.ducks["catch"] = nil
+		ambience.ducks["catch"] = nil
+	end
+	applyDucks(music)
+	applyDucks(ambience)
+end
+
+-- One kept Sound per music or ambience bed, made on first use; nil while the cue has no file.
+local function loopSound(cueId: string): Sound?
+	local kept: Sound? = bedSounds[cueId]
+	if kept ~= nil then
+		local tries = bedReloads[cueId] or 0
+		if
+			not Logic.shouldReload(
+				kept.IsLoaded,
+				os.clock() - (bedMade[cueId] or os.clock()),
+				tries
+			)
+		then
+			return kept
+		end
+		-- #3656: it never loaded, so drop it and fetch the file again below
+		bedReloads[cueId] = tries + 1
+		bedSounds[cueId] = nil
+		kept:Stop()
+		kept:Destroy()
+	end
+	local cue = Cues[cueId]
+	if cue == nil then
+		return nil
+	end
+	local id = Logic.pickId(idsOf(cue), rng:NextNumber())
+	if id == nil then
+		return nil
+	end
+	local sound = newSound(cueId, cue)
+	sound.Looped = true
+	sound.SoundId = id
+	bedSounds[cueId] = sound
+	bedMade[cueId] = os.clock()
+	return sound
+end
+
+-- Crossfades a bed (music or ambience) to another cue; nil fades to silence. One bed of each plays at a time.
+local function crossfade(bed: Bed, cueId: string?, fade: number, from: number?)
+	if cueId == bed.cue then
+		return
+	end
+	local old = bed.sound
+	if old ~= nil then
+		tweenVolume(old, 0, fade).Completed:Once(function(state: Enum.PlaybackState)
+			if state == Enum.PlaybackState.Completed and old ~= bed.sound then
+				old:Stop()
+			end
+		end)
+	end
+	local sound = if cueId ~= nil then loopSound(cueId) else nil
+	bed.cue = if sound ~= nil then cueId else nil
+	bed.sound = sound
+	if sound ~= nil and cueId ~= nil then
+		local region = Cues[cueId].region -- a song in a sheet: `from` counts from its region's start
+		local at = (if region ~= nil then region[1] else 0) + (from or 0)
+		sound.Volume = 0
+		sound.TimePosition = at
+		sound:Play()
+		if at > 0 and not sound.IsLoaded then -- a Sound still loading cannot seek yet
+			sound.Loaded:Once(function()
+				if bed.sound == sound then
+					sound.TimePosition = at
+				end
+			end)
+		end
+		tweenVolume(sound, Cues[cueId].volume * Logic.duckLevel(bed.ducks), fade)
+	end
+end
+
+-- A sound sheet's part also stops just after its region ends, in case a device plays on past PlaybackRegion into
+-- the next part. Timed from when the file has loaded, since a first play can wait for it; a later play of the same
+-- voice cancels it.
+local REGION_SLACK = 0.1
+
+local function stopAtRegionEnd(voice: Voice, region: { number }, startedAt: number)
+	local sound = voice.sound
+	local seconds = Logic.regionSeconds(region, sound.PlaybackSpeed)
+	if seconds == nil then
+		return
+	end
+	local function arm()
+		task.delay(seconds + REGION_SLACK, function()
+			if voice.startedAt == startedAt and sound.IsPlaying then
+				sound:Stop()
+			end
+		end)
+	end
+	if sound.IsLoaded then
+		arm()
+	else
+		sound.Loaded:Once(arm)
+	end
+end
+
+-- Plays a cue once. `at` makes it 3D (a part, an attachment or a point); nil plays it flat. `step` raises the
+-- pitch one note of the pentatonic scale per step (circle 1 to 5, rescue hit 1 to 7). Returns the Sound, or nil
+-- when the cue is silent (no file yet, or played again inside its minGap).
+function Audio.play(cueId: string, at: Target?, step: number?): Sound?
+	local cue = Cues[cueId]
+	if cue == nil then
+		warnOnce(cueId, "no cue named " .. cueId)
+		return nil
+	end
+	local id = Logic.pickId(idsOf(cue), rng:NextNumber())
+	if id == nil or not enabled[cue.group] then
+		return nil -- no file yet, or its channel is muted (nothing to download)
+	end
+	local now = os.clock()
+	if not Logic.canPlay(lastPlayed[cueId], now, cue.minGap or 0) then
+		return nil
+	end
+	lastPlayed[cueId] = now
+	local voice = voiceFor(cueId, cue)
+	local sound = voice.sound
+	sound.SoundId = id
+	sound.PlaybackSpeed = Logic.speed(cue.pitch, step, rng:NextNumber())
+	place(voice, at)
+	voice.startedAt = now
+	local region = cue.region
+	sound.TimePosition = if region ~= nil then region[1] else 0
+	sound:Play()
+	if region ~= nil then
+		stopAtRegionEnd(voice, region, now)
+	end
+	if cue.duck then
+		duckWhile(sound)
+	end
+	return sound
+end
+
+-- Starts a looped cue (carryPurr, loopDealerCart, loopFountain) at a target, flat when nil. Returns
+-- a function that fades it out and removes it. Safe to call for a cue with no file yet (returns a no-op).
+local function startLoop(cueId: string, at: Target?): (() -> (), Sound?)
+	local cue = Cues[cueId]
+	if cue == nil then
+		warnOnce(cueId, "no cue named " .. cueId)
+		return function() end, nil
+	end
+	local id = Logic.pickId(idsOf(cue), rng:NextNumber())
+	if id == nil or not enabled[cue.group] then
+		return function() end, nil
+	end
+	local voice: Voice = { sound = newSound(cueId, cue), anchor = nil, startedAt = os.clock() }
+	local sound = voice.sound
+	sound.Looped = true
+	sound.SoundId = id
+	sound.PlaybackSpeed = Logic.speed(cue.pitch, nil, rng:NextNumber())
+	place(voice, at)
+	sound.Volume = 0
+	sound:Play()
+	tweenVolume(sound, cue.volume, LOOP_FADE)
+	local stopped = false
+	return function()
+		if stopped then
+			return
+		end
+		stopped = true
+		if sound.Parent == nil then
+			dropVoice(voice) -- its part is already gone
+			return
+		end
+		tweenVolume(sound, 0, LOOP_FADE).Completed:Once(function()
+			dropVoice(voice)
+		end)
+	end,
+		sound
+end
+
+function Audio.loop(cueId: string, at: Target?): () -> ()
+	local stop = startLoop(cueId, at)
+	return stop
+end
+
+-- Catch v3 (#1884): a soft purr under the rings that rises in pitch as the cat's trust fills (the `purr` cue, played
+-- flat, sped up to a fifth at full trust). Call it with the trust and the need on every change; `nil` stops it.
+local trustStop: (() -> ())? = nil
+local trustSound: Sound? = nil
+
+function Audio.setCatchTrust(trust: number?, need: number?)
+	if trust == nil then
+		if trustStop ~= nil then
+			trustStop()
+		end
+		trustStop, trustSound = nil, nil
+		return
+	end
+	if trustStop == nil or trustSound == nil or trustSound.Parent == nil then
+		trustStop, trustSound = startLoop("purr", nil)
+	end
+	if trustSound ~= nil then
+		local speed = Logic.trustPurrSpeed(trust, need)
+		TweenService:Create(trustSound, TweenInfo.new(0.2), { PlaybackSpeed = speed }):Play()
+	end
+end
+
+-- Music follows the server clock, and no song loops (2026-11-03, Derek: "a little too repetitive and too long").
+-- A phase plays one of its songs (Logic.songsFor) for MUSIC_PLAY_SECTIONS of its sections, from one picked at
+-- random (the songs loop seamlessly, so a play wraps round the end), fades it out, rests MUSIC_REST seconds and
+-- plays another, never the same one twice in a row while there is a choice. A phase change fades out, plays the
+-- stinger and starts a song from the top; joining mid-phase starts one at once. With music off nothing loads.
+local MUSIC_PLAY_SECTIONS = 2
+local MUSIC_REST = { 15, 30 }
+local MUSIC_FALLBACK = 60 -- seconds of a song whose cue gives no length
+local lastSong: string? = nil
+local introActive = false -- #1541: the intro cutscene is playing
+local stepsActive = false -- #1541: the first tutorial steps are showing
+local lastTutorialStep: number? = nil
+local jukeboxCue: string? = nil -- #1168: the picked Jukebox Pass song's cue, nil for the rotation
+local shuffleCues: { string }? = nil -- #2077: the Jukebox tracks to shuffle through, nil when the pick is not Shuffle
+
+local function tutorialMusic(): boolean
+	return (introActive or stepsActive) and has("musicTutorial")
+end
+
+local function playSong(generation: number, fromTop: boolean)
+	if generation ~= bedGeneration or not enabled.Music then
+		return
+	end
+	if tutorialMusic() then -- its own loop replaces the normal songs until it ends or is skipped
+		lastSong = nil
+		crossfade(music, "musicTutorial", MUSIC_FADE)
+		return
+	end
+	-- #2651: in an area with its own song (the Desert, the Ruins) it plays in place of the shuffle, the jukebox pick
+	-- and the rotation, two sections at a time with the usual rests.
+	local area = areaSong
+	local shuffle = if area == nil then Logic.shuffleSongs(shuffleCues, has) else {}
+	if #shuffle > 0 then -- #2077: random songs one after another, never the same twice in a row
+		local cueId = Logic.nextSong(shuffle, lastSong, rng:NextNumber())
+		if cueId ~= nil then
+			lastSong = cueId
+			local cue = Cues[cueId]
+			local region = cue.region
+			local length = cue.seconds
+				or (if region ~= nil then region[2] - region[1] else MUSIC_FALLBACK)
+			crossfade(music, cueId, MUSIC_FADE)
+			task.delay(math.max(length - MUSIC_FADE, MUSIC_FADE), function()
+				if generation == bedGeneration then
+					playSong(generation, false)
+				end
+			end)
+			return
+		end
+	end
+	local picked = if area == nil then Logic.jukeboxSong(jukeboxCue, has) else nil
+	if picked ~= nil then -- the pick loops on its own in place of the day and night rotation
+		lastSong = nil
+		crossfade(music, picked, MUSIC_FADE)
+		return
+	end
+	local songs = if area ~= nil then { area } else Logic.songsFor(phase, has)
+	local cueId = Logic.nextSong(songs, lastSong, rng:NextNumber())
+	if cueId == nil then
+		crossfade(music, nil, MUSIC_FADE)
+		return
+	end
+	lastSong = cueId
+	local cue = Cues[cueId]
+	local from, seconds = Logic.songPlay(
+		cue.seconds,
+		cue.sections,
+		MUSIC_PLAY_SECTIONS,
+		rng:NextNumber(),
+		fromTop,
+		MUSIC_FALLBACK
+	)
+	crossfade(music, cueId, MUSIC_FADE, from)
+	task.delay(math.max(seconds - MUSIC_FADE, MUSIC_FADE), function()
+		if generation ~= bedGeneration then
+			return
+		end
+		crossfade(music, nil, MUSIC_FADE)
+		local rest = MUSIC_REST[1] + (MUSIC_REST[2] - MUSIC_REST[1]) * rng:NextNumber()
+		task.delay(MUSIC_FADE + rest, function()
+			playSong(generation, false)
+		end)
+	end)
+end
+
+local function refreshMusic(changed: boolean)
+	if not ready then
+		return
+	end
+	bedGeneration += 1
+	local generation = bedGeneration
+	if not enabled.Music then
+		crossfade(music, nil, MUSIC_FADE)
+		return
+	end
+	if changed then
+		crossfade(music, nil, MUSIC_FADE)
+		Audio.play(if phase == "night" then "stingDusk" else "stingDawn")
+		task.delay(MUSIC_FADE, function()
+			playSong(generation, true)
+		end)
+	else
+		playSong(generation, false)
+	end
+end
+
+local function refreshAmbience()
+	if ready then
+		local cueId = if enabled.Ambience then Logic.ambienceFor(zone, phase, has) else nil
+		crossfade(ambience, cueId, AMBIENCE_FADE)
+	end
+end
+
+-- 2026-11-05 (Derek): the town bell's two dings before night are gone. The UI's "Night falls in 15 s" banner is the
+-- only warning; the dusk stinger still plays when night starts.
+
+local function followClock()
+	local clock = ReplicatedStorage:WaitForChild("Clock")
+	local function read()
+		local value = clock:GetAttribute("Phase")
+		phase = if type(value) == "string" then value else nil
+	end
+	read()
+	clock:GetAttributeChangedSignal("Phase"):Connect(function()
+		local before = phase
+		read()
+		refreshMusic(before ~= nil)
+		refreshAmbience()
+	end)
+	-- F88: a Lucky Day starts at sunrise (the Clock's LuckyDay turns true): its chime follows the sunrise sting.
+	-- Joining in the middle of one plays nothing.
+	clock:GetAttributeChangedSignal("LuckyDay"):Connect(function()
+		if clock:GetAttribute("LuckyDay") == true then
+			task.delay(LUCKY_DAY_AFTER, function()
+				if clock:GetAttribute("LuckyDay") == true then
+					Audio.play("jingleLuckyDay")
+				end
+			end)
+		end
+	end)
+	refreshMusic(false)
+	refreshAmbience()
+end
+
+-- Loads the short cues marked preload, so the first net swing is not late. Failures are logged once.
+local function preload()
+	local sounds: { Instance } = {}
+	for _, cue in Cues do
+		if cue.preload then
+			for _, id in cue.ids do
+				local sound = Instance.new("Sound")
+				sound.SoundId = id
+				table.insert(sounds, sound)
+			end
+		end
+	end
+	if #sounds == 0 then
+		return
+	end
+	local ok, err = pcall(function()
+		ContentProvider:PreloadAsync(
+			sounds,
+			function(assetId: string, status: Enum.AssetFetchStatus)
+				if status ~= Enum.AssetFetchStatus.Success then
+					warnOnce(assetId, "could not load " .. assetId .. " (" .. status.Name .. ")")
+				end
+			end
+		)
+	end)
+	if not ok then
+		warnOnce("preload", "preload failed: " .. tostring(err))
+	end
+	for _, sound in sounds do
+		sound:Destroy()
+	end
+end
+
+-- Moments ------------------------------------------------------------------------------------------------------
+-- #3296: how long after a Mouse Dash run's last heart is lost (its own sound plays first) the result jingle starts
+local MOUSE_END_GAP = 0.35
+-- Moment args arrive from client code but are still checked, so a missing or odd value only loses a sound.
+
+local function num(value: any): number?
+	return if type(value) == "number" then value else nil
+end
+
+local function str(value: any): string?
+	return if type(value) == "string" then value else nil
+end
+
+local function vec(value: any): Vector3?
+	return if typeof(value) == "Vector3" then value else nil
+end
+
+local function you(): BasePart?
+	local character = Players.LocalPlayer.Character
+	local root = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
+	return if root ~= nil and root:IsA("BasePart") then root :: BasePart else nil
+end
+
+-- F84: whether your character is out in a wild area (Logic.inWild), where no door bell rings and a trip home is a
+-- cloud hop. False until Config.World has WildAreaDistance.
+local function youInWild(): boolean
+	local root = you()
+	local world = (Config :: any).World
+	return root ~= nil
+		and world ~= nil
+		and Logic.inWild(root.Position.X, root.Position.Z, world.WildAreaDistance)
+end
+
+-- F84: whether your own cloud hop has just started (CloudHopAt), so a Travel reply that lands after the hop's
+-- move, when you are already home, still sounds as the hop (reviewer N257).
+local function youHopping(): boolean
+	local character = Players.LocalPlayer.Character
+	return character ~= nil
+		and Logic.freshStart(character:GetAttribute("CloudHopAt"), Workspace:GetServerTimeNow())
+end
+
+-- The part that stands for a tagged part or model: the part itself, a model's PrimaryPart or its first part.
+local function partOf(instance: Instance): BasePart?
+	if instance:IsA("BasePart") then
+		return instance :: BasePart
+	elseif instance:IsA("Model") then
+		local model = instance :: Model
+		return model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true) :: BasePart?
+	end
+	return nil
+end
+
+-- The part of a tagged world object whose attribute matches (a Stray by StrayId, a RescueSpot by RescueSpotId).
+local function taggedPart(tag: string, attribute: string?, value: any): BasePart?
+	for _, instance in CollectionService:GetTagged(tag) do
+		if attribute == nil or (value ~= nil and instance:GetAttribute(attribute) == value) then
+			local part = partOf(instance)
+			if part ~= nil then
+				return part
+			end
+		end
+	end
+	return nil
+end
+
+-- A one-shot on something the server may remove in the same frame (a fleeing stray, the leaving cart) plays at
+-- its position, so the removal cannot cut it off.
+local function spot(part: BasePart?): Vector3?
+	return if part ~= nil then part.Position else nil
+end
+
+local carryStop: (() -> ())? = nil
+local carrying = false
+local dealerStop: (() -> ())? = nil
+local rescueSpot: BasePart? = nil
+local lastCampCheckInAt: number? = nil -- F84: your own camp check-in, so its CheckIn rings no door bell
+local CAMP_QUIET = 1
+
+-- The plot model a tagged thing sits in (tag Plot), or nil.
+local function plotOf(instance: Instance): Instance?
+	local at = instance.Parent
+	while at ~= nil and not CollectionService:HasTag(at, "Plot") do
+		at = at.Parent
+	end
+	return at
+end
+
+-- A cafe door only chatters while the cafe is open: someone owns the plot (a For Rent shop is shut, F38) and it is
+-- day (the cafe closes at night, design v0.5 F44).
+local function cafeOpen(door: Instance): boolean
+	local plot = plotOf(door)
+	local owner = if plot ~= nil then plot:GetAttribute("OwnerUserId") else nil
+	return phase ~= "night" and type(owner) == "number" and owner ~= 0
+end
+
+-- A cat this player chose to hide (Show other cats off: `HiddenLocal`, set on this client only) makes no sound.
+local function shown(cat: Instance): boolean
+	return cat:GetAttribute("HiddenLocal") ~= true
+end
+
+-- A Mythical stray twinkles once as you come near (F42; Logic.shimmers), so it can be found, and a rainbow one
+-- (F99, Variant "rainbow") with its own brighter shimmer. nil for every other stray.
+local function noticeCue(stray: Instance): string?
+	return Logic.strayNoticeCue(stray:GetAttribute("Rarity"), stray:GetAttribute("Variant"))
+end
+
+-- World loops by CollectionService tag: the world builder tags a part or model and its loop plays while it
+-- exists, streaming in and out with it. A tag with `near` plays only on the `max` (default 3) closest within that
+-- many studs, so a full server never runs dozens of purrs at once. A tag with `when` plays only while that is
+-- true, checked on the same tick.
+type LoopDef = { cue: string, near: number?, max: number?, when: ((Instance) -> boolean)? }
+local TAGGED_LOOPS: { [string]: LoopDef } = {
+	CafeDoor = { cue = "loopCafeDoor", when = cafeOpen },
+	Fountain = { cue = "loopFountain" },
+	FishTank = { cue = "loopFishTank" },
+	WorkingCat = { cue = "purr", near = 14, max = 1, when = shown }, -- one purr, not a layered hum (#981)
+}
+local MAX_NEAR_LOOPS = 3
+local LOOP_CHECK_SECONDS = 0.5
+type WorldLoop = { stop: () -> (), part: BasePart }
+local worldLoops: { [Instance]: WorldLoop } = {}
+
+-- Waits for the first applySettings like music and ambience, so a player who turned sound off never hears one.
+local function startWorldLoop(instance: Instance, cueId: string)
+	local running: WorldLoop? = worldLoops[instance]
+	local part = partOf(instance)
+	if ready and running == nil and part ~= nil then
+		worldLoops[instance] = { stop = Audio.loop(cueId, part), part = part }
+	end
+end
+
+local function stopWorldLoop(instance: Instance)
+	local running: WorldLoop? = worldLoops[instance]
+	if running ~= nil then
+		worldLoops[instance] = nil
+		running.stop()
+	end
+end
+
+-- Starts or stops the loop of a tagged thing without `near` by its `when`.
+local function syncWorldLoop(instance: Instance, def: LoopDef)
+	local when = def.when
+	if when == nil or when(instance) then
+		startWorldLoop(instance, def.cue)
+	else
+		stopWorldLoop(instance)
+	end
+end
+
+-- Restarts every world loop, on the first settings and after the sound setting changes (a muted channel starts
+-- nothing).
+local function refreshWorldLoops()
+	for instance in worldLoops do
+		stopWorldLoop(instance)
+	end
+	for tag, def in TAGGED_LOOPS do
+		if def.near == nil then
+			for _, instance in CollectionService:GetTagged(tag) do
+				syncWorldLoop(instance, def)
+			end
+		end
+	end
+end
+
+-- A resting cafe cat purrs by day (Logic.restingPurrs): one sitting on the seated body (Pose "sit", PR #266) the whole
+-- day, one still on the lying body while it loafs (Effects.isLoafing). Only the nearest one within LOAF_NEAR, because
+-- Effects animates a budget of cats and a purr from a cat that is not moving would sound wrong (reviewer N131).
+-- Resting cats are the Napping children of each Plot's Cats.
+local LOAF_NEAR = 14
+local loafing: Instance? = nil
+
+local function followLoaf(root: BasePart?)
+	local best: Instance? = nil
+	local bestDistance = LOAF_NEAR
+	if root ~= nil then
+		for _, plot in CollectionService:GetTagged("Plot") do
+			local cats = plot:FindFirstChild("Cats")
+			for _, cat in if cats ~= nil then cats:GetChildren() else {} do
+				local part = if cat:IsA("Model")
+						and cat:GetAttribute("Napping") == true
+						and shown(cat)
+					then partOf(cat)
+					else nil
+				local distance = if part ~= nil
+					then (part.Position - root.Position).Magnitude
+					else math.huge
+				if
+					distance <= bestDistance
+					and Logic.restingPurrs(
+						cat:GetAttribute("Pose"),
+						phase == "night",
+						Effects.isLoafing(cat :: Model)
+					)
+				then
+					best, bestDistance = cat, distance
+				end
+			end
+		end
+	end
+	local was = loafing
+	if was ~= nil and was ~= best then
+		stopWorldLoop(was)
+	end
+	loafing = best
+	if best ~= nil then
+		startWorldLoop(best, "purr") -- nothing while it purrs; restarts it after a settings change stopped it
+	end
+end
+
+-- Twice a second: restarts a loop whose part streamed out from under its model, starts loops on tagged models
+-- whose parts streamed in after the tag (reviewer N55), follows each `when` (a cafe opening or closing for the
+-- night), keeps the `near` loops on the closest tagged things and the purr on the nearest resting cat.
+local function followWorldLoops()
+	while true do
+		task.wait(LOOP_CHECK_SECONDS)
+		for instance, running in worldLoops do
+			if running.part.Parent == nil then
+				stopWorldLoop(instance)
+			end
+		end
+		local root = you()
+		for tag, def in TAGGED_LOOPS do
+			local radius = def.near
+			if radius == nil then
+				for _, instance in CollectionService:GetTagged(tag) do
+					syncWorldLoop(instance, def)
+				end
+			else
+				local when = def.when
+				local instances: { Instance } = {}
+				local distances: { number } = {}
+				for _, instance in CollectionService:GetTagged(tag) do
+					local part = partOf(instance)
+					if root ~= nil and part ~= nil and (when == nil or when(instance)) then
+						table.insert(instances, instance)
+						table.insert(distances, (part.Position - root.Position).Magnitude)
+					end
+				end
+				local keep: { [Instance]: boolean } = {}
+				for _, index in Logic.nearest(distances, radius, def.max or MAX_NEAR_LOOPS) do
+					keep[instances[index]] = true
+					startWorldLoop(instances[index], def.cue)
+				end
+				for _, instance in CollectionService:GetTagged(tag) do
+					if not keep[instance] then
+						stopWorldLoop(instance)
+					end
+				end
+			end
+		end
+		followLoaf(root)
+	end
+end
+
+local function followTags()
+	for tag, def in TAGGED_LOOPS do
+		CollectionService:GetInstanceRemovedSignal(tag):Connect(stopWorldLoop)
+		if def.near == nil then
+			CollectionService:GetInstanceAddedSignal(tag):Connect(function(instance: Instance)
+				syncWorldLoop(instance, def)
+			end)
+			for _, instance in CollectionService:GetTagged(tag) do
+				syncWorldLoop(instance, def)
+			end
+		end
+	end
+	task.spawn(followWorldLoops)
+end
+
+-- A missed cat hisses and bolts, and every player nearby hears both (reviewer N56): the hiss follows the stray's
+-- HissAt attribute, which the server sets on a Miss, and the sprint its FleeingUntil (design v0.5, F40), playing
+-- on the cat itself so it runs off with it. Each at most once per cat per second, like the Effects hiss.
+local STRAY_GAP = 1
+local HOP_FRESH = 0.5 -- seconds: a FleeingUntil this soon after HopAt belongs to the hop
+type StrayWatch = {
+	connections: { RBXScriptConnection },
+	last: { [string]: number },
+	noticed: boolean,
+	calledAt: number?, -- #3022: when the stray waiting for you last called
+	calls: number,
+}
+local strayWatches: { [Instance]: StrayWatch } = {}
+
+local function watchStray(instance: Instance)
+	local existing: StrayWatch? = strayWatches[instance]
+	if existing then
+		return
+	end
+	local watch: StrayWatch = { connections = {}, last = {}, noticed = false, calls = 0 }
+	strayWatches[instance] = watch
+	-- part is nil while the cat streams in: no sound rather than a flat one everywhere
+	local function once(cueId: string, onCat: boolean)
+		local now = os.clock()
+		local last: number? = watch.last[cueId]
+		local part = partOf(instance)
+		if part ~= nil and (last == nil or now - last >= STRAY_GAP) then
+			watch.last[cueId] = now
+			local at: Target = if onCat then part else part.Position
+			Audio.play(cueId, at)
+		end
+	end
+	table.insert(
+		watch.connections,
+		instance:GetAttributeChangedSignal("HissAt"):Connect(function()
+			once("catHiss", false)
+		end)
+	)
+	-- F93: a near miss of the net makes a free stray hop away; HopAt (server time) is set as it goes
+	table.insert(
+		watch.connections,
+		instance:GetAttributeChangedSignal("HopAt"):Connect(function()
+			if instance:GetAttribute("HopAt") ~= nil then
+				once("strayHop", true)
+			end
+		end)
+	)
+	table.insert(
+		watch.connections,
+		instance:GetAttributeChangedSignal("FleeingUntil"):Connect(function()
+			-- a hop (F93) sets HopAt with its FleeingUntil and plays strayHop instead, so wait for the batch to land
+			-- and skip the sprint when HopAt is fresh (review N297)
+			task.defer(function()
+				local now = Workspace:GetServerTimeNow()
+				local untilTime = instance:GetAttribute("FleeingUntil")
+				if
+					type(untilTime) == "number"
+					and untilTime > now
+					and not Logic.freshStart(instance:GetAttribute("HopAt"), now, HOP_FRESH)
+				then
+					once("straySprint", true)
+				end
+			end)
+		end)
+	)
+end
+
+local function unwatchStray(instance: Instance)
+	local watch: StrayWatch? = strayWatches[instance]
+	if watch then
+		for _, connection in watch.connections do
+			connection:Disconnect()
+		end
+	end
+	strayWatches[instance] = nil
+end
+
+-- A Mythical stray twinkles once, on the cat, as you come within RARE_NOTICE studs, and again only after you have
+-- been further than RARE_FORGET (Derek 2026-10-28: the constant shimmer loop around rare strays was annoying, so it
+-- is gone, and every other rarity and gold is quiet). rareNear's minGap keeps a crowd of them to one twinkle. A
+-- rainbow stray (F99) does the same with rainbowNear, so one that spawns near you or that you walk up to shimmers.
+local RARE_NOTICE = 30
+local RARE_FORGET = 45
+
+-- #3022 (second cat nudge): the stray that waits for your second catch carries WAITS_FOR = your user id. It calls
+-- (strayCall, from the cat) as you come within CALL_NEAR studs and again every CALL_GAP seconds (SecondCat's 45 s
+-- nudge) while you stay near, at most CALL_MOST times (Logic.strayCallDue). Other strays and other players' waiting
+-- strays stay quiet.
+local WAITS_FOR = "WaitsFor" -- SecondCat.ATTRIBUTE
+local CALL_NEAR = 60
+local CALL_GAP = 45
+local CALL_MOST = 4
+
+local function strayCall(instance: Instance, watch: StrayWatch, part: BasePart, distance: number)
+	if instance:GetAttribute(WAITS_FOR) ~= Players.LocalPlayer.UserId then
+		return
+	end
+	if WaitingCat.held() then
+		return -- #4384: the bowl step is the one ask; the calls are not used up meanwhile
+	end
+	local now = os.clock()
+	if
+		Logic.strayCallDue(
+			watch.calledAt,
+			watch.calls,
+			now,
+			distance,
+			CALL_NEAR,
+			CALL_GAP,
+			CALL_MOST
+		)
+	then
+		watch.calledAt = now
+		watch.calls += 1
+		Audio.play("strayCall", part)
+		-- #3378: counted on the server (stray_call), with whether a catch starts within 10 s
+		local report = Remotes.folder():FindFirstChild("TelemetryReport")
+		if report ~= nil and report:IsA("RemoteEvent") then
+			(report :: RemoteEvent):FireServer("stray_call", watch.calls)
+		end
+	end
+end
+
+local function noticeRareStrays()
+	while true do
+		task.wait(LOOP_CHECK_SECONDS)
+		local root = you()
+		for instance, watch in strayWatches do
+			local part = partOf(instance)
+			if root ~= nil and part ~= nil then
+				strayCall(instance, watch, part, (part.Position - root.Position).Magnitude)
+			end
+			local cue = noticeCue(instance)
+			if cue == nil then
+				watch.noticed = false
+			elseif root ~= nil and part ~= nil then -- a cat streaming out keeps its place, so it does not repeat
+				local distance = (part.Position - root.Position).Magnitude
+				local play, noticed =
+					Logic.rareNotice(watch.noticed, distance, RARE_NOTICE, RARE_FORGET)
+				watch.noticed = noticed
+				if play then
+					Audio.play(cue, part)
+				end
+			end
+		end
+	end
+end
+
+-- F89: a Legendary or Mythical decor piece in any cafe makes its small sound once as you walk up to it (within
+-- DECOR_NEAR studs), and again only after you have been DECOR_FORGET away, like the rare stray twinkle: never a
+-- loop. It plays at the piece's moving part once the model has it, else at the model (Logic.decorSound).
+local DECOR_NEAR = 12
+local DECOR_FORGET = 24
+local decorNoticed: { [Instance]: boolean } = {}
+
+local function decorSpot(model: Instance, partName: string?): BasePart?
+	if partName ~= nil then
+		-- The moving bit is a child Model (suffix _Swing, _Spin or _Bob, Effects/Motion.luau) or a single part.
+		local found = model:FindFirstChild(partName, true)
+		local part = if found ~= nil then partOf(found) else nil
+		if part ~= nil then
+			return part
+		end
+	end
+	return partOf(model)
+end
+
+local function noticeDecor()
+	while true do
+		task.wait(LOOP_CHECK_SECONDS)
+		for model in decorNoticed do
+			if model.Parent == nil then
+				decorNoticed[model] = nil
+			end
+		end
+		local root = you()
+		if root ~= nil then
+			for _, plot in CollectionService:GetTagged("Plot") do
+				local folder = plot:FindFirstChild("Decor")
+				for _, model in if folder ~= nil then folder:GetChildren() else {} do
+					local cue, partName = Logic.decorSound(model:GetAttribute("DecorId"))
+					local part = if cue ~= nil then decorSpot(model, partName) else nil
+					if cue ~= nil and part ~= nil then
+						local distance = (part.Position - root.Position).Magnitude
+						local play, noticed = Logic.rareNotice(
+							decorNoticed[model] == true,
+							distance,
+							DECOR_NEAR,
+							DECOR_FORGET
+						)
+						decorNoticed[model] = noticed
+						if play then
+							Audio.play(cue, part)
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Derek's splashes (2026-10-28): a soft step on each splash Effects shows under a player in water, already budgeted
+-- to the nearest walkers. A cat's splashes stay quiet, since a stray splashes about every stud and would patter.
+local function followSplashes()
+	Splash.stepped:Connect(function(position: Vector3, kind: string)
+		if kind == "player" then
+			Audio.play("waterStep", position)
+		end
+	end)
+end
+
+-- #2871 (console): a soft tick each time the gamepad's selection walks from one button to the next (Logic.focusTick),
+-- so a player on a controller hears where they are in a menu. It reuses the tab tick at a lower volume (uiFocus).
+local function followGamepadFocus()
+	local before: GuiObject? = GuiService.SelectedObject
+	GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
+		local after: GuiObject? = GuiService.SelectedObject
+		if Logic.focusTick(before, after) then
+			Audio.play("uiFocus")
+		end
+		before = after
+	end)
+end
+
+local function followStrays()
+	CollectionService:GetInstanceAddedSignal("Stray"):Connect(watchStray)
+	CollectionService:GetInstanceRemovedSignal("Stray"):Connect(unwatchStray)
+	for _, instance in CollectionService:GetTagged("Stray") do
+		watchStray(instance)
+	end
+	task.spawn(noticeRareStrays)
+	task.spawn(noticeDecor)
+end
+
+local function stopCarry()
+	if carryStop ~= nil then
+		carryStop()
+		carryStop = nil
+	end
+end
+
+-- The purr plays while carrying; restarted when the sound setting changes so it follows the toggle.
+local function refreshCarry()
+	stopCarry()
+	if carrying then
+		carryStop = Audio.loop("carryPurr")
+	end
+end
+
+-- Hold to catch (F45): a stray's or stuck cat's prompt (and a manhole's) is held for its HoldDuration before it
+-- fires. The fill sound runs with the UI's fill, stretched so its pop lands on the trigger, and fades out if the
+-- key is let go early. A cat that is still running shows no fill, so it plays nothing either.
+local HOLD_FADE = 0.06
+local holdSound: Sound? = nil
+local holdPrompt: ProximityPrompt? = nil
+local holdStartedAt = 0
+local holdFade: Tween? = nil -- a let-go fade still running; a new hold cancels it so it cannot stop the new fill
+
+local function running(prompt: ProximityPrompt): boolean
+	local model = prompt:FindFirstAncestorWhichIsA("Model")
+	local untilTime = if model ~= nil then model:GetAttribute("FleeingUntil") else nil
+	return type(untilTime) == "number" and untilTime > Workspace:GetServerTimeNow()
+end
+
+local function holdBegan(prompt: ProximityPrompt)
+	local playSpeed = Logic.holdSpeed(prompt.HoldDuration)
+	if playSpeed == nil or prompt.Style ~= Enum.ProximityPromptStyle.Custom or running(prompt) then
+		return
+	end
+	local sound = Audio.play("holdFill")
+	if sound ~= nil then
+		-- holdFill has one voice, so play() has just restarted the Sound a let-go fade was turning down; cancel
+		-- that fade (its handler stops the Sound only when the fade completes) so the new fill keeps playing
+		local fade = holdFade
+		if fade ~= nil then
+			holdFade = nil
+			fade:Cancel()
+		end
+		sound.Volume = Cues.holdFill.volume
+		sound.PlaybackSpeed = playSpeed
+		holdSound, holdPrompt, holdStartedAt = sound, prompt, os.clock()
+	end
+end
+
+local function holdEnded(prompt: ProximityPrompt)
+	local sound = holdSound
+	if sound == nil or prompt ~= holdPrompt then
+		return
+	end
+	holdSound, holdPrompt = nil, nil
+	if os.clock() - holdStartedAt >= prompt.HoldDuration - 0.05 then
+		return -- the hold finished: the pop rings out
+	end
+	local fade = tweenVolume(sound, 0, HOLD_FADE)
+	holdFade = fade
+	fade.Completed:Once(function(state: Enum.PlaybackState)
+		if holdFade == fade then
+			holdFade = nil
+		end
+		if state == Enum.PlaybackState.Completed then
+			sound:Stop()
+		end
+		sound.Volume = Cues.holdFill.volume
+	end)
+end
+
+local function followHolds()
+	ProximityPromptService.PromptButtonHoldBegan:Connect(holdBegan)
+	ProximityPromptService.PromptButtonHoldEnded:Connect(holdEnded)
+end
+
+-- A gold cat in your arms (F42) plays the gold reveal, with the effects' burst: when the HeldCat arrives gold or
+-- its Gold turns on (a rescued cat's surprise). Once per HeldCat; one already held when this starts stays quiet.
+local function watchHeld(child: Instance, fresh: boolean)
+	if child.Name ~= "HeldCat" or not child:IsA("Model") then
+		return
+	end
+	local played = not fresh and child:GetAttribute("Gold") == true
+	local function check()
+		if not played and child:GetAttribute("Gold") == true then
+			played = true
+			Audio.play("goldReveal")
+		end
+	end
+	child:GetAttributeChangedSignal("Gold"):Connect(check)
+	check()
+end
+
+local function followHeldCats()
+	local function watchCharacter(character: Model, fresh: boolean)
+		character.ChildAdded:Connect(function(child: Instance)
+			watchHeld(child, true)
+		end)
+		for _, child in character:GetChildren() do
+			watchHeld(child, fresh)
+		end
+	end
+	local player = Players.LocalPlayer
+	player.CharacterAdded:Connect(function(character: Model)
+		watchCharacter(character, true)
+	end)
+	local character = player.Character
+	if character ~= nil then
+		watchCharacter(character, false)
+	end
+end
+
+-- F55 and F56 on every player's character, so everyone nearby hears them: a catch's getaway follows RushUntil (the
+-- server time the Catch Rush ends) and a carry starting follows CarryStartedAt, which is how a dropped cat being
+-- picked up sounds. Your own catch already rings with CatchSuccess or RescueDone, so your carry start stays quiet for
+-- CATCH_QUIET after one; the check waits a moment in case the attribute lands before the moment.
+-- F74 the same way: TackleAt (the press) whooshes and TackleMissAt (a lunge that hit nobody) skids, each only while
+-- under TACKLE_FRESH old, as the effects do; a hit plays the shove sound from ShoveResult.
+-- F84 too: CannonLaunchAt plays the launch at once, the clouds for the one flying and the whistle and landing
+-- where the character is by then (the server has moved it onto the landing pad); your own flight plays flat, since
+-- your camera flies with you. CloudHopAt (hometown-cannon.md section 7) plays your own cloud hop.
+local CHARACTER_GAP = 1
+local CATCH_QUIET = 2
+local TACKLE_FRESH = 0.6
+local lastCatchAt: number? = nil
+-- F84: the cannon flight's beats, in seconds from CannonLaunchAt, from Config (CannonCloudsAt, CannonTouchdownAt and
+-- CannonLaunchSeconds, PR #1002 for #954 and #955: into the clouds at 2.0, feet on the pad at 3.5 in the hero
+-- landing, standing at 4.0). cannonLand's whistle runs CANNON_LAND_LEAD before its thump, which lands on the feet.
+-- Without the keys: the clouds at 1.4 s and the touchdown as the flight ends (3 s), the timing before #1002.
+local CANNON_FLIGHT = 3
+local CANNON_CLOUDS_AT = 1.4
+local CANNON_LAND_LEAD = 0.6
+
+local function watchCharacter(character: Model, isLocal: boolean): { RBXScriptConnection }
+	local last: { [string]: number } = {}
+	local function once(cueId: string)
+		local now = os.clock()
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if
+			root ~= nil
+			and root:IsA("BasePart")
+			and Logic.canPlay(last[cueId], now, CHARACTER_GAP)
+		then
+			last[cueId] = now
+			Audio.play(cueId, root :: BasePart)
+		end
+	end
+	local rush = character:GetAttributeChangedSignal("RushUntil"):Connect(function()
+		local untilTime = character:GetAttribute("RushUntil")
+		if type(untilTime) == "number" and untilTime > Workspace:GetServerTimeNow() then
+			once("getaway")
+		end
+	end)
+	local carry = character:GetAttributeChangedSignal("CarryStartedAt"):Connect(function()
+		if
+			not Logic.freshStart(
+				character:GetAttribute("CarryStartedAt"),
+				Workspace:GetServerTimeNow()
+			)
+		then
+			return
+		end
+		task.delay(0.2, function()
+			if not isLocal or Logic.canPlay(lastCatchAt, os.clock(), CATCH_QUIET) then
+				once("catPickUp")
+			end
+		end)
+	end)
+	local function onTackle(attribute: string, cueId: string): RBXScriptConnection
+		return character:GetAttributeChangedSignal(attribute):Connect(function()
+			if
+				Logic.freshStart(
+					character:GetAttribute(attribute),
+					Workspace:GetServerTimeNow(),
+					TACKLE_FRESH
+				)
+			then
+				once(cueId)
+			end
+		end)
+	end
+	local function flightCue(cueId: string)
+		if isLocal then
+			Audio.play(cueId)
+		else
+			once(cueId)
+		end
+	end
+	local cannon = character:GetAttributeChangedSignal("CannonLaunchAt"):Connect(function()
+		local launchAt = character:GetAttribute("CannonLaunchAt")
+		if
+			type(launchAt) ~= "number"
+			or not Logic.freshStart(launchAt, Workspace:GetServerTimeNow(), TACKLE_FRESH)
+		then
+			return
+		end
+		flightCue("cannonLaunch")
+		-- a shorter first flight (CannonFlightScale, Effects/FlightClock) brings the clouds and the landing in with it
+		local scale = FlightClock.scale(character, launchAt)
+		-- `at` is in the usual flight's seconds; `lead` (real seconds, the whistle's own length) is not scaled
+		local function later(at: number, cueId: string, lead: number?)
+			local delay = launchAt
+				+ FlightClock.realAt(at, scale)
+				- (lead or 0)
+				- Workspace:GetServerTimeNow()
+			task.delay(math.max(0, delay), function()
+				if
+					character.Parent ~= nil
+					and character:GetAttribute("CannonLaunchAt") == launchAt
+				then
+					flightCue(cueId)
+				end
+			end)
+		end
+		local clouds, touchdown = Logic.cannonBeats(
+			(Config :: any).CannonCloudsAt,
+			(Config :: any).CannonTouchdownAt,
+			(Config :: any).CannonLaunchSeconds,
+			CANNON_CLOUDS_AT,
+			CANNON_FLIGHT
+		)
+		if isLocal then
+			later(clouds, "cannonClouds")
+		end
+		later(touchdown, "cannonLand", CANNON_LAND_LEAD)
+	end)
+	local hop = character:GetAttributeChangedSignal("CloudHopAt"):Connect(function()
+		if
+			isLocal
+			and Logic.freshStart(
+				character:GetAttribute("CloudHopAt"),
+				Workspace:GetServerTimeNow(),
+				TACKLE_FRESH
+			)
+		then
+			Audio.play("cloudHop")
+		end
+	end)
+	return {
+		rush,
+		carry,
+		onTackle("TackleAt", "tackleLunge"),
+		onTackle("TackleMissAt", "tackleMiss"),
+		cannon,
+		hop,
+	}
+end
+
+-- One character's watches per player, dropped when it is removed, so respawns do not pile up connections (N163).
+local function followCharacters()
+	local function watchPlayer(player: Player)
+		local isLocal = player == Players.LocalPlayer
+		local connections: { RBXScriptConnection } = {}
+		local function drop()
+			for _, connection in connections do
+				connection:Disconnect()
+			end
+			connections = {}
+		end
+		player.CharacterAdded:Connect(function(character: Model)
+			drop()
+			connections = watchCharacter(character, isLocal)
+		end)
+		player.CharacterRemoving:Connect(drop)
+		if player.Character ~= nil then
+			connections = watchCharacter(player.Character, isLocal)
+		end
+	end
+	Players.PlayerAdded:Connect(watchPlayer)
+	for _, player in Players:GetPlayers() do
+		watchPlayer(player)
+	end
+end
+
+-- F63 and F64 on your own plot, from its display attributes (Logic.plotCue): the Cat Collector arriving and the
+-- Mystery Visitor's gift appearing. A plot that streams out and back in is watched once. The tip piles went quiet
+-- with F97 (#714): they pay as they appear, which plays coinPop, and the count only drops when old piles are swept.
+local PLOT_ATTRIBUTES = { "CollectorUntil", "MysteryGiftAt" }
+local plotWatches: { [Instance]: { RBXScriptConnection } } = {}
+
+local function watchPlot(plot: Instance)
+	if plotWatches[plot] ~= nil then
+		return
+	end
+	local connections: { RBXScriptConnection } = {}
+	plotWatches[plot] = connections
+	for _, attribute in PLOT_ATTRIBUTES do
+		local before = plot:GetAttribute(attribute)
+		table.insert(
+			connections,
+			plot:GetAttributeChangedSignal(attribute):Connect(function()
+				local after = plot:GetAttribute(attribute)
+				local cueId = Logic.plotCue(attribute, before, after)
+				before = after
+				if
+					cueId ~= nil
+					and plot:GetAttribute("OwnerUserId") == Players.LocalPlayer.UserId
+				then
+					Audio.play(cueId)
+				end
+			end)
+		)
+	end
+end
+
+local function unwatchPlot(plot: Instance)
+	local connections: { RBXScriptConnection }? = plotWatches[plot]
+	if connections then
+		for _, connection in connections do
+			connection:Disconnect()
+		end
+	end
+	plotWatches[plot] = nil
+end
+
+-- #1191: a shop-only cat (Logic.isShopCat) chimes as it starts a shift, in 3D at the cat, under VFX's sparkle
+-- (Effects/ShopCats). Same rule as the sparkle: a model (by Uid) seen off duty that turns to working (a Role without
+-- Bedtime); a model built or streamed in already working plays nothing.
+local shopCatDuty: { [string]: boolean } = {}
+local shopCatsSeen: { [Instance]: boolean } = {}
+
+local function watchShopCat(instance: Instance)
+	if
+		shopCatsSeen[instance]
+		or not instance:IsA("Model")
+		or not Logic.isShopCat(instance:GetAttribute("CatId"))
+	then
+		return
+	end
+	shopCatsSeen[instance] = true
+	local uid = instance:GetAttribute("Uid")
+	local key = if type(uid) == "string" then uid else instance:GetFullName()
+	local function look()
+		local now = Logic.working(instance:GetAttribute("Role"), instance:GetAttribute("Bedtime"))
+		local before = shopCatDuty[key]
+		shopCatDuty[key] = now
+		local part = partOf(instance)
+		if Logic.shiftStarted(before, now) and part ~= nil then
+			Audio.play("shiftChime", part)
+		end
+	end
+	look()
+	instance:GetAttributeChangedSignal("Role"):Connect(look)
+	instance:GetAttributeChangedSignal("Bedtime"):Connect(look)
+	instance.AncestryChanged:Connect(function()
+		if instance.Parent == nil then
+			shopCatsSeen[instance] = nil
+		end
+	end)
+end
+
+local function followShopCats()
+	local function watchIn(plot: Instance)
+		for _, descendant in plot:GetDescendants() do
+			watchShopCat(descendant)
+		end
+		plot.DescendantAdded:Connect(watchShopCat)
+	end
+	CollectionService:GetInstanceAddedSignal("Plot"):Connect(watchIn)
+	for _, plot in CollectionService:GetTagged("Plot") do
+		watchIn(plot)
+	end
+end
+
+local function followPlots()
+	CollectionService:GetInstanceAddedSignal("Plot"):Connect(watchPlot)
+	CollectionService:GetInstanceRemovedSignal("Plot"):Connect(unwatchPlot)
+	for _, plot in CollectionService:GetTagged("Plot") do
+		watchPlot(plot)
+	end
+end
+
+-- Rarity stings (F89, from Epic up; jingleRare has no file). The catch, rescue or tame plays one and your own big
+-- pull (SecuredRare) plays one; when both land together (a tame) only the bigger one sounds (Logic.stingAction).
+local STING_QUIET = 4
+local lastSting: { cue: string?, at: number?, sound: Sound? } = {}
+
+local function playSting(cueId: string)
+	local now = os.clock()
+	local action = Logic.stingAction(lastSting.cue, lastSting.at, cueId, now, STING_QUIET)
+	if action == "skip" then
+		return
+	end
+	local before = lastSting.sound
+	if action == "replace" and before ~= nil then
+		before:Stop()
+	end
+	local sound = Audio.play(cueId)
+	if sound ~= nil then
+		lastSting = { cue = cueId, at = now, sound = sound }
+	end
+end
+
+local function rarityJingle(rarity: any)
+	local jingle = Logic.jingleFor(str(rarity))
+	if jingle ~= nil then
+		playSting(jingle)
+	end
+end
+
+-- Hooks a server-to-client remote whenever it appears, since some only exist once the server has their feature
+-- (like Effects' Pull).
+local function onRemote(name: string, handler: (...any) -> ())
+	local folder = Remotes.folder()
+	local function hook(child: Instance): boolean
+		if child.Name ~= name or not child:IsA("RemoteEvent") then
+			return false
+		end
+		(child :: RemoteEvent).OnClientEvent:Connect(handler)
+		return true
+	end
+	local existing = folder:FindFirstChild(name)
+	if existing ~= nil and hook(existing) then
+		return
+	end
+	local waiting: RBXScriptConnection? = nil
+	waiting = folder.ChildAdded:Connect(function(child: Instance)
+		if hook(child) and waiting ~= nil then
+			waiting:Disconnect()
+		end
+	end)
+end
+
+-- F89 and F99: your own big pull (the server's SecuredRare(userId, catId, rarity, gold, variant)) plays its sting.
+local function followSecuredRare()
+	onRemote(
+		"SecuredRare",
+		function(
+			userId: unknown,
+			_catId: unknown,
+			rarity: unknown,
+			_gold: unknown,
+			variant: unknown
+		)
+			if userId ~= Players.LocalPlayer.UserId then
+				return
+			end
+			local cue = Logic.pullSting(rarity, variant)
+			if cue ~= nil then
+				playSting(cue)
+			end
+		end
+	)
+end
+
+-- F93: GREAT and EXCELLENT get their word's sound from the server's grades (CatchResult goes only to the catcher),
+-- over the catch sparkle; PURRFECT and "So close!" keep the Purrfect and CatchFail moments' sounds.
+-- Catch v3: CatchResult(strayId, grades, success, charmGain, retryAt, result) where `result` is
+-- { trust, trustNeed, finish = "purrfect" | "great" | "nice" | "bolt", streak } (a bare string works too).
+local function finishOf(result: unknown): string?
+	if type(result) == "string" then
+		return result
+	elseif type(result) == "table" and type((result :: any).finish) == "string" then
+		return (result :: any).finish
+	end
+	return nil
+end
+
+local function wordFor(result: unknown, grades: unknown, success: unknown): string?
+	local finish = finishOf(result)
+	if finish ~= nil then
+		return Logic.finishCue(finish)
+	end
+	return Logic.wordCue(Logic.catchWord(grades, success))
+end
+
+local CATCH_NEED_FALLBACK = 12 -- the Epic need, used until a result or schedule says otherwise
+
+local function followCatchWords()
+	-- CatchJudged(strayId, index, grade, trust): the purr follows the trust after every ring.
+	onRemote(
+		"CatchJudged",
+		function(_strayId: unknown, _index: unknown, _grade: unknown, trust: unknown)
+			if type(trust) == "number" then
+				Audio.setCatchTrust(trust, CATCH_NEED_FALLBACK)
+			end
+		end
+	)
+	onRemote(
+		"CatchResult",
+		function(
+			_strayId: unknown,
+			grades: unknown,
+			success: unknown,
+			_gain: unknown,
+			_retryAt: unknown,
+			result: unknown
+		)
+			local cue = wordFor(result, grades, success)
+			if cue ~= nil then
+				Audio.play(cue)
+			end
+		end
+	)
+end
+
+-- F102: the trade countdown tocks once a second while TradeState's phase is "countdown"; any other state (a change
+-- on the table resets it), TradeDone or TradeEnded stops the rest. TradeDone plays "Trade done!" for both players.
+local TRADE_TICKS_MAX = 10
+local tradeToken = 0
+
+local function followTrade()
+	onRemote("TradeState", function(state: any)
+		tradeToken += 1
+		if type(state) ~= "table" or state.phase ~= "countdown" then
+			return
+		end
+		local token = tradeToken
+		for _, delay in
+			Logic.countdownTicks(
+				Workspace:GetServerTimeNow(),
+				state.countdownEndsAt,
+				TRADE_TICKS_MAX
+			)
+		do
+			task.delay(delay, function()
+				if token == tradeToken then
+					Audio.play("uiTradeTick")
+				end
+			end)
+		end
+	end)
+	onRemote("TradeDone", function()
+		tradeToken += 1
+		Audio.play("uiTradeDone")
+	end)
+	onRemote("TradeEnded", function()
+		tradeToken += 1
+	end)
+end
+
+-- F101: the Rescue Rally's bar reaching a step (Catalog.rallySteps: five since #2018, 15 % up to the whole goal)
+-- cheers once on every client in the server, from the RallyState the server sends at each step.
+local function followRally()
+	local last: { lap: number, points: number }? = nil
+	onRemote("RallyState", function(state: any)
+		if
+			type(state) ~= "table"
+			or type(state.points) ~= "number"
+			or type(state.goal) ~= "number"
+		then
+			return
+		end
+		local from = Logic.rallyFrom(last, state.lap, state.active)
+		last = if type(state.lap) == "number"
+			then { lap = state.lap, points = state.points }
+			else nil
+		if from ~= nil and #Rally.stepsCrossed(from, state.points, state.goal) > 0 then
+			Audio.play("rallyCheer")
+		end
+	end)
+end
+
+local function countOf(map: any): number
+	local count = 0
+	if type(map) == "table" then
+		for _ in map do
+			count += 1
+		end
+	end
+	return count
+end
+
+-- F28, your own bait bowl, from each ProfileSync's `bait` (Logic.baitChange), so it needs no moment: the food going
+-- in clinks (its own food cue once it has one, else foodDealer), the cat arriving mrrps (a gold or rainbow one
+-- plays its reveal, Logic.baitArriveCue) and Let go plays the cat hopping off. A tame sounds with its check-in. The
+-- first sync Audio sees only sets where the bowl stands, so a rejoin with a cat already waiting stays quiet.
+local function followBait()
+	local seen = false
+	local last: any = nil
+	local lastCats = 0
+	onRemote("ProfileSync", function(state: any)
+		if type(state) ~= "table" then
+			return
+		end
+		local bait = state.bait
+		local cats = countOf(state.cats)
+		local change = if seen then Logic.baitChange(last, bait, lastCats, cats) else nil
+		seen, last, lastCats = true, bait, cats
+		if change == "placed" then
+			Audio.play(Logic.foodCue(str(bait.lureId), has), you())
+		elseif change == "arrive" then
+			Audio.play(Logic.baitArriveCue(bait.cat.variant))
+		elseif change == "letgo" then
+			Audio.play("baitLetGo")
+		end
+	end)
+end
+
+-- #4061 the Ticket Booth, from each ProfileSync's `ticketBooth` (Logic.ticketPrizeBought), so it needs no moment: a
+-- prize bought prints its ticket, then the counter bell says it is yours. The first sync only sets the count.
+-- #4062 the Dragon Keep the same way, from `dragon` (Logic.keepRekindled): a Rekindle hand coming up plays Rekindle.
+local TICKET_DING_AFTER = 0.6
+local function followStations()
+	local seen = false
+	local last: any = nil
+	local lastKeep: any = nil
+	onRemote("ProfileSync", function(state: any)
+		if type(state) ~= "table" then
+			return
+		end
+		local view, keep = state.ticketBooth, state.dragon
+		local bought = seen and Logic.ticketPrizeBought(last, view)
+		local rekindled = seen and Logic.keepRekindled(lastKeep, keep)
+		seen, last, lastKeep = true, view, keep
+		if rekindled then
+			Audio.play("rekindle")
+		end
+		if bought then
+			Audio.play("ticketPrint")
+			task.delay(TICKET_DING_AFTER, function()
+				Audio.play("ticketDing")
+			end)
+		end
+	end)
+end
+
+-- The remotes that also feed a controller's state (ProfileSync, TradeState, RallyState) are hooked only once the
+-- first ProfileSync has reached the UI (the first applySettings), when every controller is listening: a remote
+-- fired before anything listens holds its events for the first listener alone, and that must be the controller.
+local followingState = false
+
+-- #2927: the Oasis Spa and the Relic Museum answer every press with LateStationResult; Audio keeps the last
+-- LateStationsState to tell a cat going into the spa from one taken out.
+local lateState: any = nil
+
+local function followLateStations()
+	onRemote("LateStationsState", function(state: any)
+		lateState = state
+	end)
+	onRemote("LateStationResult", function(stationId: any, ok: any, detail: any)
+		local slot = if type(detail) == "table" then detail.slot else nil
+		local cueId = Logic.lateStationCue(
+			str(stationId),
+			ok == true,
+			detail,
+			Logic.spaUidAt(lateState, slot)
+		)
+		if cueId ~= nil then
+			Audio.play(cueId)
+		end
+	end)
+end
+
+-- #2997, #3222: the Saturday update gift (15 golden fish and 1 spin) and a Golden find arrive as a Toast line only, so
+-- their jingles play on that line (Logic.toastJingle). Both reuse existing cues, so there is no new file.
+local function followUpdateGift()
+	onRemote("Toast", function(text: any)
+		local cue = Logic.toastJingle(text)
+		if cue ~= nil then
+			Audio.play(cue)
+		end
+	end)
+end
+
+-- #3419: the update party's banners (Effects/EventBanner) play their sound as each one drops in, so a banner that
+-- waited its turn still lands with its sound.
+local function followBanners()
+	EventBanner.onShown(function(kind: any)
+		local cue = Logic.bannerCue(kind)
+		if cue ~= nil then
+			Audio.play(cue)
+		end
+	end)
+end
+
+local function followServerState()
+	if followingState then
+		return
+	end
+	followingState = true
+	-- deferred, so the order does not hang on signal behaviour: even a first sync handled inside UIController.start
+	-- hooks these only after the rest of Main.client has started its controllers (review S117)
+	task.defer(followTrade)
+	task.defer(followRally)
+	task.defer(followBait)
+	task.defer(followStations)
+	task.defer(followLateStations)
+	task.defer(followUpdateGift)
+end
+
+-- Animation beats (Beats.hit from Effects): the Bellhop Cat's bell (F96) and the camp extras' moving touches (F100),
+-- in 3D where the animation plays.
+local function followBeats()
+	Beats.hit:Connect(function(beat: string, at: any)
+		local cue = Logic.beatCue(beat)
+		if cue == nil then
+			return
+		end
+		if typeof(at) == "Vector3" then
+			Audio.play(cue, at :: Vector3)
+		elseif typeof(at) == "Instance" and (at :: Instance):IsA("Attachment") then
+			Audio.play(cue, at :: any)
+		elseif typeof(at) == "Instance" then
+			-- a part, or a moving bit that is its own Model (the Bellhop Cat's <cat>_Bell, PR #708): its first part
+			local part = partOf(at :: Instance)
+			if part ~= nil then
+				Audio.play(cue, part)
+			end
+		end
+	end)
+end
+
+-- F93 net swing (catch-rework.md section 1): the whoosh as the net comes over and the smack NetSmackDelay later, as
+-- it lands. Your own swing plays at the press (NetSmackPress); another player's when the server tells this client
+-- (NetSwung), which is when their smack animation starts. Only your own miss bounces.
+local NET_SMACK_DELAY = 0.15
+
+local function rootOf(userId: unknown): BasePart?
+	local player = if type(userId) == "number" then Players:GetPlayerByUserId(userId) else nil
+	local character = if player ~= nil then player.Character else nil
+	local root = if character ~= nil then character:FindFirstChild("HumanoidRootPart") else nil
+	return if root ~= nil and root:IsA("BasePart") then root :: BasePart else nil
+end
+
+local function swingSounds(root: BasePart?)
+	if root == nil then
+		return
+	end
+	Audio.play("netSwing", root)
+	task.delay((Config :: any).NetSmackDelay or NET_SMACK_DELAY, function()
+		if root.Parent ~= nil then
+			Audio.play("netSmack", root)
+		end
+	end)
+end
+
+-- Moment name to sounds (sound list section 6). NightStart and DayStart are absent on purpose: the music already
+-- follows the clock attribute, so it also knows the phase on join. CarryStart is absent too: the purr follows the
+-- synced carrying state (Audio.setCarrying), so a missed moment can never leave it purring.
+-- #1133/#1154/#1232: the Picnic Basket, Yard Sale and Fish Pond chime once as something starts waiting (the same
+-- `held` the "!" marker follows), in 2D. The first CampExtrasState after joining only records what waits.
+local STATION_EXTRAS = { "picnic", "yardSale", "pond" }
+local stationHeld: { [string]: number } = {}
+
+local function stationsReady(state: any)
+	if type(state) ~= "table" then
+		return
+	end
+	local ready = false
+	for _, id in STATION_EXTRAS do
+		local extra = state[id]
+		local held = if type(extra) == "table" then num(extra.held) else nil
+		if held ~= nil then
+			if Logic.stationReady(stationHeld[id], held, extra.open == true) then
+				ready = true
+			end
+			stationHeld[id] = held
+		end
+	end
+	if ready then
+		Audio.play("stationReady")
+	end
+end
+
+local HANDLERS: { [string]: (...any) -> () } = {
+	-- #1541: the intro cutscene takes the music; it comes back when the intro is played out or skipped.
+	IntroStart = function()
+		if not introActive then
+			introActive = true
+			refreshMusic(false)
+		end
+	end,
+	IntroEnd = function()
+		if introActive then
+			introActive = false
+			refreshMusic(false)
+		end
+	end,
+	CampExtrasState = stationsReady,
+	CatchStart = function()
+		duckForCatch(true)
+		Audio.play("catchStart")
+	end,
+	CircleAppear = function(index: any)
+		Audio.play("circleAppear", nil, num(index))
+	end,
+	NetSwing = function()
+		Audio.play("netSwing", you())
+	end,
+	NetSmackPress = function()
+		swingSounds(you())
+	end,
+	NetSwung = function(userId: any, hit: any)
+		if userId ~= Players.LocalPlayer.UserId then
+			swingSounds(rootOf(userId))
+		elseif hit == false then
+			Audio.play("netBounce", you())
+		end
+	end,
+	-- #2920: the first catch's ring stopped on its target and waits for the press (the Catch screen fires it once)
+	CircleHold = function(index: any)
+		Audio.play("circleHold", nil, num(index))
+	end,
+	-- #4722: Circle Streak's ArcadeStart, ArcadeMilestone and ArcadeEnd handlers went with the game; its cues stay,
+	-- Mouse Dash plays them.
+	-- #3296 Mouse Dash (the second Cat Arcade game; UIController fires these like the Arcade* ones). `kind` is
+	-- "mouse", "golden" or "kitten". MouseDashStart() as a run begins, MouseDashPop(kind) as one pops up,
+	-- MouseDashCatch(points, kind, streak) for a catch, MouseDashMiss(kind) for a heart lost ("escape", "kitten" or
+	-- "empty"), MouseDashHeart() for a heart won back, MouseDashFaster(level) at each speed step,
+	-- MouseDashMilestone(points), and MouseDashEnd(points, reason, newBest) with reason "hearts", "win" or "quit".
+	MouseDashStart = function()
+		Audio.play("arcadeStart")
+	end,
+	MouseDashPop = function(kind: any)
+		Audio.play(Logic.mousePopCue(kind))
+	end,
+	MouseDashCatch = function(_points: any, kind: any, streak: any)
+		local cue, step = Logic.mouseCatchCue(kind, streak)
+		Audio.play(cue, nil, step)
+	end,
+	MouseDashMiss = function(kind: any)
+		local cue = Logic.mouseMissCue(kind)
+		if cue ~= nil then
+			Audio.play(cue)
+		end
+	end,
+	MouseDashHeart = function()
+		Audio.play("mouseHeart")
+	end,
+	MouseDashFaster = function()
+		Audio.play("mouseFaster")
+	end,
+	MouseDashMilestone = function()
+		Audio.play("arcadeMilestone")
+	end,
+	MouseDashEnd = function(points: any, reason: any, newBest: any)
+		local cue = Logic.mouseEndCue(points, reason, newBest)
+		if cue ~= nil then
+			-- the last heart's own sound (MouseDashMiss) plays first
+			task.delay(if reason == "hearts" then MOUSE_END_GAP else 0, function()
+				Audio.play(cue)
+			end)
+		end
+	end,
+	-- #2687: the first time this account reaches an area whose station it owns, the station builds in (Effects) and
+	-- this fanfare plays. Fired once per area per account, so it never repeats.
+	StationReveal = function()
+		Audio.play("stationReveal")
+	end,
+	-- #3050: the Rummage Bin's prize (row id, first) plays its own cue after the bar's RescueDone chime.
+	RummageWin = function(rowId: any)
+		Audio.play(Logic.rummageCue(rowId))
+	end,
+	CircleGrade = function(index: any, grade: any)
+		local cueId = Logic.gradeCue(str(grade))
+		if cueId == "circleMiss" then
+			Audio.play(cueId)
+		elseif cueId ~= nil then
+			Audio.play(cueId, nil, num(index))
+		end
+	end,
+	-- Catch v3 (#1884): the trust bar's purr, the cat's swat at a paw ring and the net's wobble and pop.
+	CatchTrust = function(trust: any, need: any)
+		Audio.setCatchTrust(num(trust), num(need))
+	end,
+	PawSwat = function(strayId: any)
+		Audio.play("pawSwat", spot(taggedPart("Stray", "StrayId", strayId)))
+	end,
+	NetWobble = function()
+		Audio.play("netWobble", you())
+	end,
+	NetPop = function()
+		Audio.play("netPop", you())
+	end,
+	CatchSuccess = function(_strayId: any, rarity: any)
+		lastCatchAt = os.clock()
+		Audio.setCatchTrust(nil)
+		duckForCatch(false)
+		Audio.play("catchSparkle")
+		rarityJingle(rarity)
+	end,
+	CatchFail = function()
+		Audio.setCatchTrust(nil)
+		duckForCatch(false)
+		Audio.play("catchMiss") -- the cat's hiss follows its HissAt attribute, for everyone nearby
+	end,
+	Purrfect = function()
+		Audio.play("purrfectChime")
+	end,
+	StrayFlee = function(strayId: any) -- a stray leaving the area; the sprint after a miss follows FleeingUntil
+		Audio.play("strayFlee", spot(taggedPart("Stray", "StrayId", strayId)))
+	end,
+
+	RescueStart = function(rescueSpotId: any)
+		rescueSpot = taggedPart("RescueSpot", "RescueSpotId", rescueSpotId)
+		duckForCatch(true)
+		Audio.play("rescueStart")
+	end,
+	RescueHit = function(hits: any, _needed: any, _pawsLeft: any, trapType: any)
+		local cueId = Logic.trapCue(str(trapType))
+		if cueId ~= nil then
+			Audio.play(cueId, spot(rescueSpot))
+		end
+		Audio.play("rescueHitTone", nil, num(hits))
+	end,
+	RescueMiss = function()
+		Audio.play("rescueMiss")
+	end,
+	RescueDrop = function()
+		Audio.play("rescueDrop", spot(rescueSpot))
+	end,
+	RescueDone = function(_rescueSpotId: any, rarity: any)
+		lastCatchAt = os.clock()
+		duckForCatch(false)
+		Audio.play("rescueDone")
+		rarityJingle(rarity)
+	end,
+	RescueFail = function()
+		duckForCatch(false)
+		Audio.play("rescueFail")
+	end,
+	RescueCancel = function()
+		duckForCatch(false)
+		Audio.play("rescueFail")
+	end,
+	-- F92: a helped rescue freed its cat (rescueSpotId, rescuerUserId, helperUserId, position), on both friends'
+	-- screens just after their RescueDone; the two bright notes sit above the done chime
+	TeamRescue = function()
+		Audio.play("teamRescue")
+	end,
+
+	-- Shove (v0.5, F41; Bump in code): every landed shove, then the knock-loose roll's result when the target
+	-- was carrying. The toasts play their own bonk.
+	Shove = function(_role: any, position: any)
+		Audio.play("shove", vec(position))
+	end,
+	BumpLoose = function(_role: any, position: any)
+		Audio.play("bumpLoose", vec(position))
+	end,
+	BumpHeld = function(_role: any, position: any)
+		Audio.play("bumpHeld", vec(position))
+	end,
+	-- F84: a cat banked at a camp rings the camp chime from CampCheckIn (fired just before its CheckIn), so the door
+	-- bell stays the cafe's and never rings out in a wild area.
+	CheckIn = function()
+		if Logic.canPlay(lastCampCheckInAt, os.clock(), CAMP_QUIET) and not youInWild() then
+			Audio.play("checkInBell", you())
+		end
+	end,
+	CampCheckIn = function(userId: any)
+		if userId == Players.LocalPlayer.UserId then
+			lastCampCheckInAt = os.clock()
+			Audio.play("campCheckIn")
+		end
+	end,
+	CatFound = function(_catId: any, isNew: any)
+		if isNew ~= false then -- a cat you already have only rings the door bell (CheckIn)
+			Audio.play("jingleCatFound")
+		end
+	end,
+
+	-- The bait bowl's food, arrival and Let go need no moment since 2026-11-02: Audio follows ProfileSync's `bait`
+	-- (followBait), and a gold or rainbow bait cat plays its reveal as it arrives. A gold cat in your arms plays
+	-- goldReveal by itself (watchHeld), and a Mythical stray twinkles as you come near (noticeRareStrays).
+	-- Drop (F45, the Drop button or G): the cat hops down at your feet.
+	-- #2946: the first bait cutscene's bait cat eats at your bowl: a soft purr there while it eats (`seconds`, 2.5 when
+	-- not given, at most 5), fired by Effects/FirstBaitCut at the eating beat. The arrival and the bowl already sound
+	-- through ProfileSync (baitArrive, the food cue), so the cut adds only this.
+	-- First minute (Effects/FirstMinuteFx): the first bowl cat's card gets its rarity's jingle (a chime when it has
+	-- none), and the first net catch a cheer on top of the catch sparkle.
+	FirstBowlCard = function(rarity: any)
+		-- a rarity whose jingle has no file yet (Rare today) gets a chime instead; not the found jingle, which the
+		-- reveal plays about a second later once the cat is tamed (Sync, #4935)
+		local jingle = Logic.jingleFor(str(rarity))
+		if jingle == nil or Audio.play(jingle) == nil then
+			Audio.play("purrfectChime")
+		end
+	end,
+	FirstCatchCheer = function()
+		Audio.play("jingleCatFound")
+	end,
+	FirstBaitEat = function(position: any, seconds: any)
+		local at = vec(position)
+		if at == nil then
+			return
+		end
+		local length = num(seconds)
+		if length == nil or length ~= length then -- missing or NaN
+			length = 2.5
+		end
+		local stop = Audio.loop("purr", at)
+		task.delay(math.clamp(length :: number, 0.5, 5), stop)
+	end,
+	CatDrop = function(position: any)
+		Audio.play("catDrop", vec(position) or you())
+	end,
+	-- Fast travel, the My Cafe button and the manholes, once the server says the trip worked.
+	Travel = function(destination: any)
+		-- F84: Home from a wild area is a cloud hop (its gap keeps CloudHopAt from playing it twice), the Cannon button
+		-- a poof (Logic.travelCue)
+		Audio.play(Logic.travelCue(destination, youInWild(), youHopping()))
+	end,
+	-- Roles (Staff tab, Equip Best, Unequip All): one sound however many cats change in the same sync.
+	CatPlaced = function()
+		Audio.play("catPlaced")
+	end,
+	UnplaceCat = function()
+		Audio.play("catRest")
+	end,
+
+	CoinPop = function(position: any)
+		Audio.play("coinPop", vec(position))
+	end,
+	Purchase = function()
+		Audio.play("purchase")
+	end,
+	RankUp = function()
+		Audio.play("jingleRankUp")
+	end,
+	AreaUnlock = function(areaId: any, position: any)
+		for _, cue in Logic.gateCues(areaId) do -- #4071: the Castle's gate rumbles too
+			Audio.play(cue, vec(position))
+		end
+	end,
+	PlotOpened = function(position: any)
+		Audio.play("shuttersUp", vec(position))
+		Audio.play("signFlip", vec(position))
+	end,
+	RichArrive = function()
+		Audio.play("richArrive")
+	end,
+	RichTipClaim = function()
+		Audio.play("richTip")
+	end,
+	DealerArrive = function()
+		local cart = taggedPart("DealerCart")
+		Audio.play("dealerArrive", cart)
+		if dealerStop == nil and cart ~= nil then
+			dealerStop = Audio.loop("loopDealerCart", cart)
+		end
+	end,
+	DealerLeave = function()
+		if dealerStop ~= nil then
+			dealerStop()
+			dealerStop = nil
+		end
+		Audio.play("dealerLeave", spot(taggedPart("DealerCart")))
+	end,
+	-- The welcome back card's Claim plays offlineClaim through the UI's playSound, so OfflineClaim needs no moment.
+	TipJarClaim = function() -- F47
+		Audio.play("giftClaim")
+	end,
+	IndexReward = function() -- F48
+		Audio.play("indexReward")
+	end,
+	-- F100: a camp extra you collected (the picnic basket, the pond, the Lost and Found box), where it stands.
+	CampExtraCollect = function(extraId: any, position: any)
+		local cue = Logic.campExtraCue(extraId)
+		if cue ~= nil then
+			Audio.play(cue, if typeof(position) == "Vector3" then position else nil)
+		end
+	end,
+	-- F90 cats make the orders (Controllers/CafeOrders). Derek 2026-11-03 (#981): "Plate noises and eating noises too
+	-- loud honestly not even needed", "too much random ambient noises in the cafe". So only your own cafe sounds, and
+	-- only twice: the "ding!" when an order is ready, at the station (`at` is the Espresso or Oven model, or the
+	-- Barista), and the coin bag dropped in the till. The pour (OrderMaking), the dish set down (OrderServed) and the
+	-- coin sweep (TipSwept) play nothing; their cues stay for a later pass. Each needs a place: none plays flat.
+	OrderReady = function(plot: any, station: any, at: any)
+		local part = if typeof(at) == "Instance" then partOf(at) else nil
+		if
+			part ~= nil
+			and typeof(plot) == "Instance"
+			and Logic.ownPlot(plot:GetAttribute("OwnerUserId"), Players.LocalPlayer.UserId)
+		then
+			Audio.play("orderDing", part, Logic.orderDingStep(station))
+		end
+	end,
+	TipBanked = function(_cat: any, position: any)
+		local where = vec(position)
+		if where ~= nil then
+			Audio.play("tipBank", where)
+		end
+	end,
+	-- F103 crate reel (UI/Screens/CrateReel): a tick as each tile line crosses the marker (the cue keeps them 0.06 s
+	-- apart), and the thunk at the stop or a skip, then the won piece's rarity sting from Epic up when the reel passes
+	-- its rarity.
+	CrateReelTick = function()
+		Audio.play("uiReelTick")
+	end,
+	-- #3615: the Yard Sale lucky pick's board: the reel's tick as each row lights, and at the stop the reel's thunk,
+	-- with the gold reveal chime after it for a golden crate (Logic.yardLandCues).
+	YardSaleTick = function()
+		Audio.play("uiReelTick")
+	end,
+	YardSaleLanded = function(golden: any)
+		local stop, chime = Logic.yardLandCues(golden)
+		Audio.play(stop)
+		if chime ~= nil then
+			task.delay(Logic.YARD_CHIME_AFTER, function()
+				Audio.play(chime)
+			end)
+		end
+	end,
+	CrateReelLanded = function(rarity: any)
+		Audio.play("uiReelStop")
+		local cue = Logic.pullSting(rarity, nil)
+		if cue ~= nil then
+			playSting(cue)
+		end
+	end,
+	-- F58: a Mythical shout-out (the sunrise wave's or a catch) plays its own sting once it has a file.
+	-- #4470: a spawn shout-out shows with no sound (Logic.isSpawnLine)
+	Announce = function(text: any, rarity: any)
+		if Logic.isSpawnLine(text) then
+			return
+		end
+		local cueId = Logic.announceCue(str(rarity))
+		if cueId ~= "announce" and has(cueId) then
+			Audio.play(cueId)
+		else
+			Audio.play("announce", nil, Logic.rarityStep(str(rarity)))
+		end
+	end,
+}
+
+-- Public hooks -------------------------------------------------------------------------------------------------
+
+-- Builds the channels, preloads the short cues and starts following the server clock. Music and ambience wait for
+-- the first applySettings, so a player who turned music off never hears a note.
+-- #3389: the Mystic Pool's roll plays its sounds off the effect's own beats, so they stay in step with the liquid.
+local function followPool()
+	MysticPool.onBeat(function(beat, step, at)
+		local cue, scaleStep = Logic.poolCue(beat, step)
+		if cue ~= nil then
+			Audio.play(cue, if cue == "poolReveal" then nil else at, scaleStep)
+		end
+	end)
+end
+
+-- #4069: the new areas' own sounds, in 3D where they happen: your steps in the snow, the Blizzard Cat's gust where
+-- it lands and when it is caught, the White Tiger Cat's chime on its catch.
+local function followAreas()
+	AreaFx.onStep(function(area, at)
+		local cue = Logic.areaCue("step", area, nil)
+		if cue ~= nil then
+			Audio.play(cue, at)
+		end
+	end)
+	Signature.onArrive(function(catId, at)
+		local cue = Logic.areaCue("arrive", nil, catId)
+		if cue ~= nil then
+			Audio.play(cue, at)
+		end
+	end)
+	CatchFx.onFlavour(function(area, catId, _rarity, at)
+		local cue = Logic.areaCue("catch", area, catId)
+		if cue ~= nil then
+			Audio.play(cue, at)
+		end
+	end)
+	-- #4197: a Cat Storm's stray lands
+	StormFall.onLand(function(at)
+		Audio.play(Logic.STORM_LAND_CUE, at)
+	end)
+	-- #4197: a Fish Fountain fish or a Crate Drop crate lands
+	AdminDrops.onLand(function(kind, at)
+		local cue = Logic.ADMIN_DROP_CUES[kind]
+		if cue ~= nil then
+			Audio.play(cue, at)
+		end
+	end)
+	-- #4251: a Harvest Hollow patch pumpkin is picked near you
+	HarvestFx.onPick(function(at)
+		Audio.play(Logic.HARVEST_PICK_CUE, at)
+	end)
+	-- #5031: Tier 2's last need met (switch rankUpRightAway), one soft chime with the goal card's glow
+	require(script.Parent.Effects.RankUpPulse).onGoalReady(function()
+		Audio.play("rankUpReadyChime")
+	end)
+	-- #4251: a note pinned on the Thankful Board near you
+	HarvestFx.onPin(function(at)
+		Audio.play(Logic.HARVEST_PIN_CUE, at)
+	end)
+	-- #4251: Harvest Hollow's own song while you are in it
+	HarvestFx.onArea(function(inside)
+		inHarvest = inside
+		followAreaSong()
+	end)
+end
+
+-- #4985: the intro's cannon shot on its copy of you (Effects/Cannon.onStaged): the launch cue at the BOOM, flat,
+-- unless Skip ended the flight first.
+local function followStagedCannon()
+	local Cannon = require(script.Parent.Effects.Cannon)
+	Cannon.onStaged(function(_beat, at, model)
+		task.delay(math.max(0, at - Workspace:GetServerTimeNow()), function()
+			if Cannon.stagedLive(model) then
+				Audio.play("cannonLaunch")
+			end
+		end)
+	end)
+end
+
+-- #3690: this player's bounce on the trampoline, in 3D at the mat.
+local function followTrampoline()
+	Trampoline.onBounce(function(mat)
+		Audio.play(Logic.TRAMPOLINE_CUE, mat.Position)
+	end)
+end
+
+-- #3608: the Rummage Bin's roll ticks and lands on the effect's own beats, for the player rolling (flat).
+local function followBinRoll()
+	BinRoll.onBeat(function(beat)
+		local cue = Logic.binRollCue(beat)
+		if cue ~= nil then
+			Audio.play(cue)
+		end
+	end)
+end
+
+-- #3651: petting a cat: a soft heart chime and a short purr, both in 3D at the cat.
+local function followPetCat()
+	-- #4913: the Pal Day gift's heart chime over this player, the same chime as a petted cat's hearts (required here:
+	-- this file is at Luau's 200 top-level locals)
+	local PalDayFx = require(script.Parent.Effects.PalDayFx) :: any
+	PalDayFx.onBeat(function(beat: string, at: Vector3)
+		if beat == "gift" then
+			Audio.play("mouseHeart", at)
+		end
+	end)
+	PetCat.onBeat(function(beat, at)
+		local cue, loop, seconds = Logic.petCatCue(beat)
+		if cue ~= nil then
+			Audio.play(cue, at)
+		end
+		if loop ~= nil then
+			task.delay(seconds, Audio.loop(loop, at))
+		end
+	end)
+end
+
+-- #3846: a Legendary or Mythic trait roll's cutscene: its fanfare, flat.
+local function followBigTrait()
+	local sceneToken = 0
+	BigTraitCut.onBeat(function(beat, rarity)
+		-- #3942: a Mythic or Secret roll's whole scene ducks the music from "hush" to "done" (capped by the cut's own)
+		if beat == "hush" or beat == "done" then
+			sceneToken += 1
+			local token = sceneToken
+			if beat == "hush" then
+				music.ducks["traitScene"] = SCENE_DUCK
+			else
+				music.ducks["traitScene"] = nil
+			end
+			applyDucks(music)
+			if beat == "hush" then
+				task.delay(SCENE_DUCK_LIMIT, function()
+					if token == sceneToken then
+						music.ducks["traitScene"] = nil
+						applyDucks(music)
+					end
+				end)
+			end
+			return
+		end
+		local cue = Logic.bigTraitCue(beat, rarity)
+		if cue ~= nil then
+			Audio.play(cue)
+		end
+	end)
+end
+
+-- #4104: the Fusion Observatory's window, flat (Logic.fusionCue).
+local function followFusion()
+	FusionFx.onBeat(function(beat, coat)
+		local cue = Logic.fusionCue(beat, coat)
+		if cue ~= nil then
+			Audio.play(cue)
+		end
+	end)
+end
+
+-- Derek 2026-11-13: the Rift Run (Effects/RiftRun): the music ducks from "hush" to "done" (capped by the cut's own
+-- cap), and each beat its sound, flat (Logic.riftRunCue): a gate the pool's step chime a note higher each tier.
+local function followRiftRun()
+	local token = 0
+	RiftRun.onBeat(function(beat, step, tier)
+		if beat == "hush" or beat == "done" then
+			token += 1
+			local mine = token
+			if beat == "hush" then
+				music.ducks["riftRun"] = SCENE_DUCK
+			else
+				music.ducks["riftRun"] = nil
+			end
+			applyDucks(music)
+			if beat == "hush" then
+				task.delay(RIFT_DUCK_LIMIT, function()
+					if mine == token then
+						music.ducks["riftRun"] = nil
+						applyDucks(music)
+					end
+				end)
+			end
+			return
+		end
+		local cue, scaleStep = Logic.riftRunCue(beat, step, tier)
+		if cue ~= nil then
+			Audio.play(cue, nil, scaleStep)
+		end
+	end)
+end
+
+-- #4062: the Dragon Keep's stage-up cutscene: the music ducks from "hush" to "done" (and comes back by itself after
+-- DRAGON_DUCK_LIMIT if a "done" is lost) and each beat plays its cue; the card deal's flips after it.
+local function followDragonRise()
+	local token = 0
+	DragonRise.onBeat(function(beat, stage)
+		if beat == "hush" or beat == "done" then
+			token += 1
+			local mine = token
+			if beat == "hush" then
+				music.ducks["dragonRise"] = SCENE_DUCK
+			else
+				music.ducks["dragonRise"] = nil
+			end
+			applyDucks(music)
+			if beat == "hush" then
+				task.delay(DRAGON_DUCK_LIMIT, function()
+					if mine == token then
+						music.ducks["dragonRise"] = nil
+						applyDucks(music)
+					end
+				end)
+			end
+			return
+		end
+		local cue, after = Logic.dragonRiseCue(beat, stage)
+		if cue ~= nil then
+			Audio.play(cue)
+		end
+		if after ~= nil then
+			local mine = token
+			task.delay(Logic.DRAGON_FANFARE_AFTER, function()
+				if mine == token then -- not after a skip
+					Audio.play(after)
+				end
+			end)
+		end
+	end)
+	CardFlip.onBeat(function(beat, _index, rarity)
+		local cue = Logic.cardFlipCue(beat, rarity)
+		if cue ~= nil then
+			Audio.play(cue)
+		end
+	end)
+end
+
+-- #3430: the pool's first walk-up cutscene, on the pool's own chimes (in 3D at the pool, the rise flat).
+local function followPoolIntro()
+	MysticIntroCut.onBeat(function(beat, step, at)
+		local cue, scaleStep = Logic.poolIntroCue(beat, step)
+		if cue ~= nil then
+			Audio.play(cue, if cue == "poolReveal" then nil else at, scaleStep)
+		end
+	end)
+end
+
+-- #4280: "Trading unlocked!" (Effects/TradeUnlock): the lock springs open on the gift chime and the icon lands on
+-- the Trade tile with the badge blip, both flat.
+local function followTradeUnlock()
+	TradeUnlock.onBeat(function(beat)
+		Audio.play(if beat == "open" then "uiGiftReady" else "uiBadge")
+	end)
+end
+
+-- #4325: an admin event's loud start (Effects/AdminFlash): a wheel tick on each of 3, 2, 1, the wheel's win fanfare as
+-- it starts, the gift chime as its last minute begins and the badge blip on its end card, all flat.
+local ADMIN_FLASH_CUES =
+	{ tick = "uiSpinTick", start = "uiSpinWin", last = "uiGiftReady", over = "uiBadge" }
+local function followAdminFlash()
+	AdminFlash.onBeat(function(beat)
+		Audio.play(ADMIN_FLASH_CUES[beat])
+	end)
+end
+
+function Audio.start()
+	if started then
+		return
+	end
+	started = true
+	build()
+	-- #5068 (fxAfterLoad): the cue downloads wait until the loading screen has gone, so a phone's line carries the
+	-- world first; switch off, they start at once as before
+	task.spawn(LoadGate.whenLoaded, preload)
+	task.spawn(function()
+		while true do
+			task.wait(REAP_EVERY)
+			reapIdleVoices()
+		end
+	end)
+	task.spawn(followClock)
+	followTags()
+	followStrays()
+	followSplashes()
+	followBanners()
+	followGamepadFocus()
+	followHolds()
+	followHeldCats()
+	followCharacters()
+	followPlots()
+	followShopCats()
+	followBeats()
+	followPool()
+	followAreas()
+	followPoolIntro()
+	followTradeUnlock()
+	followAdminFlash()
+	followBigTrait()
+	followRiftRun()
+	followDragonRise()
+	followFusion()
+	followBinRoll()
+	followTrampoline()
+	followStagedCannon()
+	followPetCat()
+	task.spawn(followSecuredRare)
+	task.spawn(followCatchWords)
+end
+
+-- Applies the player's settings (ProfileSync `settings`): music off silences Music; sound off silences Ambience,
+-- Sfx and Ui. The music slider scales Music and the sound slider the other three; a switch that is off wins, and a
+-- slider at 0 counts as off. A muted channel loads nothing. Call it with the first settings and again whenever they change (the
+-- settings switches); a call with unchanged settings changes nothing, so calling it more often is harmless.
+function Audio.applySettings(settings: Settings)
+	build()
+	local musicWas, ambienceWas, sfxWas = enabled.Music, enabled.Ambience, enabled.Sfx
+	for name, def in GROUPS do
+		local isMusic = def.mutedBy == "music"
+		local switch = if isMusic then settings.music else settings.sfx
+		local gain = Logic.sliderGain(if isMusic then settings.musicVolume else settings.sfxVolume)
+		local on = switch ~= false and gain > 0
+		enabled[name] = on
+		groups[name].Volume = Logic.groupVolume(def.volume, on, gain)
+	end
+	if enabled.Sfx ~= sfxWas then
+		refreshCarry()
+	end
+	if enabled.Sfx ~= sfxWas or enabled.Ambience ~= ambienceWas then
+		refreshWorldLoops()
+	end
+	if not ready then
+		ready = true
+		refreshMusic(false)
+		refreshAmbience()
+		refreshWorldLoops()
+		followServerState()
+		return
+	end
+	if enabled.Music ~= musicWas then
+		refreshMusic(false)
+	end
+	if enabled.Ambience ~= ambienceWas then
+		refreshAmbience()
+	end
+end
+
+-- #1541: the first tutorial steps. Call it on every ProfileSync with the player's tutorialStep and whether the Tutorial
+-- tile is on (its x turns it off, which skips the tutorial). Swaps the music only when the state changes, and chimes
+-- when a step is done.
+function Audio.setTutorial(step: number?, tileOn: boolean)
+	local configured = (Config :: any).StarterCatTutorialStep
+	local lastStep = if type(configured) == "number" then configured else 5
+	local active = Logic.tutorialSteps(step, lastStep, tileOn)
+	if step ~= nil then
+		if tileOn and Logic.tutorialStepDone(lastTutorialStep, step) then
+			Audio.play("tutorialStepDone")
+		end
+		lastTutorialStep = step
+	end
+	if active ~= stepsActive then
+		stepsActive = active
+		refreshMusic(false)
+	end
+end
+
+-- #1168 row 2: the Jukebox Pass song picked (shared/Jukebox track cue), or nil for the rotation. Call it on every
+-- ProfileSync; the music only changes when the pick does. The tutorial song still comes first.
+function Audio.setJukebox(cueId: string?)
+	if cueId ~= jukeboxCue then
+		jukeboxCue = cueId
+		refreshMusic(false)
+	end
+end
+
+-- #2077 Jukebox Shuffle: while given a list of Jukebox track cues, the music plays those that have a file in random
+-- order, the next starting as a song ends and never the same twice in a row. It replaces the rotation like a pick
+-- does; the tutorial song still comes first. nil goes back to setJukebox's pick or the rotation. Call it on every
+-- ProfileSync; the music only changes when the list does.
+function Audio.setJukeboxShuffle(cues: { string }?)
+	if not Logic.sameList(cues, shuffleCues) then
+		shuffleCues = if cues ~= nil then table.clone(cues) else nil
+		lastSong = nil
+		refreshMusic(false)
+	end
+end
+
+-- Whether the player is carrying a cat (ProfileSync `carrying` is set): a quiet purr plays while it is.
+-- Call it on every ProfileSync; it only starts or stops the purr when the state changes.
+function Audio.setCarrying(isCarrying: boolean)
+	if isCarrying ~= carrying then
+		carrying = isCarrying
+		refreshCarry()
+	end
+end
+
+-- #2651: walking into an area with its own song switches to it at once; walking out waits AREA_LEAVE_DELAY, so a
+-- step through a gap between the area's zone boxes does not bounce the music. #4251: Harvest Hollow counts as an
+-- area while Effects/HarvestFx says you are in it (Logic.songZone).
+function followAreaSong()
+	local target = Logic.areaSongFor(Logic.songZone(zone, inHarvest), has)
+	if target == areaSong then
+		return
+	end
+	if target ~= nil then
+		areaLeaveRun += 1 -- stepping back in cancels a pending leave
+		areaSong = target
+		refreshMusic(false)
+		return
+	end
+	areaLeaveRun += 1
+	local run = areaLeaveRun
+	task.delay(AREA_LEAVE_DELAY, function()
+		-- only the latest leave counts, and only if the zone now (not the one left) still has no area song
+		if
+			run == areaLeaveRun
+			and areaSong ~= nil
+			and Logic.areaSongFor(Logic.songZone(zone, inHarvest), has) == nil
+		then
+			areaSong = nil
+			refreshMusic(false)
+		end
+	end)
+end
+
+-- The zone the ambience follows: "Cafe", "Alley", "Park" (later "Neighbourhood", "Woods", "Sewer"); nil for none.
+-- Crossing between the safe street and a catching area is silent since 2026-11-02: its chimes went with the Safe
+-- zone chip and toast (Derek 2026-10-28: "no need for the safe area reached banner either", UI PR #669).
+function Audio.setZone(newZone: string?)
+	zone = newZone
+	refreshAmbience()
+	followAreaSong()
+end
+
+-- Connects every moment Audio knows to its sounds. `moments` maps a moment name to a signal with :Connect
+-- (src/client/Moments.luau once the engineer adds it); moments it does not have yet are skipped.
+function Audio.bindMoments(moments: { [string]: any })
+	for name, handler in HANDLERS do
+		local signal = moments[name]
+		if signal ~= nil then
+			signal:Connect(handler)
+		end
+	end
+end
+
+return Audio

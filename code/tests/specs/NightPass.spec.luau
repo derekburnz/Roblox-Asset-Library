@@ -1,0 +1,159 @@
+--!strict
+-- NightPass.luau (#2692): a beginner before their first check-in is untouched by the night.
+return function()
+	local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+	local NightPass = require(Shared.NightPass)
+	local Config = require(Shared.Config)
+	local Economy = require(Shared.Economy)
+	local LiveFlags = require(Shared.LiveFlags)
+	local ProfileSchema = require(Shared.ProfileSchema)
+
+	describe("NightPass", function()
+		it(
+			"holds until the first check-in moves the tutorial to TutorialGuaranteedStrayStep",
+			function()
+				expect(Config.TutorialGuaranteedStrayStep).to.equal(2)
+				expect(NightPass.has(0)).to.equal(true)
+				expect(NightPass.has(1)).to.equal(true)
+				expect(NightPass.has(2)).to.equal(false)
+				expect(NightPass.has(5)).to.equal(false)
+			end
+		)
+
+		it("opens the areas for its holder only", function()
+			expect(NightPass.open(true, false)).to.equal(true)
+			expect(NightPass.open(true, true)).to.equal(true)
+			expect(NightPass.open(false, true)).to.equal(true)
+			expect(NightPass.open(false, false)).to.equal(false)
+		end)
+
+		it(
+			"keeps a Tier 1 save in its first session, only while the nightCatch switch is on (#3035)",
+			function()
+				expect(NightPass.first(1, 1, true)).to.equal(true)
+				expect(NightPass.first(1, 0, true)).to.equal(true)
+				expect(NightPass.first(1, 1, false)).to.equal(false) -- the switch off: today's night
+				expect(NightPass.first(2, 1, true)).to.equal(false) -- ranked up
+				expect(NightPass.first(1, 2, true)).to.equal(false) -- a returning player
+			end
+		)
+
+		it("holds for a beginner whatever the switch, and for the first session with it", function()
+			expect(NightPass.holds(0, 1, 1, false)).to.equal(true)
+			expect(NightPass.holds(1, 3, 9, false)).to.equal(true)
+			expect(NightPass.holds(2, 1, 1, false)).to.equal(false)
+			expect(NightPass.holds(2, 1, 1, true)).to.equal(true)
+			expect(NightPass.holds(5, 1, 1, true)).to.equal(true)
+			expect(NightPass.holds(5, 2, 1, true)).to.equal(false)
+			expect(NightPass.holds(5, 1, 2, true)).to.equal(false)
+		end)
+
+		it("reads a save's tier and session count", function()
+			local profile: any = ProfileSchema.template(1700000000)
+			profile.tutorialStep = 3
+			profile.stats.sessions = 1
+			profile.stats.catsCaught = 2 -- two caught by hand: past the walk-through's trip out (#3659, #4494)
+			-- #4916: and a Park cat, so the walk-through's pass is over too
+			for _, cat in (require(Shared.Catalog) :: any).cats do
+				if cat.area == NightPass.PARK_AREA then
+					profile.collection[cat.id] = { count = 1 }
+					break
+				end
+			end
+			expect(Economy.tier(profile)).to.equal(1)
+			expect(NightPass.of(profile, true)).to.equal(true)
+			expect(NightPass.firstOf(profile, true)).to.equal(true)
+			expect(NightPass.of(profile, false)).to.equal(false)
+			profile.stats.sessions = 2
+			expect(NightPass.of(profile, true)).to.equal(false)
+			profile.tutorialStep = 0 -- a beginner again: the #2692 pass, not the first-session one
+			expect(NightPass.of(profile, false)).to.equal(true)
+			expect(NightPass.firstOf(profile, false)).to.equal(false)
+		end)
+
+		it(
+			"keeps a Tier 1 save that has checked in a cat but never caught one by hand, switch or not (#3659)",
+			function()
+				expect(NightPass.learner(2, 1, 0)).to.equal(true)
+				expect(NightPass.learner(5, 1, 0)).to.equal(true) -- stood at the cannon by the last step
+				expect(NightPass.learner(5, 1, 1)).to.equal(true) -- #4494: one by hand, the second cat's trip still ahead
+				expect(NightPass.learner(5, 1, 2)).to.equal(false) -- the second cat caught by hand
+				expect(NightPass.learner(5, 2, 0)).to.equal(false) -- ranked up
+				expect(NightPass.learner(1, 1, 0)).to.equal(false) -- a beginner holds #2692's pass instead
+				expect(NightPass.holds(5, 1, 9, false, 0)).to.equal(true) -- any session, the switch off
+				expect(NightPass.holds(5, 1, 9, false, 1)).to.equal(true) -- #4494
+				expect(NightPass.holds(5, 1, 9, false, 2)).to.equal(false)
+				expect(NightPass.holds(5, 1, 9, false)).to.equal(false) -- not asked: as before
+			end
+		)
+
+		it("reads a save's bowl cats apart from cats caught by hand (#3659)", function()
+			local profile: any = ProfileSchema.template(1700000000)
+			profile.tutorialStep = 5
+			profile.stats.sessions = 3
+			profile.stats.catsCaught = 1
+			profile.stats.baitsTamed = 1 -- the one cat is the bait bowl's
+			expect(NightPass.learnerOf(profile)).to.equal(true)
+			expect(NightPass.of(profile, false)).to.equal(true)
+			expect(NightPass.nightCatOf(profile, false)).to.equal(true)
+			expect(NightPass.firstOf(profile, false)).to.equal(false)
+			profile.stats.catsCaught = 2 -- the first caught by hand: the second cat's trip is still ahead (#4494)
+			expect(NightPass.learnerOf(profile)).to.equal(true)
+			expect(NightPass.of(profile, false)).to.equal(true)
+			profile.stats.catsCaught = 3 -- the second was caught by hand and checked in
+			expect(NightPass.learnerOf(profile)).to.equal(false)
+			-- #4916: still on the walk-through (Tier 1, no Park cat), so the pass and the night cat stay
+			expect(NightPass.of(profile, false)).to.equal(true)
+			expect(NightPass.nightCatOf(profile, false)).to.equal(true)
+		end)
+
+		it(
+			"keeps the walk-through's pass up to the Park, and a night cat at Tier 1 (#4916)",
+			function()
+				expect(NightPass.walk(1, 0)).to.equal(true)
+				expect(NightPass.walk(2, 0)).to.equal(true) -- ranked up, the Park flight still ahead
+				expect(NightPass.walk(2, 1)).to.equal(false) -- a Park cat caught
+				expect(NightPass.walk(3, 0)).to.equal(false)
+				expect(NightPass.holds(5, 2, 9, false, 2, 0)).to.equal(true)
+				expect(NightPass.holds(5, 2, 9, false, 2, 1)).to.equal(false)
+				expect(NightPass.holds(5, 2, 9, false, 2)).to.equal(false) -- not asked: as before
+				local Catalog = require(Shared.Catalog) :: any
+				local parkId: string? = nil
+				local alleyId: string? = nil
+				for _, cat in Catalog.cats do
+					if cat.area == "park" and parkId == nil then
+						parkId = cat.id
+					elseif cat.area == "alley" and alleyId == nil then
+						alleyId = cat.id
+					end
+				end
+				assert(parkId ~= nil and alleyId ~= nil, "a Park and an Alleyway cat")
+				expect(NightPass.parkCats(nil)).to.equal(0)
+				expect(NightPass.parkCats({ [alleyId] = {} })).to.equal(0)
+				expect(NightPass.parkCats({ [alleyId] = {}, [parkId] = {} })).to.equal(1)
+				local profile: any = ProfileSchema.template(1700000000)
+				profile.tutorialStep = 5
+				profile.stats.sessions = 4
+				profile.stats.catsCaught = 4
+				expect(NightPass.of(profile, false)).to.equal(true)
+				expect(NightPass.nightCatOf(profile, false)).to.equal(true)
+				profile.collection[parkId] = { count = 1 }
+				expect(NightPass.walkOf(profile)).to.equal(false)
+				expect(NightPass.of(profile, false)).to.equal(false)
+				expect(NightPass.nightCatOf(profile, false)).to.equal(false)
+			end
+		)
+
+		it("names the switch and the two analytics markers", function()
+			expect(NightPass.FLAG).to.equal("nightCatch")
+			expect(table.find(LiveFlags.KEYS, NightPass.FLAG) ~= nil).to.equal(true)
+			expect(LiveFlags.OFF_BY_DEFAULT[NightPass.FLAG]).to.equal(true)
+			expect(NightPass.CAUGHT).to.equal("night_catch_first")
+			expect(NightPass.LEFT_SUFFIX).to.equal("_nc")
+		end)
+
+		it("names the player attribute the client reads", function()
+			expect(NightPass.ATTRIBUTE).to.equal("NightPass")
+		end)
+	end)
+end

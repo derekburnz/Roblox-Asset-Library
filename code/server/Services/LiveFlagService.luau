@@ -1,0 +1,153 @@
+--!strict
+-- Reads the live switches (shared/LiveFlags, #2119) from the CatCafe_Flags DataStore every LiveFlags.CHECK_SECONDS
+-- and answers `on(key)` for the services that check them. Studio playtests read the _dev store, and without "Enable
+-- Studio Access to API Services" (DataService.saves() false) nothing is read and the switches keep LiveFlags.defaults()
+-- (every feature on but tradeFish, #2745); Debug.flag sets a switch in this server only. A read that fails keeps what
+-- this server had and is warned once until reads work again.
+--
+-- Roblox terms: a DataStore keeps values by key across servers; GetAsync with UseCache false skips the 4 second
+-- read cache, so a change is seen at the next check.
+
+local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local DataService = require(script.Parent.DataService)
+local Holdout = require(ReplicatedStorage.Shared.Holdout)
+local LiveFlags = require(ReplicatedStorage.Shared.LiveFlags)
+
+local LiveFlagService = {}
+
+local SUFFIX = if RunService:IsStudio() then "_dev" else ""
+
+local current: LiveFlags.Flags = LiveFlags.defaults()
+local overrides: { [string]: boolean } = {} -- Studio only (Debug.flag)
+local failing = false
+local readOnce = false -- a read of the store has come back in this server
+
+-- Whether feature `key` (one of LiveFlags.KEYS) is on in this server. #5499: with `player`, a switch the holdout holds
+-- back (shared/Holdout) reads off for a player held this session (the Holdout attribute Telemetry sets at load).
+function LiveFlagService.on(key: string, player: Player?): boolean
+	-- (Derek 2026-11-20 13:04 UTC, "finish up with all A/B tests": only while the holdout switch itself is on)
+	if
+		player ~= nil
+		and Holdout.gated(key)
+		and player:GetAttribute(Holdout.ATTR) == true
+		and LiveFlagService.on(Holdout.FLAG)
+	then
+		return false
+	end
+	local override = overrides[key]
+	if override ~= nil then
+		return override
+	end
+	return current[key] ~= false
+end
+
+-- #3063: each switch as a ReplicatedStorage attribute (LiveFlags.ATTRIBUTE_PREFIX .. key), for the client's own
+-- show and hide (the Market's Swift Paws row); the server always asks `on`.
+local function publish()
+	for _, key in LiveFlags.KEYS do
+		ReplicatedStorage:SetAttribute(LiveFlags.ATTRIBUTE_PREFIX .. key, LiveFlagService.on(key))
+	end
+end
+
+local function live(): boolean
+	return not RunService:IsStudio() or DataService.saves()
+end
+
+-- #3627: whether the switches are the store's yet. A new server answers `on` from LiveFlags.defaults() until its
+-- first read comes back (a few seconds, longer when DataStore requests queue, never if they keep failing), so a
+-- feature that is on by default and switched off live would show to the first players of every new server. What
+-- must not show by mistake asks this first. True at once where nothing is read (Studio without API access).
+function LiveFlagService.ready(): boolean
+	return readOnce or not live()
+end
+
+-- #4613: tells the clients the switches are the store's (or as good as they will get: a first read that failed keeps
+-- the defaults, and waiting longer would not change them). Set once, never cleared.
+local function markReady()
+	if ReplicatedStorage:GetAttribute(LiveFlags.READY_ATTRIBUTE) ~= true then
+		ReplicatedStorage:SetAttribute(LiveFlags.READY_ATTRIBUTE, true)
+	end
+end
+
+local function read()
+	if not live() then
+		return
+	end
+	local ok, raw = pcall(function()
+		local store = DataStoreService:GetDataStore(LiveFlags.STORE .. SUFFIX)
+		local options = Instance.new("DataStoreGetOptions")
+		options.UseCache = false
+		local values: { [string]: any } = {}
+		for _, key in LiveFlags.KEYS do
+			values[key] = store:GetAsync(key, options)
+		end
+		return values
+	end)
+	if not ok then
+		if not failing then
+			failing = true
+			-- only the message's start: DataStore errors can carry ids, and logs are public
+			warn(
+				"[LiveFlagService] reading CatCafe_Flags failed, keeping the switches as they were"
+			)
+		end
+		return
+	end
+	failing = false
+	readOnce = true
+	local new = LiveFlags.parse(raw)
+	for _, key in LiveFlags.changed(current, new) do
+		print(
+			string.format("[LiveFlagService] %s is now %s", key, if new[key] then "on" else "off")
+		)
+	end
+	current = new
+	publish()
+	markReady() -- #4607
+end
+
+-- Studio only: switches named in the Workspace attribute DebugFlagsOn ("petCats,fusion", set in edit mode before
+-- Play) are on from this server's first moment, for a look the client takes once at its start (the menu family).
+LiveFlagService.DEBUG_ATTRIBUTE = "DebugFlagsOn"
+
+function LiveFlagService.start()
+	if RunService:IsStudio() then
+		local named = game:GetService("Workspace"):GetAttribute(LiveFlagService.DEBUG_ATTRIBUTE)
+		if type(named) == "string" then
+			for key in string.gmatch(named, "[%w]+") do
+				if table.find(LiveFlags.KEYS, key) ~= nil then
+					overrides[key] = true
+				end
+			end
+		end
+	end
+	publish()
+	if not live() then
+		markReady() -- nothing to read (Studio without API access): the defaults and overrides are final
+	end
+	task.spawn(function()
+		while true do
+			read()
+			markReady() -- #4613: after the first try, whether it came back or failed
+			task.wait(LiveFlags.CHECK_SECONDS)
+		end
+	end)
+end
+
+-- Studio only (Debug.flag): switch `key` in this server, over the store (nil goes back to it). Returns whether it is on.
+function LiveFlagService.debugSet(key: string, on: boolean?): boolean
+	assert(RunService:IsStudio(), "debugSet is Studio only")
+	assert(table.find(LiveFlags.KEYS, key) ~= nil, "not a live switch: " .. key)
+	if on == nil then
+		overrides[key] = nil
+	else
+		overrides[key] = on
+	end
+	publish()
+	return LiveFlagService.on(key)
+end
+
+return LiveFlagService

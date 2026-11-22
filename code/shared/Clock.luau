@@ -1,0 +1,218 @@
+--!strict
+-- Pure day and night math (data-model section 9). Pure: no Roblox services, so tests can require it.
+-- `t` is seconds since Config.ClockEpoch (#1437: one global clock for every server; before it, since the server
+-- started). The clock starts in day with ServerStartDaySeconds left, then loops night (NightLengthSeconds) and day
+-- (DayLengthSeconds) forever, so each sunrise falls on a whole number of cycles from the start.
+
+local Config = require(script.Parent.Config)
+local Types = require(script.Parent.Types)
+
+local Clock = {}
+
+-- v0.9 (F66): what Travel, a catch, a rescue and a shove answer while the catching areas are closed at night, and
+-- the toast for the sweep home. The dusk and sunrise banners are the client's, from the Clock attributes.
+Clock.CLOSED_TEXT = "The areas are closed at night. They open at sunrise."
+Clock.SENT_HOME_TEXT = "Night fell, so you headed home."
+
+-- The phase at time t and how many seconds of it are left.
+function Clock.phaseAt(t: number): (Types.ClockPhase, number)
+	local time = math.max(0, t)
+	if time < Config.ServerStartDaySeconds then
+		return "day", Config.ServerStartDaySeconds - time
+	end
+	local cycle = Config.NightLengthSeconds + Config.DayLengthSeconds
+	local into = (time - Config.ServerStartDaySeconds) % cycle
+	if into < Config.NightLengthSeconds then
+		return "night", Config.NightLengthSeconds - into
+	end
+	return "day", cycle - into
+end
+
+-- #2562 (Derek2: "see if lots of people leave during night time"): where in the clock a player left, for the
+-- left_in_phase event. `phase` and `left` (its seconds to go) as the server's clock has them. The day's last
+-- DuskWarningSeconds count as "dusk" (the "Night falls" banner). The second value is the phase and which third of it
+-- by seconds since it began: "night_early" (just after the areas close), "night_mid", "night_late", and so on.
+function Clock.leavePhase(phase: Types.ClockPhase, left: number): (string, string)
+	local name: string, length: number
+	if phase == "night" then
+		name, length = "night", Config.NightLengthSeconds
+	elseif left <= Config.DuskWarningSeconds then
+		name, length = "dusk", Config.DuskWarningSeconds
+	else
+		name, length = "day", Config.DayLengthSeconds - Config.DuskWarningSeconds
+		left -= Config.DuskWarningSeconds
+	end
+	local into = math.clamp(length - left, 0, length)
+	local third = math.min(2, math.floor(3 * into / length))
+	return name, name .. "_" .. ({ "early", "mid", "late" })[third + 1]
+end
+
+-- Seconds of night between clock times t0 and t1 (t0 <= t1), for settling income across phase boundaries
+-- (data-model section 11). The first stretch of day before the first night counts as day.
+function Clock.nightSecondsBetween(t0: number, t1: number): number
+	local function nightBefore(t: number): number
+		local time = math.max(0, t - Config.ServerStartDaySeconds)
+		local cycle = Config.NightLengthSeconds + Config.DayLengthSeconds
+		local full = math.floor(time / cycle)
+		return full * Config.NightLengthSeconds
+			+ math.min(time - full * cycle, Config.NightLengthSeconds)
+	end
+	if t1 <= t0 then
+		return 0
+	end
+	return nightBefore(t1) - nightBefore(t0)
+end
+
+-- F88 (luck-and-rare-moments.md 1c): the number of the day at time t, counting the server's first day as 1; at night
+-- it is the day that just ended.
+function Clock.dayAt(t: number): number
+	local time = math.max(0, t)
+	if time < Config.ServerStartDaySeconds + Config.NightLengthSeconds then
+		return 1
+	end
+	local cycle = Config.NightLengthSeconds + Config.DayLengthSeconds
+	return 2 + math.floor((time - Config.ServerStartDaySeconds - Config.NightLengthSeconds) / cycle)
+end
+
+-- Seconds since the server started at which day `day` begins: 0 for the first, a sunrise for every later one.
+function Clock.sunriseOf(day: number): number
+	if day <= 1 then
+		return 0
+	end
+	local cycle = Config.NightLengthSeconds + Config.DayLengthSeconds
+	return Config.ServerStartDaySeconds + Config.NightLengthSeconds + (math.floor(day) - 2) * cycle
+end
+
+-- #1572 (luck-and-rare-moments.md 1g): a day's kinds, each rolled on its own (or forced on by a drop, #1974) from the global day number with its
+-- own salt (the Park-Miller fold of CornerShop.seed), so every server has the same day and the kinds don't move
+-- together. Day 0 and before (the clock before ClockEpoch) is a plain day.
+export type DayKinds = { lucky: boolean, golden: boolean, rainbow: boolean }
+
+local MODULUS = 2147483647
+local MULTIPLIER = 48271
+local SALTS = { lucky = 0x6C75636B, golden = 0x676F6C64, rainbow = 0x7261696E } -- "luck", "gold", "rain"
+
+-- A number in [0, 1) for `day` and `salt`, the same everywhere.
+local function dayRoll(day: number, salt: number): number
+	local hash = (salt + math.floor(day) % MODULUS) % MODULUS
+	for _ = 1, 3 do
+		hash = (hash * MULTIPLIER) % MODULUS
+		hash = bit32.bxor(hash, bit32.rshift(hash, 13))
+	end
+	hash = (hash * MULTIPLIER) % MODULUS
+	return hash / MODULUS
+end
+
+export type ForcedDay = { kind: string, from: number, to: number }
+
+-- Whether a Saturday drop forces `kind` on for `day` (#1974): its sunrise, in UTC unix seconds, inside a window of
+-- `forced` (Config.ForcedDays unless a test passes its own).
+function Clock.isForced(day: number, kind: string, forced: { ForcedDay }?): boolean
+	if day < 1 then
+		return false
+	end
+	local at = Config.ClockEpoch + Clock.sunriseOf(day)
+	for _, window in forced or Config.ForcedDays do
+		if window.kind == kind and at >= window.from and at < window.to then
+			return true
+		end
+	end
+	return false
+end
+
+function Clock.dayKinds(day: number, forced: { ForcedDay }?): DayKinds
+	if day < 1 then
+		return { lucky = false, golden = false, rainbow = false }
+	end
+	return {
+		lucky = Clock.isLuckyDay(day, forced),
+		golden = dayRoll(day, SALTS.golden) < Config.GoldenDayChance
+			or Clock.isForced(day, "golden", forced),
+		rainbow = dayRoll(day, SALTS.rainbow) < Config.RainbowDayChance
+			or Clock.isForced(day, "rainbow", forced),
+	}
+end
+
+-- Whether `day` is lucky: Clock.dayKinds(day).lucky without the table (Pace and the HUD ask often).
+function Clock.isLuckyDay(day: number, forced: { ForcedDay }?): boolean
+	if day < 1 then
+		return false
+	end
+	return dayRoll(day, SALTS.lucky) < Config.LuckyDayChance or Clock.isForced(day, "lucky", forced)
+end
+
+-- The next Lucky Day after `day`. #1572 drops the countdown (the days are random now); the Clock folder still carries
+-- it until the HUD stops reading it. Looks at most 200 days ahead (a Lucky Day 1 in 3).
+function Clock.nextLuckyDay(day: number): number
+	local from = math.max(math.floor(day), 0)
+	for next = from + 1, from + 200 do
+		if Clock.isLuckyDay(next) then
+			return next
+		end
+	end
+	return from + 200
+end
+
+-- #4197 (Golden Hour, an admin event): every gold and rainbow chance times these while it runs, day or night, each
+-- boosted chance at most `coatCap`. The server's EventService sets them (setAdminCoats); 1 with none.
+local adminGold, adminRainbow, coatCap = 1, 1, 1
+
+function Clock.setAdminCoats(gold: number, rainbow: number, cap: number)
+	local function factor(value: number): number
+		return if value == value and value > 1 and value < math.huge then value else 1
+	end
+	adminGold, adminRainbow = factor(gold), factor(rainbow)
+	coatCap = if cap == cap and cap > 0 then math.min(cap, 1) else 1
+end
+
+local function boosted(chance: number, factor: number): number
+	if factor <= 1 then
+		return chance
+	end
+	return math.max(chance, math.min(chance * factor, coatCap))
+end
+
+-- The gold chance `chance` on a day of `kinds`: x GoldenDayGoldMultiplier on a Golden Day, and x Golden Hour's.
+function Clock.goldChance(chance: number, kinds: DayKinds?): number
+	local day = if kinds ~= nil and kinds.golden
+		then chance * Config.GoldenDayGoldMultiplier
+		else chance
+	return boosted(day, adminGold)
+end
+
+-- The rainbow chance `chance` on a day of `kinds`: x RainbowDayMultiplier on a Rainbow Day (rainbow luck on top),
+-- and x Golden Hour's rainbow boost.
+function Clock.rainbowChance(chance: number, kinds: DayKinds?): number
+	local day = if kinds ~= nil and kinds.rainbow
+		then chance * Config.RainbowDayMultiplier
+		else chance
+	return boosted(day, adminRainbow)
+end
+
+-- #2184 (Derek2, 2026-11-07: a friend joined a fresh server at night; "make it start at day"): a new server opens by
+-- day. Booted at `t` (the global clock), it shows day until the returned time, then follows the global clock again:
+-- through the night under way, or through the coming night when less than FIRST_DAY_MIN_SECONDS of day is left. The
+-- global day (its number, kinds, shops and pity timers) doesn't move; only this server skips that one night. Returns
+-- `t` when the server can open on the global phase as it is.
+Clock.FIRST_DAY_MIN_SECONDS = 120
+
+function Clock.firstDayUntil(t: number): number
+	local phase, left = Clock.phaseAt(t)
+	if phase == "night" then
+		return math.max(0, t) + left
+	end
+	if left < Clock.FIRST_DAY_MIN_SECONDS then
+		return math.max(0, t) + left + Config.NightLengthSeconds
+	end
+	return t
+end
+
+-- Seconds since the server started at which a phase begins its first full run (used to jump the clock).
+function Clock.startOf(phase: Types.ClockPhase): number
+	if phase == "night" then
+		return Config.ServerStartDaySeconds
+	end
+	return Config.ServerStartDaySeconds + Config.NightLengthSeconds
+end
+
+return Clock

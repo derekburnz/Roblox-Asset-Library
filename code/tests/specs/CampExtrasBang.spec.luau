@@ -1,0 +1,132 @@
+--!strict
+-- UI/Components/CampExtrasLogic.bangShows: when the camp stations' red "!" (ReadyBang) shows
+-- (camp-stations.md section 1; #1133, #1154, #1232).
+return function()
+	local Client =
+		game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"):WaitForChild("Client")
+	local CampExtrasLogic = require(
+		Client:WaitForChild("UI"):WaitForChild("Components"):WaitForChild("CampExtrasLogic")
+	) :: any
+
+	local function state(picnic: number, yard: number, pond: number, pondOpen: boolean): any
+		return {
+			day = 20000,
+			picnic = { open = true, held = picnic },
+			yardSale = { open = true, held = yard },
+			pond = { open = pondOpen, held = pond },
+			lostFound = { open = false, held = 0 },
+		}
+	end
+
+	describe("CampExtrasLogic.bangShows", function()
+		it("shows over a station that holds something to claim", function()
+			local s = state(1, 1, 14, true)
+			expect(CampExtrasLogic.bangShows(s, "picnic")).to.equal(true)
+			expect(CampExtrasLogic.bangShows(s, "yardSale")).to.equal(true)
+			expect(CampExtrasLogic.bangShows(s, "pond")).to.equal(true)
+		end)
+
+		it("hides once claimed or while it refills", function()
+			local s = state(0, 0, 0, true)
+			expect(CampExtrasLogic.bangShows(s, "picnic")).to.equal(false)
+			expect(CampExtrasLogic.bangShows(s, "yardSale")).to.equal(false)
+			expect(CampExtrasLogic.bangShows(s, "pond")).to.equal(false)
+		end)
+
+		it("hides over a station the player hasn't opened, even holding something", function()
+			expect(CampExtrasLogic.bangShows(state(0, 0, 6, false), "pond")).to.equal(false)
+		end)
+
+		it("shows nothing before the first state or for a broken one", function()
+			expect(CampExtrasLogic.bangShows(nil, "picnic")).to.equal(false)
+			expect(CampExtrasLogic.bangShows("x", "picnic")).to.equal(false)
+			local text = { picnic = { open = true, held = "2" } }
+			expect(CampExtrasLogic.bangShows(text, "picnic")).to.equal(false)
+			expect(CampExtrasLogic.bangShows({}, "picnic")).to.equal(false)
+		end)
+
+		it("covers the four stations, the Lost and Found too (#1733)", function()
+			expect(#CampExtrasLogic.BANG_EXTRAS).to.equal(4)
+			expect(table.find(CampExtrasLogic.BANG_EXTRAS, "lostFound")).to.be.ok()
+			expect(
+				CampExtrasLogic.bangShows({ lostFound = { open = true, held = 1 } }, "lostFound")
+			).to.equal(true)
+			expect(
+				CampExtrasLogic.bangShows({ lostFound = { open = true, held = 0 } }, "lostFound")
+			).to.equal(false)
+			expect(CampExtrasLogic.BANG_RANGE).to.equal(40) -- #2730: only close by
+		end)
+	end)
+
+	describe("CampExtrasLogic.remoteAction (#3082)", function()
+		local function line(extraId: string, ready: boolean): any
+			return { extraId = extraId, icon = "", name = extraId, state = "", ready = ready }
+		end
+
+		it("offers Collect to everyone while a collecting station holds something", function()
+			for _, extraId in { "picnic", "pond", "lostFound" } do
+				expect(CampExtrasLogic.remoteAction(line(extraId, true))).to.equal("collect")
+				expect(CampExtrasLogic.remoteAction(line(extraId, false))).to.equal(nil)
+			end
+		end)
+
+		it("offers Open for the stations with a card of their own, waiting or not", function()
+			for _, extraId in { "yardSale", "spa", "museum" } do
+				expect(CampExtrasLogic.remoteAction(line(extraId, true))).to.equal("open")
+				expect(CampExtrasLogic.remoteAction(line(extraId, false))).to.equal("open")
+			end
+		end)
+
+		it("offers nothing without a strip, and has a word for each button", function()
+			expect(CampExtrasLogic.remoteAction(nil)).to.equal(nil)
+			expect(CampExtrasLogic.REMOTE_WORDS.collect).to.equal("Collect")
+			expect(CampExtrasLogic.REMOTE_WORDS.open).to.equal("Open")
+			expect(CampExtrasLogic.REMOTE_WORDS.rummage).to.equal("Rummage") -- #4961
+			expect(CampExtrasLogic.GOLD_POND_ATTRIBUTE).to.equal("GoldenPondPass")
+		end)
+	end)
+
+	describe("CampExtrasLogic.bubble (#1614)", function()
+		local NOW = 1000000
+
+		it("always has words for an open station: what waits, or when the next comes", function()
+			local s = state(0, 1, 14, true)
+			s.picnic.nextAt = NOW + 7800
+			local pond = CampExtrasLogic.bubble(s, "pond", NOW)
+			expect(pond.icon).to.equal("🎣")
+			expect(pond.name).to.equal("Fish Pond")
+			expect(pond.state).to.equal("14 fish")
+			expect(pond.ready).to.equal(true)
+			local picnic = CampExtrasLogic.bubble(s, "picnic", NOW)
+			expect(picnic.state).to.equal("Next in 2 h 10 m")
+			expect(picnic.ready).to.equal(false)
+			expect(CampExtrasLogic.bubble(s, "yardSale", NOW).ready).to.equal(true)
+		end)
+
+		it(
+			"shows nothing over a shut station, before the first state or for a broken one",
+			function()
+				expect(CampExtrasLogic.bubble(state(0, 0, 6, false), "pond", NOW)).to.equal(nil)
+				expect(CampExtrasLogic.bubble(nil, "pond", NOW)).to.equal(nil)
+				expect(CampExtrasLogic.bubble({ pond = { open = true, held = "2" } }, "pond", NOW)).to.equal(
+					nil
+				)
+				expect(CampExtrasLogic.bubble(state(1, 1, 1, true), "nothing", NOW)).to.equal(nil)
+			end
+		)
+	end)
+
+	describe("CampExtrasLogic.bubbleLift (#2096)", function()
+		it("lifts the Picnic's bubble over its parasol", function()
+			-- the BangAnchor at 4.33 studs, the parasol's top at 7.48
+			local lift = CampExtrasLogic.bubbleLift(4.33, 7.48)
+			expect(math.abs(4.33 + lift - (7.48 + CampExtrasLogic.BUBBLE_CLEAR)) < 1e-9).to.equal(
+				true
+			)
+		end)
+
+		it("leaves a bubble that already clears its station where it is", function()
+			expect(CampExtrasLogic.bubbleLift(9, 6)).to.equal(0)
+		end)
+	end)
+end

@@ -1,0 +1,342 @@
+--!strict
+-- shared/NetSwing.luau against catch-rework.md section 1 (F93): what a swing lands on (reach, slack and the arc), the
+-- nearest of several, a near miss's hop, the new player rule, the refusals and the net_swing result. QA check 3: a
+-- free stray 7 studs ahead is hit; one 9 studs away or behind the player is not.
+return function()
+	local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+	local Catalog = require(Shared.Catalog)
+	local Config = require(Shared.Config)
+	local NetSwing = require(Shared.NetSwing)
+
+	local ORIGIN = Vector3.new(10, 3, -4)
+	local AHEAD = Vector3.new(0, 0, -1) -- the root's LookVector
+
+	-- A point `studs` from the origin on the ground plane, `degrees` off the facing (positive to the right).
+	local function at(studs: number, degrees: number, up: number?): Vector3
+		local r = math.rad(degrees)
+		return ORIGIN + Vector3.new(math.sin(r) * studs, up or 0, -math.cos(r) * studs)
+	end
+
+	local function check(overrides: { [string]: any }?): NetSwing.SwingCheck
+		local base: { [string]: any } = {
+			carrying = false,
+			busy = false,
+			inFlight = false,
+			inCamp = false,
+			sinceSwing = nil,
+		}
+		for key, value in overrides or {} do
+			base[key] = value
+		end
+		return base :: any
+	end
+
+	describe("the numbers (catch-rework.md section 5)", function()
+		it("reaches NetReachStuds 7 plus NetSlackStuds 1.5, 60 degrees either side", function()
+			expect(Config.NetReachStuds).to.equal(7)
+			expect(Config.NetSlackStuds).to.be.near(1.5, 1e-12)
+			expect(NetSwing.reach()).to.be.near(8.5, 1e-12)
+			expect(Config.NetArcDegrees).to.equal(60)
+			expect(Config.NetSwingCooldown).to.be.near(0.8, 1e-12)
+			expect(Config.NetSmackDelay).to.be.near(0.22, 1e-12)
+		end)
+
+		it(
+			"the smack lands inside the cooldown, so one swing is judged before the next can go",
+			function()
+				expect(Config.NetSmackDelay < Config.NetSwingCooldown - NetSwing.COOLDOWN_SLACK).to.equal(
+					true
+				)
+			end
+		)
+	end)
+
+	describe("reach (QA check 3)", function()
+		it("hits a stray 7 studs straight ahead", function()
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(7, 0))).to.equal(true)
+		end)
+
+		it("misses one 9.1 studs ahead and one right behind the player", function()
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(9.1, 0))).to.equal(false)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(3, 180))).to.equal(false)
+		end)
+
+		it(
+			"takes the slack for latency: 8.4 studs is in, 8.6 out, off the straight-ahead line",
+			function()
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(8.4, 30))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(8.6, 30))).to.equal(false)
+			end
+		)
+
+		it(
+			"#2693: reaches NetFrontExtraStuds further within 25 degrees of straight ahead",
+			function()
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(8.9, 0))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(8.9, 24))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(8.9, -24))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(8.9, 26))).to.equal(false)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(9.1, 0))).to.equal(false)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(9.4, 0), 1)).to.equal(true)
+			end
+		)
+
+		it("#2693: within 4 studs of the feet covers 80 degrees either side", function()
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(3.9, 79))).to.equal(true)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(3.9, -79))).to.equal(true)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(3.9, 81))).to.equal(false)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(4.1, 70))).to.equal(false)
+		end)
+
+		it("covers 60 degrees either side of the facing and no more", function()
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(5, 59))).to.equal(true)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(5, -59))).to.equal(true)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(5, 61))).to.equal(false)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(5, -61))).to.equal(false)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(5, 90))).to.equal(false)
+		end)
+
+		it("a cat at the feet is hit whichever way the player faces", function()
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(0.5, 180))).to.equal(true)
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(1.4, 180))).to.equal(true) -- #2693: FEET_STUDS 1.5
+			expect(NetSwing.inReach(ORIGIN, AHEAD, at(1.6, 180))).to.equal(false)
+		end)
+
+		it(
+			"measures reach in 3D, so a cat up on a perch stays out of reach from the ground",
+			function()
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(3, 0, 2))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(3, 0, 9))).to.equal(false)
+			end
+		)
+
+		it("ignores how far the facing tips up or down", function()
+			local tipped = Vector3.new(0, -0.6, -0.8)
+			expect(NetSwing.inReach(ORIGIN, tipped, at(6, 20))).to.equal(true)
+			expect(NetSwing.inReach(ORIGIN, Vector3.new(0, 1, 0), at(6, 20))).to.equal(false)
+		end)
+	end)
+
+	describe("pick", function()
+		it("lands on the nearest stray in reach", function()
+			local picked = NetSwing.pick(ORIGIN, AHEAD, {
+				{ id = "far", position = at(7, 0) },
+				{ id = "near", position = at(4, 40) },
+				{ id = "behind", position = at(2, 170) },
+			})
+			expect(picked).to.be.ok()
+			expect((picked :: NetSwing.Target).id).to.equal("near")
+		end)
+
+		it("lands on nothing when every stray is out of reach or out of the arc", function()
+			expect(NetSwing.pick(ORIGIN, AHEAD, {
+				{ id = "far", position = at(10, 0) },
+				{ id = "side", position = at(4.5, 75) },
+			})).never.to.be.ok()
+			expect(NetSwing.pick(ORIGIN, AHEAD, {})).never.to.be.ok()
+		end)
+	end)
+
+	describe("a near miss (QA check 4)", function()
+		it(
+			"counts free strays within NetMissHopStuds 12 on the ground, whichever way the player faces",
+			function()
+				expect(Config.NetMissHopStuds).to.equal(12)
+				expect(NetSwing.nearMiss(ORIGIN, at(11.9, 180))).to.equal(true)
+				expect(NetSwing.nearMiss(ORIGIN, at(12.1, 0))).to.equal(false)
+				expect(NetSwing.nearMiss(ORIGIN, at(5, 0, 40))).to.equal(true) -- height does not count
+			end
+		)
+
+		it(
+			"hops a quarter of the rarity's sprint: 6 studs for a Common up to 16 for a Mythical",
+			function()
+				expect(Config.NetMissHopShare).to.be.near(0.25, 1e-12)
+				expect(NetSwing.hopStuds("Common")).to.be.near(6, 1e-9)
+				expect(NetSwing.hopStuds("Mythical")).to.be.near(16, 1e-9)
+				for _, rarity in Catalog.rarityOrder do
+					expect(NetSwing.hopStuds(rarity)).to.be.near(
+						Catalog.rarities[rarity].fleeStuds / 4,
+						1e-9
+					)
+				end
+			end
+		)
+
+		it(
+			"a player who has not caught a cat yet never makes one hop (easy-start.md section 2b)",
+			function()
+				expect(NetSwing.missHops(0)).to.equal(false)
+				expect(NetSwing.missHops(1)).to.equal(false)
+				expect(NetSwing.missHops(2)).to.equal(true)
+				expect(NetSwing.missHops(9)).to.equal(true)
+			end
+		)
+
+		it("reports hit, miss_near or miss_empty for net_swing", function()
+			expect(NetSwing.result(true, 0)).to.equal("hit")
+			expect(NetSwing.result(true, 3)).to.equal("hit")
+			expect(NetSwing.result(false, 2)).to.equal("miss_near")
+			expect(NetSwing.result(false, 0)).to.equal("miss_empty")
+		end)
+	end)
+
+	describe("refusals (catch-rework.md section 1)", function()
+		it("swings when nothing stands in the way, the first time and a cooldown later", function()
+			expect(NetSwing.refusal(check())).never.to.be.ok()
+			expect(NetSwing.refusal(check({ sinceSwing = 0.8 }))).never.to.be.ok()
+		end)
+
+		it("never while carrying, mid catch or rescue, flying or in a camp", function()
+			expect(NetSwing.refusal(check({ carrying = true }))).to.equal("carrying")
+			expect(NetSwing.refusal(check({ busy = true }))).to.equal("busy")
+			expect(NetSwing.refusal(check({ inFlight = true }))).to.equal("flight")
+			expect(NetSwing.refusal(check({ inCamp = true }))).to.equal("camp")
+		end)
+
+		it("never on the Town Square, where the net is put away (Derek 2026-11-03)", function()
+			expect(NetSwing.refusal(check({ inTown = true }))).to.equal("town")
+			expect(NetSwing.refusal(check({ inTown = false }))).never.to.be.ok()
+		end)
+
+		it(
+			"once per NetSwingCooldown, with a little slack for the ping between two presses",
+			function()
+				expect(NetSwing.refusal(check({ sinceSwing = 0.2 }))).to.equal("cooldown")
+				expect(NetSwing.refusal(check({ sinceSwing = 0.69 }))).to.equal("cooldown")
+				expect(NetSwing.refusal(check({ sinceSwing = 0.71 }))).never.to.be.ok()
+			end
+		)
+	end)
+
+	describe("the landing marker (Derek 2026-11-03)", function()
+		it("judges from where the root will be when the net lands, along the ground", function()
+			local running = NetSwing.landingOrigin(ORIGIN, Vector3.new(16, 5, 0))
+			expect(running.X).to.be.near(ORIGIN.X + 16 * Config.NetSmackDelay, 1e-9)
+			expect(running.Y).to.be.near(ORIGIN.Y, 1e-9)
+			expect(running.Z).to.be.near(ORIGIN.Z, 1e-9)
+			expect(NetSwing.landingOrigin(ORIGIN, Vector3.zero)).to.equal(ORIGIN)
+		end)
+
+		it("so a runner's swing lands on a cat just past reach from where they stand", function()
+			local cat = ORIGIN + Vector3.new(0, 0, -9.2) -- #2693: 9 straight ahead is in now
+			local origin = NetSwing.landingOrigin(ORIGIN, Vector3.new(0, 0, -16))
+			expect(NetSwing.inReach(ORIGIN, AHEAD, cat)).to.equal(false)
+			expect(NetSwing.inReach(origin, AHEAD, cat)).to.equal(true)
+		end)
+
+		it("draws the arc NetReachStuds out, NetArcDegrees either side, left to right", function()
+			local points = NetSwing.fanPoints(8)
+			expect(#points).to.equal(9)
+			for _, point in points do
+				expect(point.Y).to.equal(0)
+				expect(point.Magnitude).to.be.near(Config.NetReachStuds, 1e-9)
+			end
+			local left = math.deg(math.atan2(points[1].X, -points[1].Z))
+			local right = math.deg(math.atan2(points[9].X, -points[9].Z))
+			expect(left).to.be.near(-Config.NetArcDegrees, 1e-6)
+			expect(right).to.be.near(Config.NetArcDegrees, 1e-6)
+			expect(points[5].X).to.be.near(0, 1e-9)
+			expect(points[5].Z).to.be.near(-Config.NetReachStuds, 1e-9)
+		end)
+
+		it("covers only ground a swing lands on, from a root 3 studs up", function()
+			local root = Vector3.new(0, 3, 0)
+			for _, point in NetSwing.fanPoints(8) do
+				for _, share in { 0.2, 0.6, 1 } do
+					local cat = point * share + Vector3.new(0, 0.5, 0)
+					expect(NetSwing.inReach(root, AHEAD, cat)).to.equal(true)
+				end
+			end
+		end)
+	end)
+
+	describe("the Long Net (#2565)", function()
+		it("reaches LongNetReachStuds once owned", function()
+			local Config = require(game:GetService("ReplicatedStorage").Shared.Config)
+			expect(NetSwing.extraFor(nil)).to.equal(0)
+			expect(NetSwing.extraFor({})).to.equal(0)
+			expect(NetSwing.extraFor({ long_net = true })).to.equal(1)
+			expect(Config.LongNetReachStuds).to.equal(8)
+			expect(NetSwing.reach(1)).to.be.near(9.5, 1e-12)
+			local ahead = Vector3.new(0, 0, -9.3) -- #2693: past the 9 studs straight ahead
+			expect(NetSwing.inReach(Vector3.zero, Vector3.new(0, 0, -1), ahead)).to.equal(false)
+			expect(NetSwing.inReach(Vector3.zero, Vector3.new(0, 0, -1), ahead, 1)).to.equal(true)
+		end)
+	end)
+
+	describe("the walk-through's calm net (#4815)", function()
+		it("is calm below Tier 2, and a damaged tier reads as Tier 1", function()
+			expect(NetSwing.calm(1)).to.equal(true)
+			expect(NetSwing.calm(2)).to.equal(false)
+			expect(NetSwing.calm(10)).to.equal(false)
+			expect(NetSwing.calm(0)).to.equal(true)
+			expect(NetSwing.calm(1.9)).to.equal(true)
+			expect(NetSwing.calm(0 / 0)).to.equal(true)
+			expect(NetSwing.calm(nil)).to.equal(true)
+		end)
+
+		it("never hops a cat on a miss at Tier 1; from Tier 2 it hops as before", function()
+			expect(NetSwing.missHops(9, 1)).to.equal(false)
+			expect(NetSwing.missHops(9, 2)).to.equal(true)
+			expect(NetSwing.missHops(1, 2)).to.equal(false)
+			expect(NetSwing.missHops(9)).to.equal(true)
+		end)
+
+		it(
+			"reaches TutorialNetExtraStuds further at Tier 1 only, on top of the Long Net",
+			function()
+				expect(Config.TutorialNetExtraStuds).to.equal(3)
+				expect(NetSwing.extraForProfile({ tier = 1, mystery = {}, dragon = nil } :: any)).to.equal(
+					3
+				)
+				expect(NetSwing.extraForProfile({ tier = 1, mystery = { long_net = true } } :: any)).to.equal(
+					4
+				)
+				expect(NetSwing.extraForProfile({ tier = 2, mystery = {} } :: any)).to.equal(0)
+				expect(NetSwing.extraForProfile({ tier = 2, mystery = { long_net = true } } :: any)).to.equal(
+					1
+				)
+				-- a cat 11 studs ahead: out of the plain net's reach, in the walk-through's
+				local ahead = Vector3.new(0, 0, -11)
+				expect(NetSwing.inReach(Vector3.zero, AHEAD, ahead)).to.equal(false)
+				expect(NetSwing.inReach(Vector3.zero, AHEAD, ahead, 3)).to.equal(true)
+			end
+		)
+	end)
+
+	-- #5309 (Derek 2026-11-18: "pretty much hit anything infront of you"), switch bigNet; #5308: no hop on a miss
+	describe("the big net (#5309)", function()
+		local function with(on: boolean, body: () -> ())
+			NetSwing.setBig(on)
+			local ok, err = pcall(body)
+			NetSwing.setBig(nil)
+			if not ok then
+				error(err)
+			end
+		end
+
+		it("off, the half circle's edge and 11 studs ahead are out as before", function()
+			with(false, function()
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(7, 85))).to.equal(false)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(11, 0))).to.equal(false)
+				expect(NetSwing.missHops(99, 3)).to.equal(true)
+			end)
+		end)
+
+		it("on, takes the whole half circle in front, 4 studs further, and never behind", function()
+			with(true, function()
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(7, 85))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(7, -89))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(12, 0))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(12, 60))).to.equal(true)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(13.5, 0))).to.equal(false)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(6, 120))).to.equal(false)
+				expect(NetSwing.inReach(ORIGIN, AHEAD, at(2.5, 180))).to.equal(true) -- at the feet
+				expect(NetSwing.missHops(99, 3)).to.equal(false)
+				local edge = NetSwing.fanPoints(2)
+				expect(edge[1].X).to.be.near(-(Config.NetReachStuds + NetSwing.BIG_REACH), 1e-9)
+			end)
+		end)
+	end)
+end

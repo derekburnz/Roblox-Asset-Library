@@ -1,0 +1,54 @@
+{
+  "name": "CatCafe",
+  "globIgnorePaths": ["**/README.md", "**/.gitkeep"],
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "Shared": { "$path": "src/shared" },
+      "Packages": { "$path": { "optional": "Packages" } },
+      "Assets": { "$path": { "optional": "../../assets/cat-cafe/rbx" } }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "Server": { "$path": "src/server" }
+    },
+
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "ServerPackages": { "$path": { "optional": "ServerPackages" } }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "Client": { "$path": "src/client" }
+      }
+    },
+
+    "Workspace": {
+      "$className": "Workspace",
+      "$properties": {
+        "FilteringEnabled": true,
+        "StreamingEnabled": true,
+        "StreamingTargetRadius": 384,
+        "StreamingMinRadius": 128,
+        "StreamingIntegrityMode": "Disabled",
+        "StreamOutBehavior": "Opportunistic"
+      }
+    },
+
+    "SoundService": {
+      "$className": "SoundService",
+      "$properties": { "RespectFilteringEnabled": true }
+    },
+
+    "TextChatService": {
+      "$className": "TextChatService",
+      "$properties": { "ChatVersion": "TextChatService" }
+    }
+  }
+}

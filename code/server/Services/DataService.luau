@@ -1,0 +1,397 @@
+--!strict
+-- Player profiles: load with session locking (ProfileStore), migrate, settle income, save on leave and on shutdown.
+-- Also caches PolicyService info per player once on join.
+-- In Studio without "Enable Studio Access to API Services", ProfileStore runs on its mock store: the game works, nothing persists.
+
+local Players = game:GetService("Players")
+local PolicyService = game:GetService("PolicyService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local ClockService = require(script.Parent.ClockService)
+local Config = require(ReplicatedStorage.Shared.Config)
+local Economy = require(ReplicatedStorage.Shared.Economy)
+local FishStore = require(ReplicatedStorage.Shared.FishStore)
+local Leaderboards = require(ReplicatedStorage.Shared.Leaderboards)
+local Parallel = require(ReplicatedStorage.Shared.Parallel)
+local PassService = require(script.Parent.PassService)
+local ProfileSchema = require(ReplicatedStorage.Shared.ProfileSchema)
+local ProfileStore = require(script.Parent.Parent.Vendor.ProfileStore)
+local Signal = require(ReplicatedStorage.Shared.Signal)
+local Types = require(ReplicatedStorage.Shared.Types)
+
+type Profile = Types.PlayerProfile
+-- ProfileStore wants T & JSONAcceptable; optional fields make PlayerProfile fail that test, so the store is typed any
+-- and ProfileSchema.migrate() is the one place raw data becomes a typed Profile.
+type Session = {
+	profile: Profile,
+	store: ProfileStore.Profile<any>,
+	joinedAt: number,
+	pendingOffline: number,
+	pendingOfflineSeconds: number,
+	policy: { [string]: any }?,
+	resetOnRelease: boolean?, -- a tester's Reset my save (ResetSaveService): a fresh save goes in at release
+}
+
+local DataService = {}
+
+DataService.onLoaded = Signal.new() :: Signal.Signal<Player, Profile>
+DataService.onReleasing = Signal.new() :: Signal.Signal<Player, Profile>
+
+local sessions: { [Player]: Session } = {}
+local retiredRefunds: { [Player]: number } = {} -- #2891: coins refunded for retired potions as the save loaded
+local finalizers: { (player: Player, profile: Profile) -> () } = {}
+local loaders: { (player: Player, profile: Profile) -> () } = {}
+-- Studio playtests get their own store, so "Enable Studio Access to API Services" never touches live profiles
+-- (DataStores are per experience, not per place).
+local storeName = Config.ProfileStoreName .. (if RunService:IsStudio() then "_dev" else "")
+local store: ProfileStore.ProfileStore<any> =
+	ProfileStore.New(storeName, ProfileSchema.template(os.time()) :: any)
+
+local function key(player: Player): string
+	return Config.ProfileKeyPrefix .. player.UserId
+end
+
+local function finalize(player: Player, session: Session)
+	local profile = session.profile
+	local now = os.time()
+	for _, fn in finalizers do
+		local ok, err = pcall(function()
+			fn(player, profile)
+			return nil :: any
+		end)
+		if not ok then
+			warn("[DataService] finalizer failed:", err)
+		end
+	end
+	Economy.settle(profile, now, ClockService.epoch())
+	if session.pendingOffline > 0 then
+		-- Offline earnings the player never claimed (popup dismissed, left early) are credited, not lost.
+		Economy.credit(profile, session.pendingOffline)
+		session.pendingOffline = 0
+		session.pendingOfflineSeconds = 0
+	end
+	profile.rateAtLogout = Economy.incomePerSecond(profile)
+	profile.lastSeen = now
+	Leaderboards.foldWeekPlay(profile, session.joinedAt, now) -- F98: this week's play time
+	profile.stats.playtimeSeconds += math.max(0, now - session.joinedAt)
+	session.store.Data = profile :: any
+end
+
+local function load(player: Player)
+	-- #4307: the pass lookups need nothing from the save, so they run while the session starts instead of after it
+	local passesReady = Parallel.start(function(): Economy.Passes
+		return PassService.check(player)
+	end)
+	local profileStore = store:StartSessionAsync(key(player), {
+		Cancel = function()
+			return player.Parent ~= Players
+		end,
+	})
+	if profileStore == nil then
+		-- #2116: ProfileStore gives up after its START_SESSION_TIMEOUT (120 s) of retries: another server still holds
+		-- the save, or Roblox's DataStores are down. Nothing was read or written, so nothing is lost.
+		if player.Parent == Players then
+			player:Kick(
+				"Your save couldn't load just now. Nothing is lost. Please rejoin in a minute."
+			)
+		end
+		return
+	end
+	profileStore:AddUserId(player.UserId)
+
+	-- A save written by newer code (a server still running the old version after an update): loading it here
+	-- would drop what this version does not know and save that, so leave it untouched and send the player to a
+	-- new server (reviewer S31).
+	if ProfileSchema.isNewerThanCode(profileStore.Data) then
+		warn(
+			string.format(
+				"[DataService] %d has a version %d save; this server runs version %d. Not loading it.",
+				player.UserId,
+				ProfileSchema.versionOf(profileStore.Data),
+				ProfileSchema.VERSION
+			)
+		)
+		profileStore:EndSession()
+		player:Kick("The game just updated, please rejoin.")
+		return
+	end
+
+	-- F95: the passes first, since Long Nap sets the offline rate and cap (rateAtLogout already has the Money pass);
+	-- a check that errored counts as no passes
+	local passes = passesReady() or PassService.fromOwned({})
+	local now = os.time()
+	local retired = ProfileSchema.retiredRefund(profileStore.Data) -- #2891: before migrate drops those potions
+	local profile = ProfileSchema.migrate(profileStore.Data, now)
+	if retired > 0 then
+		profile.coins += retired -- a refund of coins spent, so not lifetimeCoins
+		retiredRefunds[player] = retired
+	end
+	-- #4055: the passes bought with golden fish join the owned set, so they count everywhere a pass does
+	if next(profile.fishBought) ~= nil then
+		passes = PassService.addBought(player, FishStore.boughtIds(profile.fishBought))
+	end
+	Economy.setPasses(profile, passes)
+	local offline, offlineSeconds =
+		Economy.offlineGain(profile.rateAtLogout, profile.lastSeen, now, passes.longNap)
+	profile.lastTick = now -- never credit the offline gap at the online rate
+	profile.stats.sessions += 1
+	profileStore.Data = profile :: any
+
+	-- F102: work that must land before anything can use the profile (a trade a stopped server still owes this player);
+	-- it may yield. A hook that errors ends the session (the save stays as it was loaded) and the player rejoins.
+	for _, fn in loaders do
+		local ok, err = pcall(function()
+			fn(player, profile)
+			return nil :: any
+		end)
+		if not ok then
+			warn("[DataService] load hook failed:", err)
+			profileStore:EndSession()
+			if player.Parent == Players then
+				player:Kick("Your cats are still settling in. Please rejoin in a minute.")
+			end
+			return
+		end
+	end
+	if not profileStore:IsActive() then
+		if player.Parent == Players then
+			player:Kick("Your data session ended. Please rejoin.")
+		end
+		return
+	end
+
+	local session: Session = {
+		profile = profile,
+		store = profileStore,
+		joinedAt = now,
+		pendingOffline = offline,
+		pendingOfflineSeconds = offlineSeconds,
+		policy = nil,
+	}
+
+	profileStore.OnSessionEnd:Connect(function()
+		sessions[player] = nil
+		if player.Parent == Players then
+			player:Kick("Your data session ended. Please rejoin.")
+		end
+	end)
+
+	if player.Parent ~= Players then
+		profileStore:EndSession()
+		return
+	end
+	sessions[player] = session
+
+	task.spawn(function()
+		local ok, info = pcall(PolicyService.GetPolicyInfoForPlayerAsync, PolicyService, player)
+		if ok and type(info) == "table" then
+			session.policy = info
+		else
+			warn("[DataService] PolicyService lookup failed for", player.UserId, info)
+		end
+	end)
+
+	DataService.onLoaded:Fire(player, profile)
+end
+
+local function release(player: Player)
+	local session = sessions[player]
+	if session == nil then
+		return
+	end
+	-- Finalizers (for example saving a carried cat) run while DataService.get still answers for this player;
+	-- the session is forgotten only after the profile is final.
+	DataService.onReleasing:Fire(player, session.profile)
+	local ok, err = pcall(function()
+		finalize(player, session)
+		return nil :: any
+	end)
+	if not ok then
+		warn("[DataService] finalize failed:", err)
+	end
+	if session.resetOnRelease then
+		-- after the leave hooks, so nothing they save (a carried cat, a tip) lands in the fresh save
+		session.store.Data = ProfileSchema.template(os.time()) :: any
+	end
+	sessions[player] = nil
+	retiredRefunds[player] = nil
+	session.store:EndSession()
+end
+
+function DataService.start()
+	-- ProfileStore autosaves every 300 s by default; the design (section 17) wants 60 s.
+	ProfileStore.SetConstant("AUTO_SAVE_PERIOD", Config.AutosaveSeconds)
+
+	Players.PlayerAdded:Connect(function(player)
+		task.spawn(load, player)
+	end)
+	for _, player in Players:GetPlayers() do
+		task.spawn(load, player)
+	end
+	Players.PlayerRemoving:Connect(release)
+
+	game:BindToClose(function()
+		if RunService:IsStudio() and ProfileStore.DataStoreState ~= "Access" then
+			return
+		end
+		for player in sessions do
+			release(player)
+		end
+	end)
+
+	-- #2116: a save that could not be read as a profile and was replaced, and DataStores failing over and over (saves
+	-- are queued and retried while it lasts); both go to the server log for the restore runbook (docs/save-safety.md)
+	ProfileStore.OnOverwrite:Connect(function(erroredStore, profileKey)
+		warn(
+			string.format(
+				"[DataService] a damaged save was replaced (%s / %s): restore it from version history",
+				erroredStore,
+				profileKey
+			)
+		)
+	end)
+	ProfileStore.OnCriticalToggle:Connect(function(isCritical)
+		warn(
+			if isCritical
+				then "[DataService] DataStores are failing: saves are queued and retried"
+				else "[DataService] DataStores are back"
+		)
+	end)
+	ProfileStore.OnError:Connect(function(message, erroredStore, profileKey)
+		warn(
+			string.format(
+				"[DataService] ProfileStore error (%s / %s): %s",
+				erroredStore,
+				profileKey,
+				message
+			)
+		)
+	end)
+end
+
+function DataService.get(player: Player): Profile?
+	local session = sessions[player]
+	return if session ~= nil then session.profile else nil
+end
+
+-- Register work to run on the profile right before it is saved on leave or shutdown (e.g. save a carried cat).
+function DataService.beforeRelease(fn: (player: Player, profile: Profile) -> ())
+	table.insert(finalizers, fn)
+end
+
+-- F102: `fn` runs on each profile as it loads, after the migration and before DataService.get answers or onLoaded
+-- fires, so nothing can use the profile first. It may yield (DataStore reads); an error ends the session and kicks
+-- the player to rejoin, leaving the save as it was loaded.
+function DataService.onLoading(fn: (player: Player, profile: Profile) -> ())
+	table.insert(loaders, fn)
+end
+
+-- Saves the player's profile now (in the background; ProfileStore retries). Nothing for a player without a session.
+function DataService.save(player: Player)
+	local session = sessions[player]
+	if session ~= nil then
+		session.store:Save()
+	end
+end
+
+-- F102: calls `fn` once, after the first save of the player's profile whose saved data passes `check` (this save or
+-- a later one, the last save on leave included). False when the player has no session.
+function DataService.whenSaved(player: Player, check: (data: any) -> boolean, fn: () -> ()): boolean
+	local session = sessions[player]
+	if session == nil then
+		return false
+	end
+	local done = false
+	local connection: any = nil
+	connection = session.store.OnAfterSave:Connect(function(data: any)
+		if not done and check(data) then
+			done = true
+			local held: any = connection
+			held:Disconnect()
+			task.spawn(fn)
+		end
+	end)
+	return true
+end
+
+-- A tester's Reset my save (ResetSaveService): when this player's session ends, a fresh save is stored in place of
+-- theirs, after every beforeRelease hook has run on the old one. Nothing happens for a player without a session.
+function DataService.resetOnLeave(player: Player)
+	local session = sessions[player]
+	if session ~= nil then
+		session.resetOnRelease = true
+	end
+end
+
+-- os.time() the player's session began (F98: the leaderboards add the time since to the saved play time), or nil.
+function DataService.joinedAt(player: Player): number?
+	local session = sessions[player]
+	return if session ~= nil then session.joinedAt else nil
+end
+
+function DataService.takePendingOffline(player: Player): (number, number)
+	local session = sessions[player]
+	if session == nil then
+		return 0, 0
+	end
+	local amount, seconds = session.pendingOffline, session.pendingOfflineSeconds
+	session.pendingOffline = 0
+	session.pendingOfflineSeconds = 0
+	return amount, seconds
+end
+
+-- #2891: the coins this load refunded for retired potions (the Cat Whistle), once; 0 for none.
+function DataService.takeRetiredRefund(player: Player): number
+	local amount = retiredRefunds[player] or 0
+	retiredRefunds[player] = nil
+	return amount
+end
+
+function DataService.peekPendingOffline(player: Player): (number, number)
+	local session = sessions[player]
+	if session == nil then
+		return 0, 0
+	end
+	return session.pendingOffline, session.pendingOfflineSeconds
+end
+
+-- Studio test hook (Debug.setLastSeen): pretend the player was away `seconds` before this session started, at
+-- their current day rate. Replaces any unclaimed offline earnings. Returns the amount.
+function DataService.debugSetAway(player: Player, seconds: number): number
+	local session = sessions[player]
+	if session == nil then
+		return 0
+	end
+	local now = os.time()
+	local profile = session.profile
+	local amount, counted = Economy.offlineGain(
+		Economy.incomePerSecond(profile),
+		now - seconds,
+		now,
+		Economy.passes(profile).longNap
+	)
+	session.pendingOffline = amount
+	session.pendingOfflineSeconds = counted
+	return amount
+end
+
+function DataService.policy(player: Player): { [string]: any }?
+	local session = sessions[player]
+	return if session ~= nil then session.policy else nil
+end
+
+-- True when saves really reach the DataStore (false in Studio without API access).
+function DataService.saves(): boolean
+	return ProfileStore.DataStoreState == "Access"
+end
+
+function DataService.loadedPlayers(): { Player }
+	local list: { Player } = {}
+	for player in sessions do
+		table.insert(list, player)
+	end
+	return list
+end
+
+return DataService

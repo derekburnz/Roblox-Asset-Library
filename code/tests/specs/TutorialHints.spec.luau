@@ -1,0 +1,405 @@
+--!strict
+-- UI/Components/TutorialHints.luau: the tutorial strip's device-aware line per step (F87, easy-start.md section 2e).
+return function()
+	local Client =
+		game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"):WaitForChild("Client")
+	local TutorialHints = require(
+		Client:WaitForChild("UI"):WaitForChild("Components"):WaitForChild("TutorialHints")
+	) :: any
+
+	local DEVICES = { "keyboard", "touch", "gamepad" }
+	local VIEWS = {
+		{ step = 0 },
+		{ step = 1 },
+		{ step = 2, resting = true },
+		{ step = 2, resting = false },
+		{ step = 3 },
+		{ step = 3, cats = 1 },
+		{ step = 3, cats = 1, night = true }, -- #3238
+		{ step = 4, bowl = false },
+		{ step = 4, bowl = true, baited = false },
+		{ step = 4, bowl = true, baited = true },
+		{ step = 4, bowl = true, baited = true, arrived = true },
+	}
+
+	local function line(view: { [string]: any }, device: string): string?
+		local copy = table.clone(view)
+		copy.device = device
+		return TutorialHints.line(copy)
+	end
+
+	describe("TutorialHints.line", function()
+		it("has a short line for every step on every device", function()
+			for _, view in VIEWS do
+				for _, device in DEVICES do
+					local text = line(view, device)
+					expect(type(text)).to.equal("string")
+					expect(#(text :: string) > 10).to.equal(true)
+					expect(#(text :: string) <= 52).to.equal(true)
+				end
+			end
+		end)
+
+		it("names a letter key on a keyboard only", function()
+			for _, view in VIEWS do
+				for _, device in { "touch", "gamepad" } do
+					local text = line(view, device) :: string
+					expect(text:find("%(%u%)") == nil).to.equal(true)
+				end
+			end
+			expect(line({ step = 3 }, "keyboard")).to.equal(
+				"Buy a table in Upgrades (U): more tips per cat"
+			)
+			expect(line({ step = 3 }, "touch")).to.equal(
+				"Tap Upgrades and buy a table: more tips per cat"
+			)
+		end)
+
+		it(
+			"says the strays return at sunrise on step 3 at night, on every device (#3238)",
+			function()
+				local night = { step = 3, cats = 1, night = true }
+				expect(line(night, "keyboard")).to.equal(
+					"Strays return at sunrise, or buy a table (U)"
+				)
+				expect(line(night, "touch")).to.equal("Strays return at sunrise, or tap Upgrades")
+				expect(line(night, "gamepad")).to.equal(
+					"Strays return at sunrise, or open Upgrades"
+				)
+				-- by day, or once two cats are caught, the words are as before
+				expect(line({ step = 3, cats = 1, night = false }, "touch")).to.equal(
+					"Catch another cat 🐾"
+				)
+				expect(line({ step = 3, cats = 2, night = true }, "touch")).to.equal(
+					"Tap Upgrades and buy a table: more tips per cat"
+				)
+				-- the step still asks for the second cat (the trail and ring read ask)
+				expect(TutorialHints.ask(night)).to.equal("second")
+			end
+		)
+
+		it("says how to swing the net on each device", function()
+			expect((line({ step = 0 }, "keyboard") :: string):find("Click", 1, true) ~= nil).to.equal(
+				true
+			)
+			expect((line({ step = 0 }, "touch") :: string):find("Tap NET", 1, true) ~= nil).to.equal(
+				true
+			)
+			expect((line({ step = 1 }, "gamepad") :: string):find("R2", 1, true) ~= nil).to.equal(
+				true
+			)
+		end)
+
+		it("follows step 2's and step 4's choices", function()
+			expect(line({ step = 2, resting = true }, "keyboard")).to.equal(
+				"Open Cats (C) and give your new cat a job"
+			)
+			expect((line({ step = 2 }, "keyboard") :: string):find("Upgrades", 1, true) ~= nil).to.equal(
+				true
+			)
+			expect(line({ step = 4 }, "touch")).to.equal("Tap Upgrades and buy the Bait bowl")
+			expect(line({ step = 4, bowl = true }, "keyboard")).to.equal(
+				"Press F, then Use on Kibble to call a cat"
+			)
+			expect(line({ step = 4, bowl = true, baited = true }, "gamepad")).to.equal(
+				"A cat smells your food. It's on its way!"
+			)
+		end)
+
+		it(
+			"asks for another cat alone at step 3 while only one cat is caught (#2912, #4097)",
+			function()
+				expect(line({ step = 3, cats = 1 }, "keyboard")).to.equal("Catch another cat 🐾")
+				expect(line({ step = 3, cats = 1 }, "touch")).to.equal("Catch another cat 🐾")
+				expect(line({ step = 3, cats = 2 }, "keyboard")).to.equal(
+					"Buy a table in Upgrades (U): more tips per cat"
+				)
+			end
+		)
+
+		it("has nothing once the first loop is done", function()
+			expect(line({ step = 5 }, "keyboard")).to.equal(nil)
+			expect(line({ step = 9 }, "touch")).to.equal(nil)
+		end)
+	end)
+
+	describe("TutorialHints.resting", function()
+		local spots = {
+			{ id = "barista_1", tier = 1 },
+			{ id = "waiter_1", tier = 1 },
+			{ id = "chef_1", tier = 2 },
+		}
+
+		it("needs a resting cat and a free slot its tier opens", function()
+			expect(TutorialHints.resting({ a = { spotId = "barista_1" }, b = {} }, spots, 1)).to.equal(
+				true
+			)
+			expect(TutorialHints.resting({ a = { spotId = "barista_1" } }, spots, 1)).to.equal(
+				false
+			)
+			expect(
+				TutorialHints.resting(
+					{ a = { spotId = "barista_1" }, b = { spotId = "waiter_1" }, c = {} },
+					spots,
+					1
+				)
+			).to.equal(false)
+			expect(
+				TutorialHints.resting(
+					{ a = { spotId = "barista_1" }, b = { spotId = "waiter_1" }, c = {} },
+					spots,
+					2
+				)
+			).to.equal(true)
+		end)
+
+		it("is false with nothing to read", function()
+			expect(TutorialHints.resting(nil, spots, 1)).to.equal(false)
+			expect(TutorialHints.resting({ a = {} }, nil, 1)).to.equal(false)
+		end)
+	end)
+
+	describe("TutorialHints.closeUpgrades (#3880)", function()
+		it("points at the Upgrades X once the table and the Bait bowl are bought", function()
+			expect(TutorialHints.closeUpgrades(4, { lure_bowl = 1, tables = 1 })).to.equal(true)
+			expect(TutorialHints.closeUpgrades(4, {})).to.equal(false)
+			expect(TutorialHints.closeUpgrades(3, { lure_bowl = 1 })).to.equal(false)
+			expect(TutorialHints.closeUpgrades(TutorialHints.DONE, { lure_bowl = 1 })).to.equal(
+				false
+			)
+			expect(TutorialHints.closeUpgrades(nil, nil)).to.equal(false)
+		end)
+	end)
+
+	describe("TutorialHints.upgrade (#1796)", function()
+		it("asks for a table at step 3 and the Bait bowl at step 4 until it is owned", function()
+			expect(TutorialHints.upgrade(3, {})).to.equal("tables")
+			expect(TutorialHints.upgrade(4, {})).to.equal("lure_bowl")
+			expect(TutorialHints.upgrade(4, { lure_bowl = 1 })).to.equal(nil)
+			expect(TutorialHints.upgrade(2, {})).to.equal(nil)
+			expect(TutorialHints.upgrade(5, nil)).to.equal(nil)
+			expect(TutorialHints.upgrade(nil, nil)).to.equal(nil)
+		end)
+	end)
+
+	describe("TutorialHints.ask and view (#2697)", function()
+		local spots = { { id = "barista", tier = 1 }, { id = "waiter", tier = 2 } }
+		local function state(changes: { [string]: any }): any
+			local out: { [string]: any } = {
+				tutorialStep = 2,
+				tier = 1,
+				cats = { a = {} },
+				upgradeLevels = {},
+				bait = nil,
+			}
+			for key, value in changes do
+				out[key] = value
+			end
+			return out
+		end
+
+		it("asks for a job while a new cat rests and a role is free", function()
+			expect(TutorialHints.ask(TutorialHints.view(state({}), spots))).to.equal("job")
+			local busy = state({ cats = { a = { spotId = "barista" } } })
+			expect(TutorialHints.ask(TutorialHints.view(busy, spots))).to.equal("more")
+		end)
+
+		it("counts the cats caught for step 3 (#2912), not the cats in the cafe (#3022)", function()
+			-- a new cafe after its first catch: the starter Tabby and the caught cat, one cat caught
+			local one = state({
+				tutorialStep = 3,
+				cats = { starter = {}, a = {} },
+				stats = { catsCaught = 1 },
+			})
+			expect(TutorialHints.ask(TutorialHints.view(one, spots))).to.equal("second")
+			local two = state({
+				tutorialStep = 3,
+				cats = { starter = {}, a = {}, b = {} },
+				stats = { catsCaught = 2 },
+			})
+			expect(TutorialHints.ask(TutorialHints.view(two, spots))).to.equal("table")
+			-- a state with no stats (an older server) asks for the table alone
+			expect(TutorialHints.ask(TutorialHints.view(state({ tutorialStep = 3 }), spots))).to.equal(
+				"table"
+			)
+		end)
+
+		it("asks for the bowl, then food in it, then waits", function()
+			expect(TutorialHints.ask(TutorialHints.view(state({ tutorialStep = 4 }), spots))).to.equal(
+				"bowl"
+			)
+			local owned = state({ tutorialStep = 4, upgradeLevels = { lure_bowl = 1 } })
+			expect(TutorialHints.ask(TutorialHints.view(owned, spots))).to.equal("food")
+			-- #3285: the UI's state sends false for an empty bowl
+			owned.bait = false
+			expect(TutorialHints.ask(TutorialHints.view(owned, spots))).to.equal("food")
+			owned.bait = { readyAt = 10 }
+			expect(TutorialHints.ask(TutorialHints.view(owned, spots))).to.equal("waiting")
+			-- #3158: step 4 lasts until the first bowl cat is tamed or let go, so it says the cat is there
+			owned.bait = { readyAt = 10, cat = { catId = "tabby" } }
+			local view = TutorialHints.view(owned, spots)
+			expect(TutorialHints.ask(view)).to.equal("arrived")
+			expect(TutorialHints.line(view)).to.equal(
+				"Click Tame to keep your cat. It earns you money!"
+			)
+		end)
+
+		it(
+			"counts the first bowl cat as one for step 3, never as the second (#3160, #3551)",
+			function()
+				-- bowl cats alone, however many: still a cat to catch by hand
+				local bowls = state({
+					tutorialStep = 3,
+					cats = { starter = {}, a = {}, b = {} },
+					stats = { catsCaught = 2, baitsTamed = 2 },
+				})
+				expect(TutorialHints.ask(TutorialHints.view(bowls, spots))).to.equal("second")
+				-- the bowl's cat and one caught by hand: two cats
+				local both = state({
+					tutorialStep = 3,
+					cats = { starter = {}, a = {}, b = {} },
+					stats = { catsCaught = 2, baitsTamed = 1 },
+				})
+				expect(TutorialHints.ask(TutorialHints.view(both, spots))).to.equal("table")
+			end
+		)
+
+		it(
+			"offers the step's upgrade for one press only while the coins cover it (#2912)",
+			function()
+				local upgrades = {
+					{ id = "tables", startLevel = 0, costs = { 150, 600 } },
+					{ id = "lure_bowl", startLevel = 0, costs = { 600, 6000 } },
+				}
+				local offer = TutorialHints.offer(3, { tables = 0 }, 850, upgrades)
+				expect(offer.id).to.equal("tables")
+				expect(offer.cost).to.equal(150)
+				expect(offer.text).to.equal("Buy a table")
+				expect(TutorialHints.offer(3, { tables = 0 }, 149, upgrades)).to.equal(nil)
+				local bowl = TutorialHints.offer(4, { tables = 1, lure_bowl = 0 }, 600, upgrades)
+				expect(bowl.id).to.equal("lure_bowl")
+				expect(bowl.cost).to.equal(600)
+				-- the bowl owned, a step with no upgrade, an unknown balance or no catalog: no button
+				expect(TutorialHints.offer(4, { lure_bowl = 1 }, 99999, upgrades)).to.equal(nil)
+				for _, step in { 1, 2, 5 } do
+					expect(TutorialHints.offer(step, {}, 99999, upgrades)).to.equal(nil)
+				end
+				expect(TutorialHints.offer(3, {}, nil, upgrades)).to.equal(nil)
+				expect(TutorialHints.offer(3, {}, 850, nil)).to.equal(nil)
+				-- #4097: no Buy button beside the second cat by day; at night, and once two are caught, the table again
+				expect(
+					TutorialHints.offer(
+						3,
+						{ tables = 0 },
+						850,
+						upgrades,
+						{ step = 3, cats = 1 } :: any
+					)
+				).to.equal(nil)
+				expect(
+					TutorialHints.offer(
+						3,
+						{ tables = 0 },
+						850,
+						upgrades,
+						{ step = 3, cats = 1, night = true } :: any
+					) ~= nil
+				).to.equal(true)
+				expect(
+					TutorialHints.offer(
+						3,
+						{ tables = 0 },
+						850,
+						upgrades,
+						{ step = 3, cats = 2 } :: any
+					) ~= nil
+				).to.equal(true)
+				-- the UI's own state shape: no stats, only secondCatDone (Review-QA on #4150)
+				local uiState =
+					{ tutorialStep = 3, upgradeLevels = { tables = 0 }, secondCatDone = false }
+				local dayView = TutorialHints.view(uiState, {}, "touch", true)
+				expect(TutorialHints.holdsOffer(dayView)).to.equal(true)
+				expect(TutorialHints.offer(3, { tables = 0 }, 850, upgrades, dayView)).to.equal(nil)
+				expect(TutorialHints.line(dayView)).to.equal("Catch another cat 🐾")
+				local nightView = TutorialHints.view(uiState, {}, "touch", false)
+				expect(TutorialHints.holdsOffer(nightView)).to.equal(false)
+				uiState.secondCatDone = true
+				expect(TutorialHints.holdsOffer(TutorialHints.view(uiState, {}, "touch", true))).to.equal(
+					false
+				)
+				-- a level past the price list (a save from a bigger list) is no offer
+				expect(TutorialHints.offer(3, { tables = 2 }, 99999, upgrades)).to.equal(nil)
+			end
+		)
+
+		it("asks for nothing once the walk-through is done, or with no step saved", function()
+			expect(TutorialHints.ask(TutorialHints.view(state({ tutorialStep = 5 }), spots))).to.equal(
+				nil
+			)
+			expect(TutorialHints.ask(TutorialHints.view(state({ tutorialStep = false }), spots))).to.equal(
+				nil
+			)
+		end)
+	end)
+	describe("TutorialHints.lineFor (#4151)", function()
+		it("gives the controller's strip lines with no letter key on touch or a pad", function()
+			for _, id in { "job", "more", "second", "secondNight", "table", "bowl", "food" } do
+				for _, device in { "touch", "gamepad" } do
+					local line = TutorialHints.lineFor(id, device)
+					expect(type(line)).to.equal("string")
+					expect(string.match(line, "%(%u%)")).to.equal(nil)
+				end
+			end
+			expect(TutorialHints.lineFor("secondNight", "touch")).to.equal(
+				"Strays return at sunrise, or tap Upgrades"
+			)
+			expect(TutorialHints.lineFor("more", "keyboard")).to.equal(
+				"Catch more cats, or buy a table in Upgrades (U)"
+			)
+			expect(TutorialHints.lineFor("waiting", "touch")).to.equal(
+				"A cat smells your food. It's on its way!"
+			)
+			expect(TutorialHints.lineFor("nope", "touch")).to.equal(nil)
+			-- #4926: what to do and why, one line on the smallest phone's strip (52 characters at most on touch)
+			for _, id in { "food", "waiting", "arrived", "alleyCatch", "alleyCatch2" } do
+				local touch = TutorialHints.lineFor(id, "touch") :: string
+				expect((utf8.len(touch) or 99) <= 52).to.equal(true)
+			end
+			expect(TutorialHints.lineFor("arrived", "touch")).to.equal(
+				"Tap Tame to keep your cat. It earns you money!"
+			)
+			expect(TutorialHints.lineFor("alleyCatch", "gamepad")).to.equal(
+				"Catch 1 more cat to rank up! Press R2 by one"
+			)
+		end)
+	end)
+
+	describe("bowl first (#4518)", function()
+		local function view(changes: { [string]: any }, first: boolean): any
+			local s: { [string]: any } =
+				{ tutorialStep = 0, tier = 1, cats = {}, upgradeLevels = { lure_bowl = 1 } }
+			for key, value in changes do
+				s[key] = value
+			end
+			return TutorialHints.view(s, {}, "touch", true, first)
+		end
+		it("asks for the bowl before the first catch, then the catch", function()
+			local stats = { catsCaught = 0, baitsTamed = 0, luresUsed = 0 }
+			expect(TutorialHints.ask(view({ stats = stats }, true))).to.equal("food")
+			local fed = { catsCaught = 0, baitsTamed = 0, luresUsed = 1 }
+			expect(TutorialHints.ask(view({ stats = fed, bait = {} }, true))).to.equal("waiting")
+			expect(TutorialHints.ask(view({ stats = fed, bait = { cat = "tabby" } }, true))).to.equal(
+				"arrived"
+			)
+			local tamed = { catsCaught = 1, baitsTamed = 1, luresUsed = 1 }
+			expect(TutorialHints.ask(view({ stats = tamed }, true))).to.equal("catch")
+			-- catchFirst on: today's order
+			expect(TutorialHints.ask(view({ stats = stats }, false))).to.equal("catch")
+		end)
+		it("counts the bowl cat as one, as today's order (#4674)", function()
+			local tamed = { catsCaught = 2, baitsTamed = 1, luresUsed = 1 }
+			expect(view({ stats = tamed }, true).cats).to.equal(2)
+			expect(view({ stats = tamed }, false).cats).to.equal(2)
+		end)
+	end)
+end

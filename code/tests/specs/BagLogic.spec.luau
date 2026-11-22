@@ -1,0 +1,81 @@
+--!strict
+-- UI/Components/BagLogic.luau: the Bag's Cat Food tab (#1181, corner-shop-v2.md section 3).
+return function()
+	local Client =
+		game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"):WaitForChild("Client")
+	local Components = Client:WaitForChild("UI"):WaitForChild("Components")
+	local Bag = require(Components:WaitForChild("BagLogic")) :: any
+	local defs = {
+		{ id = "small_cat_snack", name = "Small Snack", xp = 600 },
+		{ id = "cat_snack", name = "Cat Snack", xp = 2000 },
+		{ id = "cat_feast", name = "Cat Feast", xp = 20000 },
+	}
+
+	describe("BagLogic", function()
+		it("lists only the foods the player has, in catalog order", function()
+			local foods =
+				Bag.foods(defs, { cat_feast = 1, cat_snack = 3, small_cat_snack = 0, unknown = 4 })
+			expect(#foods).to.equal(2)
+			expect(foods[1].id).to.equal("cat_snack")
+			expect(foods[1].count).to.equal(3)
+			expect(foods[2].id).to.equal("cat_feast")
+			expect(#Bag.foods(defs, nil)).to.equal(0)
+			expect(#Bag.foods(nil, { cat_snack = 1 })).to.equal(0)
+		end)
+		it("lists the bait foods the player has, rarest first (#1281, #1609)", function()
+			local lures = {
+				{ id = "kibble", name = "Kibble" },
+				{ id = "tuna", name = "Tuna" },
+				{ id = "salmon", name = "Salmon" },
+				{ id = "sardines", name = "Moonlit Sardines" },
+			}
+			local baits =
+				Bag.baits(lures, { salmon = 2, kibble = 5, tuna = 0, caviar = 1, sardines = 1 })
+			expect(#baits).to.equal(3)
+			expect(baits[1].name).to.equal("Salmon")
+			expect(baits[1].def.id).to.equal("salmon")
+			expect(baits[2].id).to.equal("sardines")
+			expect(baits[3].id).to.equal("kibble")
+			expect(baits[3].count).to.equal(5)
+			expect(#Bag.baits(lures, nil)).to.equal(0)
+			expect(#Bag.baits(nil, { kibble = 1 })).to.equal(0)
+		end)
+		it("counts everything in the Bag", function()
+			expect(Bag.total({ potions = { tip_potion = 2 }, catFood = { cat_snack = 3 } })).to.equal(
+				5
+			)
+			expect(Bag.total({})).to.equal(0)
+		end)
+		it("words the XP and the cat's level line", function()
+			expect(Bag.xpLine(2000)).to.equal("+2,000 XP")
+			-- level 23 needs 120 x 23 = 2,760 XP to 24; with 1,360 in, 1,400 to go
+			expect(Bag.catLine(23, 1360)).to.equal("Level 23 · 1,400 XP to 24")
+			expect(Bag.catLine(50, 0)).to.equal("Level 50 · Max")
+			expect(Bag.canFeed(49)).to.equal(true)
+			expect(Bag.canFeed(50)).to.equal(false)
+		end)
+		it("builds only the feed cards in view, and a few each side (#2196)", function()
+			-- 300 cats, 76 px a card, a 380 px list at the top: cards 1 to 6 show, 4 more after
+			local first, last = Bag.feedWindow(300, 0, 380, 76, 4)
+			expect(first).to.equal(1)
+			expect(last).to.equal(10)
+			-- scrolled 100 cards down
+			first, last = Bag.feedWindow(300, 7600, 380, 76, 4)
+			expect(first).to.equal(97)
+			expect(last).to.equal(110)
+			-- the list's header still in view: the run starts below the top edge
+			first, last = Bag.feedWindow(300, -60, 380, 76, 4)
+			expect(first).to.equal(1)
+			expect(last).to.equal(9)
+			-- past the end, and fewer cats than fit
+			first, last = Bag.feedWindow(300, 1e6, 380, 76, 4)
+			expect(first).to.equal(296)
+			expect(last).to.equal(300)
+			first, last = Bag.feedWindow(3, 0, 380, 76, 4)
+			expect(first).to.equal(1)
+			expect(last).to.equal(3)
+			first, last = Bag.feedWindow(0, 0, 380, 76, 4)
+			expect(last < first).to.equal(true)
+		end)
+	end)
+end

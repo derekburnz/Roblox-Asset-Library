@@ -1,0 +1,1812 @@
+--!strict
+-- Shared types. Field names follow docs/design/cat-cafe/ui-contract.md and data-model.md.
+-- Pure: no Roblox globals, so tests can require it.
+
+-- #3470: "Secret" is a cat rarity above Mythical. No odds table lists it (Types.LureOdds and Catalog.rarityOrder
+-- keep the five): a rolled Mythical turns Secret at Catalog.secretPerMythical (no switch since #4654 batch 5).
+export type Rarity = "Common" | "Rare" | "Epic" | "Legendary" | "Mythical" | "Secret"
+export type Area =
+	"alley"
+	| "park"
+	| "neighbourhood"
+	| "woods"
+	| "sewer"
+	| "desert"
+	| "ruins"
+	| "snowy"
+	| "waterpark"
+	| "castle"
+-- A cat's area: one of the ten (#3997, #4070, #4184: the Snowy Mountain, the Water Park and the Medieval Castle are not open yet), the spare pool of cats an area-themed
+-- cat replaced (data-model 3d, F78), or "exclusive" for a cat that never spawns and is only given or sold (F95, the free Bellhop Cat of F96).
+-- #3470: "secret" for a Secret cat, which belongs to no area and can turn up in any of them.
+-- #4251: "harvest" for a Harvest Hollow cat (the limited area, not one of the ten): kept, it earns like `earnsLike`.
+export type CatArea = Area | "spare" | "exclusive" | "secret" | "harvest"
+-- How an exclusive cat is had (F96): "free" from its stand, "shop" for Robux, "pass" from the Cafe Pass paid track.
+export type CatSource = "free" | "shop" | "pass" | "booth" | "advent" -- advent #5502: a calendar door (shared/Advent); -- booth #4061: the Ticket Booth's prize cat
+export type Role = "barista" | "waiter" | "greeter" | "entertainer"
+-- A role slot is still called a spot in code, so the save field (spotId) and the UI intents keep their names.
+export type SpotType = Role
+export type CatchMethod = "net" | "rescue" | "bait" | "starter" | "trade" -- "trade": F102, from another player
+-- #3462: "cart" foods are sold only on the Day Cart, at a flat price
+export type LureSource = "shop" | "dealer" | "cart"
+-- How one closing circle was judged (data-model section 10).
+export type CircleGrade = "perfect" | "good" | "miss"
+-- #1884 (catch-rework.md 7c): a net catch's ring grade, which adds "left" for a paw ring nobody tapped (+1 trust; a
+-- tapped one is a "miss"). CatchJudged and CatchResult carry it.
+export type RingGrade = CircleGrade | "left"
+export type RingResult = CircleGrade -- the v0.2 ring's name, kept while the UI still uses it
+export type ClockPhase = "day" | "night" -- ReplicatedStorage.Clock attribute Phase (data-model section 9)
+export type ToastKind = "info" | "good" | "warn"
+
+export type RarityDef = {
+	incomePerSecond: number,
+	circles: number, -- closing circles in a net catch (data-model section 10)
+	shrinkSeconds: number, -- base shrink time of each circle
+	catchWindow: number, -- times the net's Perfect and Good for a cat of this rarity (v0.13.15 F83)
+	trustNeed: number, -- #1884 (catch-rework.md 7b): the trust a net catch must reach (TrustStart, +2 a Perfect)
+	-- #1884 (7a): the weights a stray of this rarity rolls its mood with
+	moods: { Sleepy: number, Curious: number, Skittish: number },
+	doubleRings: boolean, -- #1884 (7c): rings after the first may be doubles (Epic and above)
+	pawRings: boolean, -- #1884 (7c): rings after the second may be paw rings (Legendary and above)
+	fleeStuds: number, -- how far a stray sprints after a missed catch (v0.5, data-model section 10 step 5)
+	rescueHits: number, -- bar hits that free a stuck cat (section 10b)
+	sellValue: number,
+	firstCatchReward: number,
+	color: string, -- hex like "#8E97B2"
+}
+
+-- One closing circle as CatchSchedule sends it: it starts shrinking at startsAt (Workspace:GetServerTimeNow()
+-- time) and reaches its ring at startsAt + shrinkSeconds, the target. x and y place it on screen, 0 to 1.
+export type CatchCircle = {
+	startsAt: number,
+	shrinkSeconds: number,
+	x: number,
+	y: number,
+	-- #1884 (catch-rework.md 7c): what the ring is. "single" until the twists (a double ring is two circles in a row,
+	-- both "double", `half` 1 and 2; a "paw" ring is left alone)
+	kind: CircleKind?,
+	half: number?,
+	-- #2920: a first catch's ring that stops on its target and waits (Circles.press): presses before it are ignored,
+	-- one from it up to holdSeconds (Config.FirstRingHoldSeconds) later is a Perfect
+	hold: boolean?,
+	holdSeconds: number?,
+	-- #4814 (Derek 2026-11-16: "don't even let the player click early for the first cat just don't register their
+	-- hits before its in the circle"): a press before the ring reaches its Good band does nothing (Circles.press)
+	noEarly: boolean?,
+}
+export type CircleKind = "single" | "double" | "paw"
+
+-- #1884 (catch-rework.md 7a): a stray's mood, rolled at spawn and shown as its Mood attribute
+export type CatMood = "Sleepy" | "Curious" | "Skittish"
+-- #1884 (catch-rework.md 7d): how a net catch ended, and CatchResult's last argument
+export type CatchFinishKind = "purrfect" | "great" | "nice" | "bolt"
+export type CatchFinish = {
+	trust: number,
+	trustNeed: number,
+	finish: CatchFinishKind,
+	streak: number,
+}
+
+-- Timing windows of a net level: half-widths in seconds either side of each target (F93: the shrink time's wobble
+-- is Config.CircleJitter on every net).
+export type NetWindows = { perfect: number, good: number }
+export type CatchWindows = { perfect: number, good: number }
+
+-- A rescue minigame as RescueChallenge sends it (data-model section 10b), times in server time. "bar": a marker
+-- slides back and forth along a bar (shared/RescueMarker) and each press inside the zone is a hit; zones holds
+-- the zone centre (0 to 1) for each hit in order. "shake_catch": the same bar on a tree, where each hit shakes
+-- the branch; with Config.RescueTreeCircle the server then sends a second challenge of kind "circle", one catch
+-- circle with its windows (off since Derek 2026-11-03: the last shake frees the cat).
+export type RescueKind = "bar" | "shake_catch" | "circle"
+export type RescueChallenge = {
+	kind: RescueKind,
+	startsAt: number,
+	phase: number?, -- 0 to 2, where on the back-and-forth the marker starts
+	speed: number?, -- bar lengths per second (RescueBarSpeed)
+	zoneWidth: number?, -- fraction of the bar (RescueZoneWidth)
+	zones: { number }?,
+	hitsNeeded: number?,
+	paws: number?, -- misses the attempt can take (RescuePatience)
+	endsAt: number?, -- the attempt's deadline
+	-- F93 (catch-rework.md section 4): `zone` is the index of the one to hit now. Every hit makes the marker
+	-- speedUpPerHit faster; RescueResult's RescueBar says how it runs after that. Derek 2026-11-03: a zone stays until
+	-- it is hit, so zoneEndsAt is the attempt's deadline and zonePasses is no longer sent.
+	zone: number?,
+	zoneEndsAt: number?,
+	zonePasses: number?,
+	speedUpPerHit: number?,
+	circle: CatchCircle?, -- kind "circle"
+	windows: CatchWindows?, -- kind "circle"
+	-- F92 (playing-together.md section 3): a Team Rescue helper's copy of a running bar, from where it is now (startsAt,
+	-- phase, speed, zone and zoneEndsAt as the marker runs, paws left, hits so far). A helper's miss costs no paw.
+	helper: boolean?,
+	hits: number?,
+}
+
+-- How the rescue bar runs now (F93), RescueResult's last argument: the marker from server time startsAt at phase
+-- (0 to 2) and speed bar lengths per second (shared/RescueMarker.position), zones[zone] the one to hit and
+-- zoneEndsAt the attempt's deadline (a zone stays until it is hit, Derek 2026-11-03).
+export type RescueBar = {
+	zone: number,
+	startsAt: number,
+	phase: number,
+	speed: number,
+	zoneEndsAt: number,
+	endsAt: number?, -- F92: the attempt's deadline, TeamRescueExtraSeconds later once a helper joins
+}
+
+export type CatDef = {
+	id: string,
+	name: string,
+	rarity: Rarity,
+	incomePerSecond: number,
+	area: CatArea, -- the one area it spawns in, or "spare" (data-model 3d: never spawns)
+	incomeArea: Area?, -- a spare cat's old area, whose income multiplier it keeps
+	-- F95: a shop-only cat (the starter, Royal, Grand and season cats): it earns at the owner's newest area's
+	-- multiplier and counts toward no "different cats", Index page or Index milestone
+	exclusive: boolean?,
+	source: CatSource?, -- F96: how an exclusive cat is had
+	favoriteRole: Role, -- earns FavoriteMultiplier in a slot of this role
+	description: string,
+	pattern: string,
+	color: { number }, -- {r, g, b} 0..255 for the placeholder body
+	-- #4221: a Secret cat's home area (its `area` stays "secret"): it only takes the place of a Mythical rolled there
+	secretArea: Area?,
+	-- Derek 2026-11-14: one of the seven Secrets of the one-per-area update; it only rolls while `secretAreas` is on
+	secretNew: boolean?,
+	-- #4251: a harvest cat earns like a cat of this rarity from the owner's newest area (two rarities lower, never
+	-- below Common; harvest-hollow-spec 3b)
+	earnsLike: Rarity?,
+}
+
+export type UpgradeDef = {
+	id: string,
+	name: string,
+	description: string,
+	maxLevel: number,
+	costs: { number }, -- costs[n] = cost of level n
+	startLevel: number, -- 0 for most, 1 for espresso
+	requiresTier: number?, -- tier needed to buy level 1
+	requiresTierAtLevel: { [number]: number }?, -- e.g. espresso level 3 needs Tier 2 (the tier caps, section 5b)
+}
+
+-- "shop" decor is bought with BuyDecor; "crate" decor (F53) only comes out of a Cafe Crate. The F48 Index pieces
+-- became their zones' Epic crate pieces in F54, and the gold Index pieces were retired before anyone earned one.
+-- #2486: "event", a Cafe Event's free reward piece (Catalog.passDecor holds it too, live-events.md section 2e)
+export type DecorSource = "shop" | "crate" | "pass" | "event" | "booth" | "harvest" -- booth #4061: the Ticket Booth's weekly shelf; harvest #4251: Harvest Hollow's Stall and Feast Pie; -- #1645: "pass", a pass piece (a rarity and bonus since #2006)
+
+-- What a crate piece is (F53, golden-fish.md section 4). The cafe has one wallpaper, one floor and one paint in use
+-- at a time, and since F80 (section 4b) one door set (front and back door together) and one cat flap; furniture and
+-- decorations stand on decor spots.
+export type DecorKind =
+	"wallpaper"
+	| "floor"
+	| "paint"
+	| "door"
+	| "catflap"
+	| "furniture"
+	| "decoration"
+
+export type DecorDef = {
+	id: string,
+	name: string,
+	cost: number,
+	category: string,
+	effect: string,
+	description: string,
+	requiresTier: number?,
+	bonus: number, -- added to the cafe multiplier while placed
+	asset: string, -- model name in ReplicatedStorage.Assets
+	source: DecorSource?, -- missing means "shop"
+	replaces: string?, -- a piece this one stands in for while both are placed (N114; no piece has one since F54)
+	-- a crate piece (F53): its pool (a zone id or "classic"), rarity and kind; a wallpaper, floor or paint also has
+	-- its colour and material, which the client puts on the cafe's tagged shell parts
+	crate: string?,
+	rarity: Rarity?,
+	kind: DecorKind?,
+	color: Color3?,
+	material: Enum.Material?,
+	-- #2256: a floor style's tiled image (an rbxassetid), drawn on the Top face of each Floor part over its colour and
+	-- material, which stay underneath as the fallback while the image loads or if it never does
+	texture: string?,
+	-- #1822: a pass decor piece that comes with this game pass (by name) instead of the Cafe Pass track
+	pack: string?,
+	-- #1168 row 3: the Config field of the game pass that gives this pass decor piece (PassDecor.toGrant)
+	passKey: string?,
+}
+
+-- Data-model section 11b and golden-fish.md sections 5 and 5b (F54): a milestone on an Index page, `needs` of what
+-- its track counts. "normal": different cats of the page's area (every area on the All Cats page, area id "all");
+-- "gold": gold cats of the area; "decor": pieces of the Decor Index page's crate (area ids "decor_<pool>");
+-- "rainbow" (F99, rainbow-coat.md section 4): different rainbow cats across every area, on the Rainbow page (area id
+-- "rainbow").
+export type IndexTrack = "normal" | "gold" | "decor" | "rainbow"
+
+export type IndexMilestone = {
+	id: string,
+	track: IndexTrack,
+	needs: number,
+	-- F97: every piece of the Decor page, whatever its size (decor10: sixteen on the Classic page, twelve elsewhere);
+	-- `needs` is then the least it asks
+	whole: boolean?,
+}
+
+-- What one Index milestone pays (golden-fish.md section 8), any of it. `coins` is the minimum and `coinSeconds`
+-- (when set) pays max(coins, floor(dayRate x coinSeconds)). `crates` maps a crate id, or "highest" (the plain crate
+-- of the player's highest open zone), to a count. `bonus` (tips), `goldLuck`, `rainbowLuck` (F99) and `baitSpeed` are
+-- permanent fractions from the claim on; a milestone has one kind. `tag` names a title the prize unlocks.
+-- A developer product (#1182): sold for Robux in the Store, granted by ProductService's ProcessReceipt. `prize` is a
+-- fixed bundle of Big Money, Swift and Steady Paw Potions only (monetization-policy, decision 2026-11-01 22:42): never
+-- coins, golden fish, crates, spins or anything random. The price is read from Roblox at runtime, never stored here.
+export type ProductDef = {
+	id: string,
+	name: string,
+	-- `cats` (shop-only cat ids) and `signStyles` (shared/SignStyles ids) are the Starter Bundle's (#1625)
+	-- `moneyMultiplier` (#2850): owning it (a oncePerAccount product in onceBought) multiplies all cafe income like
+	-- the Money pass; the highest of the two counts, never both (Economy.passMultiplier)
+	prize: {
+		potions: { [string]: number },
+		cats: { string }?,
+		signStyles: { string }?,
+		moneyMultiplier: number?,
+		-- #4020: potions given in place of moneyMultiplier to a buyer whose money pass already gives that much or more
+		-- (Products.prizeFor), so the bundle is never worth less to them
+		moneySwap: { [string]: number }?,
+		-- #3864: Trait Tokens for the Mystic Pool (the token bundles). A token buys a trait roll, so these make the
+		-- roll a paid random item: the offer shows the roll's odds and is hidden where paid random items are restricted
+		traitTokens: number?,
+		-- #4238: Today's Deal's golden fish, and its crates ("highest_golden" the best open area's golden crate), paid
+		-- through Payout like an Index prize
+		fish: number?,
+		crates: { [string]: number }?,
+	},
+	-- #1625: sold once per account; a second receipt pays only the potions (Products.prizeFor)
+	oncePerAccount: boolean?,
+	-- #1626: unlocks the running Cafe Pass season's paid track (CafePass.buyPaid); once per season
+	seasonPass: boolean?,
+	-- #1168 row 4: buying it marks the player a supporter (the Thank You Badge; Products.isSupporter)
+	supporter: boolean?,
+}
+
+-- Cat food (corner-shop-v2.md section 3, #1181): kept in the Bag (profile.catFood) and fed to one cat with FeedCat.
+export type CatFoodDef = { id: string, name: string, xp: number }
+
+export type IndexPrize = {
+	coins: number?,
+	coinSeconds: number?,
+	lures: { [string]: number }?,
+	fish: number?,
+	spins: number?,
+	crates: { [string]: number }?,
+	potions: { [string]: number }?, -- F64: potionId -> count (Tip Jar step 12, codes)
+	catFood: { [string]: number }?, -- #1181: food id -> count into the Bag (Daily Treat, the Collector, catches, rescues)
+	bonus: number?,
+	goldLuck: number?,
+	rainbowLuck: number?, -- F99: on every rainbow roll, the Rainbow track's sum capped at RainbowLuckMax
+	baitSpeed: number?,
+	tag: string?,
+	passXp: number?, -- #1645 (quests.md section 8): Cafe Pass XP for the running season (CafePass.addXp)
+	traitTokens: number?, -- Daily Treat v2 (bigTreats): Trait Tokens into the Mystic Pool's bank (Traits.give)
+	snowflakes: number?, -- #5502: the Christmas event's Snowflakes (profile.snowflakes; the advent calendar)
+}
+
+-- #2798: the Cozy Cafe bags given on `day` (a UTC day number)
+export type CozySave = { day: number, bags: number }
+-- #2791: one step of the gift ladder still to come. `id` "m2", "m4", "m6", "like", "m15", "m20" or "fav"; `at` the
+-- seconds of play on the account when it pays (PlayerState.playSeconds counts toward it); `prize` what it pays.
+export type GiftStepView = {
+	id: string,
+	at: number,
+	prize: IndexPrize,
+}
+
+-- The Cafe Pass (#1645, cafe-pass.md). A paid track's named item, kept forever once claimed: a chat tag, an accessory,
+-- a uniform colour, a decor piece, a sign frame or the season cat.
+-- #1624 (store-pass-looks.md): the saved theme and uniform picks (shared/Looks ids), nil for Classic.
+export type LookPicks = { theme: string?, uniform: string?, accessory: string? }
+-- What the Style tab reads: the picks (the shown look, nil for Classic) and every owned id of each kind.
+export type LooksView = {
+	theme: string?,
+	uniform: string?,
+	accessory: string?, -- #1624 section 6: the cats' accessory (save version 39)
+	themes: { string },
+	uniforms: { string },
+	accessories: { string },
+}
+
+export type PassItemKind = "tag" | "accessory" | "uniform" | "decor" | "frame" | "cat"
+export type PassItem = { kind: PassItemKind, id: string, name: string }
+-- One level's reward on a track: a prize Payout pays, a named item, or both.
+export type PassReward = { prize: IndexPrize?, item: PassItem? }
+-- One season's two tracks, by level (the free track has every second level, the paid track every level).
+export type PassSeasonDef = {
+	id: string,
+	name: string,
+	free: { [number]: PassReward },
+	paid: { [number]: PassReward },
+}
+-- profile.pass (save version 36), see shared/CafePass.
+export type PassState = {
+	season: number,
+	xp: number,
+	paidSeason: number,
+	claimedFree: { number },
+	claimedPaid: { number },
+	items: { [string]: boolean },
+	tag: string?,
+}
+-- CafePassState: what the Pass screen draws (CafePass.view).
+export type CafePassView = {
+	season: number, -- 0 while no season runs
+	startsAt: number,
+	endsAt: number?, -- nil while no later season is set; the screen shows the end as a plain date
+	level: number,
+	xp: number,
+	xpPerLevel: number,
+	levels: number,
+	paid: boolean,
+	claimedFree: { number },
+	claimedPaid: { number },
+	claimable: number, -- how many rewards are ready, for the HUD's red dot
+	items: { [string]: boolean },
+	tag: string?, -- the saved chat tag pick: a ChatTags id, "off", or nil for the default
+	tags: { string }?, -- #1626: the chat tags the player may pick now (ChatTags.choices), set by CafePassService
+	tagShown: string?, -- #1626: the tag their name shows now (ChatTags.shown), nil for none
+}
+
+-- A potion (F64, data-model section 12b): drunk from the bag with UsePotion, it runs `minutes` of play time.
+-- `effect` is one short line for the bag. Potions are earned only.
+export type PotionDef = {
+	id: string,
+	-- corner-shop-v2.md section 4: a Small or Big size of another potion runs that potion's timer (`buff`), so one chip
+	-- shows the summed minutes; `shopOnly` keeps a size or the Cat Whistle out of Mystery gifts.
+	buff: string?,
+	shopOnly: boolean?,
+	name: string,
+	minutes: number,
+	effect: string,
+	-- F73 (quests.md section 4): what it adds while it runs. `tips` goes on every tip (all running tip potions
+	-- together at most TimedTipsMax), `goldLuck` on every gold roll on top of GoldLuckMax, `baitSpeed` on the bait
+	-- speed of food set while it runs, inside BaitSpeedMax. `quest` marks the three quest potions, which only quests
+	-- and achievements pay (never a Mystery gift).
+	tips: number?,
+	-- #4195 (the Admin Wheel's hour of 3x money): added to every tip while it runs, outside TimedTipsMax and on top
+	-- of whatever the `tips` potions add
+	tipsOver: number?,
+	goldLuck: number?,
+	baitSpeed: number?,
+	quest: boolean?,
+	-- #3462: a lucky potion's Luck while it runs, with the Lucky Potion's doubled gold chance on bait. The Lucky
+	-- Potion itself has none here: its Luck is Config.LuckyPotionLuck. The biggest running one counts
+	-- (Potions.luck); they never add.
+	luck: number?,
+}
+
+-- One thing a Mystery Visitor's gift can hold (F64): `chance` in percent, the rows summing to 100. A "potion" row
+-- has no id: the potion is one of Catalog.potions at even odds.
+-- #2614: "coins" counts seconds of income, "crate" a crate id (or "highest") plus `fish`, "food" a cat food id, and
+-- "questPotion" one of the 30-minute quest potions at even odds.
+export type MysteryGiftKind =
+	"potion"
+	| "questPotion"
+	| "lure"
+	| "fish"
+	| "spin"
+	| "coins"
+	| "crate"
+	| "food"
+export type MysteryGiftRow = {
+	kind: MysteryGiftKind,
+	id: string?,
+	count: number,
+	chance: number,
+	fish: number?, -- #2614: golden fish paid with the row (the Super crate's 15)
+}
+-- #2614: a gift's wrap, rolled first at `chance` percent, then one of its rows at theirs.
+export type MysteryGiftTierName = "Common" | "Rare" | "Super"
+export type MysteryGiftTier = {
+	tier: MysteryGiftTierName,
+	chance: number,
+	rows: { MysteryGiftRow },
+}
+
+-- One row of Catalog.collectorOffers (F63, data-model section 12b): what the Cat Collector offers for a cat he values
+-- at `value` or more. `crates.zone` counts the crate of the cat's own area and `crates.golden` its golden one.
+export type CollectorOffer = {
+	value: number,
+	fish: number?,
+	lures: { [string]: number }?,
+	spins: number?,
+	crates: { zone: number?, golden: number? }?,
+	catFood: { [string]: number }?, -- #1181 (corner-shop-v2.md section 3): his "2 Big Snacks"
+}
+
+-- A code (F65, data-model section 11d), keyed in Catalog.codes by its lowercased text. Its prize uses the Index
+-- prize shape. An inactive or ended code has expired; a requiresGroup code needs membership of Config.GroupId.
+export type CodeDef = {
+	id: string,
+	prize: IndexPrize,
+	active: boolean,
+	startsAt: number?, -- os.time(): before it the code reads as one that does not exist (#3576)
+	endsAt: number?, -- os.time()
+	requiresGroup: boolean?,
+}
+
+export type LureOdds = {
+	Common: number,
+	Rare: number,
+	Epic: number,
+	Legendary: number,
+	Mythical: number,
+}
+
+export type LureDef = {
+	id: string,
+	name: string,
+	cost: number,
+	attracts: Rarity, -- the rarity it is known for (the dealer foods: their likeliest rarity)
+	rarity: Rarity, -- v0.10 (F69): how good the food is, shown as a badge and border in the cat rarity colours
+	source: LureSource, -- "shop" foods are bought with BuyLure, "dealer" foods only from the night dealer
+	-- F97 (notes-10-28-to-10-30.md section 3): `cost` is the base price at Tiers 1 and 2 (Economy.foodPrice), and
+	-- every food list runs by sortOrder: Kibble, Tuna, Moonlit Sardines, Salmon, Caviar, Moon Milk, Star Treat
+	sortOrder: number,
+	description: string,
+	odds: LureOdds, -- percentages summing to 100, shown before purchase
+	asset: string, -- food model shown in the bowl while the lure is active
+	-- #4900: a Secret tier food's share of its rolled Mythicals that turn Secret (Catalog.secretPerMythical else),
+	-- shown on its odds line as its own Secret %
+	secretShare: number?,
+	needsTier: number?, -- #4900: the night dealer sells it only from this tier (the Day Cart's row has its own)
+}
+
+-- A Cafe Crate (F53, golden-fish.md section 4): ten cosmetics of one pool, opened at the Golden Fish Market. The
+-- zone crates open with their zone; the Classic Crate (area "classic") is open from Tier 1. A golden crate has the
+-- same pieces at Epic or better odds and is never sold.
+export type CrateDef = {
+	id: string,
+	name: string,
+	area: string, -- its pool: a zone id, "classic" or "rally" (F101)
+	golden: boolean,
+	price: number?, -- golden fish at the Market; nil for a golden crate
+	odds: { [string]: number }, -- percent by rarity, adding up to 100; a piece's chance is its rarity's share
+	pieces: { string }, -- decor ids
+}
+
+-- One row of the Golden Fish Market (F53, golden-fish.md section 3). A crate or a food has one `cost`; a perk has a
+-- cost per level in `costs` and stops at `maxLevel`.
+-- #2565 (mystery-market.md section 5): one item on Juniper's Mystery Market shelf, bought once for `cost` golden fish
+-- (its full price) from Tier `minTier`. `kind` sorts the shelf: "tool" changes play, "decor", "look" and "music" don't.
+export type MysteryItem = {
+	id: string,
+	name: string,
+	text: string, -- the card's one line
+	cost: number,
+	minTier: number,
+	kind: "tool" | "decor" | "look" | "music",
+	flag: string?, -- #3535: the LiveFlags key that must be on for the item to be on the shelf (nil: always)
+}
+
+export type FishShopRow = {
+	id: string, -- the crate id, the lure id or the perk id
+	kind: "crate" | "lure" | "perk",
+	cost: number?,
+	costs: { number }?,
+	maxLevel: number?,
+}
+
+-- Data-model section 11b (F47): one Tip Jar gift, unlocked `minutes` into a session. A "coins" step pays
+-- max(minCoins, floor(day rate x seconds)) at claim time; a "lure" step adds `count` of the food `lureId`.
+export type TipJarStep = {
+	step: number,
+	minutes: number,
+	prize: IndexPrize, -- F68 (data-model 11b v0.10): the Index prize shape, so one step can pay several things
+}
+
+-- One slice of the Spin Wheel (F49, data-model section 11c): the Tip Jar's prize shape plus its weight. The weights
+-- add up to 100, so each is the slice's chance in percent.
+export type SpinSlice = {
+	slice: number,
+	kind: "coins" | "lure" | "fish" | "crate" | "cat", -- F54: golden fish and a crate; #5171: a cat (SpinCat)
+	catId: string?, -- #5171: the cat a "cat" slice gives
+	seconds: number?,
+	minCoins: number?,
+	lureId: string?,
+	count: number?, -- foods, golden fish or crates
+	crate: string?, -- F54: the crate id, "highest" or (#1500) "highest_golden"
+	weight: number,
+	jackpot: boolean?, -- #1500: one of the two 0.5% slices (and #5171's cat slice), with the big win effect and a toast
+}
+
+-- The player's spins (F49): `lastFreeDay` is the UTC day number (os.time() // 86400) of the last free spin, so the
+-- free one is due on any later day; `banked` is 0 to SpinBankCap.
+export type SpinState = {
+	lastFreeDay: number,
+	banked: number,
+}
+
+-- The Daily Treat card (F70, data-model 11e): `stamp` is the last day paid on the card (0 on a fresh card, 7 on a
+-- full one) and `lastDay` the UTC day number (os.time() // 86400) of that claim, so a stamp is due on any later day.
+export type DailyTreatState = {
+	stamp: number,
+	lastDay: number,
+}
+
+-- What ProfileSync sends for the Daily Treat window and its HUD dot (F70): the card, whether a stamp is due now and
+-- the day it pays (1 after a full card).
+export type DailyTreatView = {
+	stamp: number,
+	lastDay: number,
+	due: boolean,
+	nextDay: number,
+}
+
+-- One day of the Daily Treat card (F70, data-model 11e), its prize in the Index prize shape.
+export type DailyTreatDay = {
+	day: number,
+	prize: IndexPrize,
+}
+
+-- TipJarState (server to client): when this session's jar started (workspace:GetServerTimeNow(), the clock the
+-- client counts down against) and one claimed flag per step in order. A dense array, because a sparse table of
+-- step numbers would lose entries past its first gap on the way through a remote.
+export type TipJarState = {
+	sessionStartedAt: number,
+	claimed: { boolean },
+}
+
+export type AreaDef = {
+	id: string,
+	name: string,
+	tier: number, -- the tier that opens it (data-model section 5b)
+	spawnPoints: number,
+	waveSize: number, -- strays spawned at once at each night start
+	rescueSpots: number,
+	odds: LureOdds,
+	incomeMultiplier: number, -- a cat from here earns its rarity's income times this (data-model v0.13.7)
+	-- #2322: a net catch here has its Perfect and Good bands this many times as wide (nil is 1)
+	catchWindowScale: number?,
+	-- #2794 (retention-ideas.md 5b): the starting areas' own stray floor (Config.StrayFloorBase when nil), strays kept
+	-- near the gate (Config.StrayEntryFloor when nil), stuck cats at least each sunrise (Config.RescueMinStuck when
+	-- nil), and `starterRescue`: the pool's trap nearest the camp is out every day and gets the first stuck cat
+	floorBase: number?,
+	entryFloor: number?,
+	rescueMinStuck: number?,
+	starterRescue: boolean?,
+	-- #4070: only this camp's cannon flies here (the Water Park from the Desert camp); nil: every cannon does
+	launchFrom: string?,
+}
+
+export type SpotDef = {
+	id: string, -- "barista_1"
+	spotType: SpotType, -- the role
+	tier: number, -- opens at this tier; a pass-only slot (#1624) has a tier past the last, opened by Economy.extraSlots
+	passOnly: boolean?, -- #1624: opened only by an extra slot (Grand Cafe, the Extra Slot pass), never by a tier
+}
+
+-- One cafe tier (data-model section 5b). RankUp raises the tier when every requirement is met.
+export type TierDef = {
+	tier: number,
+	name: string,
+	cost: number, -- coins spent on rank up; 0 for Tier 1
+	distinctCats: number, -- entries in the collection
+	-- #4809: true when the cat need counts cats of any kind, duplicates included (Economy.rankUpCats); Tier 2 only
+	anyCats: boolean?,
+	needsRarity: Rarity?, -- and this many different cats of this rarity in the collection
+	needsRarityCount: number?,
+	slots: number, -- role slots open at this tier
+	multiplier: number, -- tierMultiplier in the income formula
+	area: Area, -- the area this tier opens
+	-- highest shop level allowed at this tier (lucky_cat: F88, level n at Tier n)
+	caps: { tables: number, espresso: number, net: number, lure_bowl: number, lucky_cat: number },
+}
+
+export type CatInstance = {
+	uid: string,
+	catId: string,
+	variant: string, -- "base", "gold" or "rainbow" (F99)
+	caughtAt: number,
+	spotId: string?, -- the role slot it works, nil when resting in the cat room
+	-- Stats (data-model section 4b). Readers go through CatStats, which defaults any missing field.
+	level: number, -- 1 to Config.CatMaxLevel, rises with XP earned while the owner is in the game (v0.12 F75)
+	xp: number, -- toward the next level, may hold a fraction; one XP a second working, a quarter resting
+	charm: number, -- 0 to 100, rolled once when caught; 50 is a 1.0x rate
+	rescued: boolean?, -- true when freed from a rescue spot (for the book and analytics); absent otherwise
+	-- #5300 (shared/PerfectCatch): true when caught by net with every ring Perfect (or migrated from charm 80+); x1.5
+	-- pay while the perfectCatch switch is on; nil otherwise. It travels with the cat in a trade.
+	perfect: boolean?,
+	name: string?, -- the player's name for it as typed, filtered again for display; nil shows the catalog name
+	method: CatchMethod?, -- how it was found
+	-- F62 (section 4): true when the player locked it, so it cannot be sold or traded; nil is unlocked. Gold,
+	-- Legendary and Mythical cats arrive locked.
+	locked: boolean?,
+	-- #3196 (trait-station.md, save version 48): its one trait from the Mystic Pool, nil for none; it travels with the
+	-- cat in a trade
+	trait: TraitData?,
+}
+
+-- #3196: a cat's trait, a shared/Traits id (its rarity and effects come with the id)
+export type TraitData = { id: string }
+
+-- #3196 (trait-station.md sections 3 and 4, save version 48): the Mystic Pool's side of the save. `freeUsed` counts the
+-- free starter rolls used, 0 to Traits.FREE_ROLLS, up (so a missing field never grants them again); `tokens` the
+-- Trait Tokens banked; `held` and `at` the station's free tokens waiting and when the next one started (os.time());
+-- `pending` a re-roll waiting for Keep old or Take new, saved so the roll paid for is never lost.
+-- #4062 (save version 49, shared/DragonKeep): Cinder in the Dragon Keep. `stage` 0 to 5; `slots` one card id per open
+-- slot ("" for empty), `binder` every card taken for good (slotted ones too); `hand` the dealt cards showing and
+-- `queue` the hands waiting ("stage" or "rekindle"), the first being the hand showing; `rekindled` the Rekindle hands
+-- earned so far; `kept` cats moved in; `napping` the rarest moved-in cats shown around the gold pile.
+export type DragonSave = {
+	warmth: number,
+	stage: number,
+	slots: { string },
+	binder: { [string]: boolean },
+	hand: { string },
+	queue: { string },
+	rekindled: number,
+	kept: number,
+	colour: string?,
+	napping: { { id: string, variant: string? } },
+}
+-- #4104 (save version 50, shared/Fusion): the Fusion Observatory's dome. `running` the fusion under way, holding the
+-- result's cat, coat, level, XP, charm, name and trait (the five copies left the save at its start); `made` counts.
+export type FusionRunning = {
+	catId: string,
+	coat: string, -- "gold" or "rainbow"
+	startedAt: number,
+	doneAt: number,
+	level: number,
+	xp: number,
+	charm: number,
+	name: string?,
+	trait: TraitData?,
+}
+export type FusionSave = {
+	running: FusionRunning?,
+	made: { gold: number, rainbow: number },
+}
+export type FusionView = {
+	running: {
+		catId: string,
+		coat: string,
+		doneAt: number,
+		level: number,
+		name: string?,
+		trait: { id: string, rarity: string }?,
+	}?,
+	ready: boolean,
+	goldSeconds: number,
+	rainbowSeconds: number,
+	made: { gold: number, rainbow: number },
+}
+export type DragonView = {
+	warmth: number,
+	stage: number,
+	stageName: string?,
+	nextAt: number, -- the Warmth total of the next stage or Rekindle hand
+	slots: { string },
+	binder: { [string]: boolean },
+	hand: { string },
+	handKind: string?, -- "stage" or "rekindle" while a hand shows
+	hands: number, -- hands waiting, the one showing included
+	colour: string?,
+	sets: { string }, -- families with a set lit
+	napping: { { id: string, variant: string? } },
+	kept: number,
+	odds: { [string]: number }, -- "Card odds" for the hand showing (or the next stage's)
+}
+
+-- #4061 (save version 49, shared/TicketBooth): the Ticket Booth's tickets. `have` to spend, `spent` lifetime (the Park
+-- Regular title), `limits` prize id -> the day or week number it counts in and how many were bought then, `rushAt`
+-- when today's Ticket Rush hour started (os.time(), 0 for never).
+export type TicketSave = {
+	have: number,
+	spent: number,
+	limits: { [string]: { key: number, n: number } },
+	rushAt: number,
+}
+export type TicketPrizeRow = {
+	id: string,
+	name: string,
+	line: string,
+	price: number,
+	left: number?, -- more that may be bought now, nil for no limit
+	per: string?, -- "day", "week" or "once" with a limit
+	blocker: string?, -- why BUY is off now, nil when it can be bought
+	-- #4061 the weekly shelf's cards only: "decor" or "look", its Catalog decor or Looks accessory id, and whether the
+	-- save bought it (the card says "Owned")
+	kind: string?,
+	item: string?,
+	owned: boolean?,
+}
+export type TicketBoothView = {
+	tickets: number,
+	spent: number,
+	rushEndsAt: number?, -- while the rush runs
+	rushUsedToday: boolean,
+	weekEndsAt: number,
+	prizes: { TicketPrizeRow },
+	week: { TicketPrizeRow }, -- #4061: this week's Water Park shelf (TicketBooth.weekShelf), until weekEndsAt
+	ready: number, -- prizes that can be bought now (the "!")
+}
+
+export type TraitSave = {
+	tokens: number,
+	freeUsed: number,
+	held: number,
+	at: number,
+	pending: TraitPending?,
+}
+export type TraitPending = { uid: string, id: string, paid: string? } -- paid: free, token or fish
+
+-- #3196: PlayerState.traits, the Mystic Pool card's numbers (nil while the `traits` flag is off or the station is
+-- shut for the tier). `nextAt` is the next free token in server time, nil while the station holds TOKEN_HOLD.
+-- #3996 (shared/DailyDeal): PlayerState.dailyDeal
+export type DailyDealView = { deal: number, bought: boolean, tomorrow: number }
+
+export type TraitsView = {
+	tokens: number,
+	freeLeft: number,
+	held: number,
+	nextAt: number?,
+	pending: TraitPending?,
+	-- #3864: whether the Trait Token bundles may be offered to this player (the traitBundles switch on, and their
+	-- policy read and not restricting paid random items); nil or false hides the offer
+	bundles: boolean?,
+	-- #4197: the free Trait Party rolls left while an admin Trait Party runs; nil with none
+	party: number?,
+	-- #4712: the last Auto Roll this session: the trait it gave and a count that moves on with each; nil with none
+	autoRoll: { id: string, n: number }?,
+}
+
+export type PassBoostsView = { cafe: number, staff: number, rich: number, money: number }
+
+-- One cat as ProfileSync sends it: the saved fields plus the derived numbers the UI shows.
+export type CatView = {
+	uid: string,
+	catId: string,
+	variant: string,
+	caughtAt: number,
+	spotId: string?,
+	rescued: boolean?,
+	perfect: boolean?, -- #5300
+	name: string?,
+	method: CatchMethod?,
+	locked: boolean, -- F62: the lock icon on its card
+	trait: TraitData?, -- #3196
+	level: number,
+	xp: number,
+	xpToNext: number, -- 0 at the level cap
+	charm: number,
+	stars: number, -- 1 to 5, from charm
+	rating: number, -- coins per second before the spot and cafe multipliers
+}
+
+export type Stats = {
+	catsCaught: number,
+	catsSold: number,
+	grabsAttempted: number,
+	grabsSucceeded: number,
+	perfectCircles: number,
+	circlesTotal: number,
+	rescues: number,
+	rescueAttempts: number,
+	baitsTamed: number,
+	baitsLetGo: number,
+	bumpsGiven: number,
+	bumpsLanded: number,
+	bumpsTaken: number,
+	luresUsed: number,
+	playtimeSeconds: number,
+	sessions: number,
+	tipJarClaims: number, -- F47
+	spins: number, -- F49
+	cratesOpened: number, -- F53
+	fishEarned: number, -- F52: golden fish earned, every source
+	pickups: number, -- v0.8 F56: Dropped cats picked up with PickUpCat
+	catLevelUps: number, -- v0.12 F75: every level any of the player's cats gained
+	potionsUsed: number, -- F64: potions drunk with UsePotion
+	mysteryGifts: number, -- F64: Mystery gifts opened
+	collectorTrades: number, -- F63: cats traded to the Cat Collector
+	-- F73 (quests.md section 6): Rare or better and gold cats added by net, rescue or bait, tip piles collected, and
+	-- quests and full sets finished
+	rareCatches: number,
+	-- #2745 (Derek 2026-11-12, "go w recommend"): when the Golden Pond pass was bought with Robux (os.time), 0 for never
+	-- seen; golden fish offers wait Config.TradeFishPassHoldSeconds after it. A number in stats with a default, so no
+	-- save version (a server without it drops it, and the hold then reads as long past)
+	pondPassAt: number,
+	-- #2745: 1 once this save has been seen owning the Golden Pond pass (a buy on the website or before joining never
+	-- fires the in-game purchase, so the first sighting starts the hold too); 0 before
+	pondSeen: number,
+	goldCatches: number,
+	rainbowCatches: number, -- F99: rainbow cats added by net, rescue or bait
+	tipPilesCollected: number,
+	dailyQuestsDone: number,
+	dailySetsDone: number,
+	weeklyQuestsDone: number,
+	weeklySetsDone: number,
+	-- F98 (leaderboards.md section 5): the best money per second the cafe has reached (shared/Leaderboards.moneyRate),
+	-- and this week's play time and best rate (the week is Quests.week's)
+	bestRate: number,
+	weekPlay: WeekPlay,
+	weekBestRate: WeekRate,
+	-- F102 (trading.md section 6): trades done, and today's count for TradesPerDay (the day is a global game day since #1629)
+	trades: number,
+	tradesToday: TradesToday,
+	-- #1934 (release.md section 1): PURRFECT net catches, the run of them in a row now and the best run (Badges), and
+	-- team rescues this player helped with
+	purrfectCatches: number,
+	purrfectStreak: number,
+	bestPurrfectStreak: number,
+	teamRescuesHelped: number,
+	-- #3694 section 3 (no new version): counters for the newer features' achievements: Rummage Bin wins, Yard Sale
+	-- lucky picks, Mystic Pool rolls, Mouse Dash games played, golden crates opened and seconds rested in the cafe
+	binWins: number,
+	yardPicks: number,
+	traitRolls: number,
+	dashRuns: number,
+	goldenCratesOpened: number,
+	restSeconds: number,
+	cannonFlights: number, -- #3618: cannon flights taken, for the Liftoff badge
+	tier2TopUp: number, -- #4453: coins the first tamed bait cat's welcome paid toward Tier 2 (0: none yet)
+	tier3TopUp: number, -- #5038: coins the Tier 3 welcome gift paid (shared/Tier3Path; 0: none yet)
+}
+
+export type WeekPlay = { week: number, seconds: number }
+export type WeekRate = { week: number, rate: number }
+-- #2745 (section 1d): `fishIn`, golden fish received in trades that game day (TradeFishPerDay); nil for none.
+export type TradesToday = { day: number, count: number, fishIn: number? }
+
+-- F102 trading (trading.md; shapes agreed with the UI thread 2026-11-02). One cat as a trade's log and its done card
+-- show it.
+export type CatSummary = { catId: string, rarity: string, variant: string?, level: number }
+-- #1574 (section 1b): one decor or lawn piece as the log and the done card show it; `kind` "decor" or "lawn".
+export type DecorSummary = { id: string, kind: string, rarity: string }
+-- #2745 (section 1c): one kind of banked crate and how many, as the log and the done card show it.
+export type CrateSummary = { id: string, count: number }
+-- One of the last TradeLogMax trades, newest first: its id, when (os.time()), the partner's display name then, and
+-- both sides.
+export type TradeLogEntry = {
+	id: string,
+	at: number,
+	partnerName: string,
+	gave: { CatSummary },
+	got: { CatSummary },
+	gaveDecor: { DecorSummary }?, -- #1574; nil in entries from before decor trading
+	gotDecor: { DecorSummary }?,
+	gaveCrates: { CrateSummary }?, -- #2745; nil in entries from before crate trading
+	gotCrates: { CrateSummary }?,
+	gaveFish: number?, -- #2745 (section 1d): golden fish, nil for none
+	gotFish: number?,
+}
+-- One cat on offer, as TradeState shows it to one player: `rateForMe` is what it earns (or would earn) per second in
+-- that player's cafe.
+export type TradeTile = {
+	uid: string,
+	catId: string,
+	rarity: string,
+	variant: string?, -- "gold" or "rainbow"; nil for the base coat
+	level: number,
+	charm: number?,
+	rateForMe: number,
+	earnsNow: number?, -- #3211: the viewer's own cat: what it earns this second (0 with no job); the totals use it
+	trait: TraitData?, -- #3710: the cat's Mystic Pool trait, which moves with it (shared/Trade)
+}
+-- #1574: one decor or lawn piece on offer: its id, name, `kind` ("decor" or "lawn"), rarity and the money bonus it
+-- adds while placed (0.05 is +5%).
+export type TradeDecorTile = { id: string, name: string, kind: string, rarity: string, bonus: number }
+-- #2745: one kind of crate on offer: its crate id, name, its pool (a zone id, "classic" or "rally") and how many.
+export type TradeCrateTile = { id: string, name: string, area: string, count: number }
+export type TradeSide = {
+	userId: number,
+	name: string, -- the display name
+	ready: boolean,
+	confirmed: boolean,
+	cats: { TradeTile },
+	decor: { TradeDecorTile }, -- #1574
+	crates: { TradeCrateTile }, -- #2745, sorted by crate id
+	fish: number, -- #2745 (section 1d): golden fish on offer, 0 for none
+}
+-- The last change to an offer, for the yellow flash and "Changed!" (section 3): whose side, which cat uid or piece
+-- id, when (server time).
+export type TradeChange = { side: string, uid: string, at: number }
+-- TradeState(state?) for one player: nil closes the window.
+export type TradeStateView = {
+	tradeId: string,
+	version: number,
+	phase: string, -- "offer", "countdown" or "confirm"
+	countdownEndsAt: number?, -- server time, while counting down
+	me: TradeSide,
+	them: TradeSide,
+	changed: TradeChange?,
+	giveValue: number, -- the Collector's values (Trade.value) of my cats on offer
+	getValue: number, -- and of theirs
+	lopsided: boolean, -- I give at least TradeLopsidedRatio times what I get
+	gift: boolean, -- I get nothing back
+	myRateNow: number, -- what my cats on offer earn in my cafe now, per second
+	theirRateForMe: number, -- what their cats would earn in my cafe, per second
+	confirmAt: number?, -- server time from which my Confirm counts (TradeConfirmWaitSeconds after a lopsided or gift
+	-- confirm screen opens); nil when there is no wait
+	theyHave: { string }, -- #1574: my tradeable pieces the other player already owns (grey, "They already have this")
+	-- #2745: my banked tradeable crates the other player can't take yet, crate id -> why ("They haven't reached the
+	-- Desert yet"), greyed in the Crates tab
+	crateBlocked: { [string]: string },
+	cratesOn: boolean, -- #2745: the tradeCrates live switch; false hides the Crates tab
+	fishOn: boolean, -- #2745 (section 1d): the tradeFish live switch; false hides the fish rows
+	-- #2745: golden fish the other player can still receive today (TradeFishPerDay less what they got), so Max and
+	-- the "They can get N more today" line never ask for more; nil with no daily cap (#4623)
+	fishRoom: number?,
+}
+
+-- F98: one row of a leaderboard list as LeaderboardSync sends it: the player's display name, the list's whole-number
+-- value (entries, minutes played, money per second) and whether they wear the crown (top 10 of any all-time board).
+export type LeaderboardRow = {
+	rank: number,
+	userId: number,
+	name: string,
+	value: number,
+	crown: boolean,
+}
+
+-- F98: LeaderboardSync's payload. boards[board].week only on playtime and money; me[board] is the receiving player's
+-- own line: their all-time rank (nil off the top 50) and value, and on the weekly boards weekRank and weekValue.
+export type LeaderboardSync = {
+	boards: { [string]: { allTime: { LeaderboardRow }, week: { LeaderboardRow }? } },
+	me: { [string]: { rank: number?, value: number, weekRank: number?, weekValue: number? } },
+	week: number,
+}
+
+-- Quests and achievements (F73, quests.md section 6). A quest row in Catalog.quests: `stat` is the counter it
+-- reads (a Stats key, "lifetimeCoins" or "distinctCats", the entries in collection), `needs` a fixed count or, for a
+-- coins quest, `needsSeconds` of the day rate when it is picked and at least `needsMin`. `requires` skips it when
+-- picking for a player who cannot do it yet: an upgrade's first level, a banked crate or a crate's golden fish
+-- (`fishOrCrate`), or that many cats not yet found in the areas their tier has open (`uncaught`).
+export type QuestKind = "daily" | "weekly"
+export type QuestRequires = { upgrade: string?, fishOrCrate: boolean?, uncaught: number? }
+export type QuestDef = {
+	id: string,
+	text: string,
+	stat: string,
+	needs: number?,
+	needsSeconds: number?,
+	needsMin: number?,
+	requires: QuestRequires?,
+}
+-- A picked quest: its counter's value when picked (`base`) and how far past that it goes (`needs`, at least 1).
+export type QuestEntry = { id: string, base: number, needs: number, claimed: boolean }
+-- The player's quests: the UTC day and the Monday-start week they were rolled for, the slots in pool order, whether
+-- the free reroll is spent and whether the full set's prize is paid.
+export type QuestState = {
+	day: number,
+	daily: { QuestEntry },
+	dailyReroll: boolean,
+	dailySet: boolean,
+	week: number,
+	weekly: { QuestEntry },
+	weeklyReroll: boolean,
+	weeklySet: boolean,
+}
+export type AchievementSize = "S" | "M" | "L" | "XL"
+-- `measure`: a Stats key, "lifetimeCoins", "tier", "distinctCats", "goldCats", "mythicalCats", "decorOwned",
+-- "topCatLevel" or "upgrade:<upgradeId>".
+export type AchievementDef = {
+	id: string,
+	name: string,
+	text: string,
+	measure: string,
+	needs: number,
+	size: AchievementSize,
+	flag: string?, -- #3694 section 3: a LiveFlags key; while that switch is off the achievement is hidden
+}
+-- ProfileSync's quests: each slot's text, progress and claim, the reset times (os.time()) and what is spent.
+export type QuestView = {
+	id: string,
+	text: string,
+	progress: number,
+	needs: number,
+	claimed: boolean,
+}
+export type QuestsView = {
+	daily: { QuestView },
+	weekly: { QuestView },
+	dailyResetsAt: number,
+	weeklyResetsAt: number,
+	dailyRerollUsed: boolean,
+	weeklyRerollUsed: boolean,
+	dailySetClaimed: boolean,
+	weeklySetClaimed: boolean,
+}
+-- ProfileSync's achievements: each one's progress (capped at its needs) and whether it is claimed.
+export type AchievementView = { progress: number, claimed: boolean }
+
+-- The cat on its way to the bait bowl, rolled when the food goes in so a rejoin cannot reroll it (section 8).
+export type BaitState = {
+	lureId: string,
+	placedAt: number, -- os.time()
+	-- os.time() the cat comes, fixed when the food goes in (F54: the wait less the Index's bait speed), so a later
+	-- claim or perk never moves a filling bowl; nil on saves from before it, which wait LureWaitSeconds
+	readyAt: number?,
+	night: boolean?, -- F60: the food went in at night, so readyAt is the shorter night wait; nil by day
+	catId: string,
+	variant: string,
+	charm: number,
+	-- #1897 (first-hour.md section 2): the account's guaranteed Rare-or-better cat, true until it arrives (the bowl
+	-- card's "Your next cat will be Rare or better!" and, on arrival, FirstWow)
+	wow: boolean?,
+	-- #4338: the id of the Bowl Frenzy that already sped this filling bowl (BaitService's frenzyBowls), so one event
+	-- speeds it once even across a server hop; nil until a frenzy meets it
+	frenzy: string?,
+}
+
+-- The second bowl for a player (#1161, Bait.secondBowl): "on" with the pass, "offer" without it (the Store shows it).
+export type SecondBowl = "on" | "offer"
+
+-- The bowl as ProfileSync sends it: the food and when its cat arrives. `cat` is only there once it has arrived,
+-- so the roll is not spoiled before then (reviewer N30).
+export type BaitView = {
+	lureId: string,
+	placedAt: number, -- server os.time(); with readyAt, the fill bar's length (F54: the wait is fixed at placement)
+	readyAt: number, -- server os.time()
+	night: boolean?, -- F60: night bait (half the wait); the bowl countdown shows a moon
+	cat: { catId: string, variant: string, charm: number, stars: number }?,
+	wow: boolean?, -- #1897: the guaranteed Rare-or-better cat is coming (BaitState.wow)
+}
+
+-- What the Fresh Catch shelf sold this player (F94, rewards-and-shops.md section 6; the shape the night dealer saved
+-- before F94): how many of each row, by row id, in the window FreshCatch.window(os.time()) (a game day since #1437),
+-- and the last window a ShopAlert went to them, so a rejoin in the same window never alerts twice.
+export type FreshCatchState = {
+	window: number,
+	bought: { [string]: number },
+	alerted: number,
+}
+
+-- The camp extras (F100, camp-extras.md): one at each camp from the Park on, opening with its area. `kind` "collect"
+-- fills by itself and is taken with CollectCampExtra; "shop" (the Yard Sale) sells crates for golden fish.
+export type CampExtraDef = {
+	id: string, -- "picnic", "yardSale", "pond" or "lostFound"
+	area: string,
+	name: string,
+	model: string, -- CatCafe_Camp_<Area>_<Name> (Model-Agent #750)
+	kind: string, -- "collect" or "shop"
+}
+
+-- The front lawn (F91, front-lawn.md): a lawn spot's size, and the pieces and styles bought for it with coins
+-- (Catalog.lawn, Catalog.lawnStyles). `tier` is the tier that sells it; `model` is Model-Agent's (#673, style guide
+-- section 13): CatCafe_Lawn_<Piece>, CatCafe_Lawn_Path_<Style> or CatCafe_Lawn_Fence_<Style>.
+export type LawnSize = "small" | "big"
+-- lawn-nursery.md section 1 (#1200): Uncommon and Golden are lawn-only rungs
+export type LawnRarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Legendary" | "Mythical" | "Golden"
+export type LawnPieceDef = {
+	id: string,
+	name: string,
+	spot: LawnSize,
+	tier: number,
+	rarity: LawnRarity,
+	price: number,
+	model: string,
+	drop: boolean?, -- #3222: never sold (off the Yard Sale); found only as a rare free drop (Lawn.dropPick)
+}
+export type LawnStyleKind = "path" | "fence"
+export type LawnStyleDef = {
+	id: string,
+	name: string,
+	kind: LawnStyleKind,
+	tier: number,
+	rarity: LawnRarity?, -- nil only for the free Grey Slabs
+	price: number, -- 0: every cafe has it (Grey Slabs)
+	model: string,
+}
+-- A lawn spot (shared/Lawn.SPOTS, Layout.plot.lawnSpots) in plot space: the base centre of its piece on the grass
+-- top, front -Z to the street, and the tier that opens it.
+export type LawnSpot = {
+	id: string,
+	size: LawnSize,
+	tier: number,
+	x: number,
+	y: number,
+	z: number,
+	rotY: number,
+}
+-- The path and fence in use (save version 28): a path style id, and a fence style id or nil for no fence.
+export type LawnStyles = { path: string, fence: string? }
+
+-- What the camp extras hold (section 4, save version 25), all times server os.time(): the Picnic Basket's potions
+-- and when the next started filling; the Yard Sale's last take (0 for never) and how many it has given (save version
+-- 33, #1154; it picks the next crate); the Fish Pond's fill start (its fish follow from the time); the Lost and Found's last settled UTC day and its
+-- prizes waiting. Settled on load and every few seconds (shared/CampExtras.settle).
+export type CampExtrasSave = {
+	picnic: { at: number, held: number },
+	yardSale: { lastClaimAt: number, claims: number },
+	pond: { at: number },
+	lostFound: { at: number, held: number }, -- #1732 (save version 40): was { day, held }, one a UTC day
+}
+
+-- #3050: the Rummage Bin (shared/RummageBin): the os.time() it is full again (0: ready) and the wins so far. Kept in its
+-- own DataStore (BinService), not the save, so it needs no save version step.
+-- #3610: `prize` is the row id rolled and waiting for the player (the `binRoll` switch): the next win pays it, and a
+-- miss, a leave or a rejoin keeps it. nil when none waits.
+export type RummageBinSave = { nextAt: number, uses: number, prize: string? }
+-- A Rummage Bin win as RescueResult's last argument carries it: the BinTable row's id and whether it is the account's
+-- first win (shared/RummageBin.winWords).
+-- #3464: `items` is the whole win, one entry per thing paid (kind "lure", "crate", "potion" or "fish"; `id` the
+-- item's id, nil for golden fish; `count` how many), for the loot card.
+export type RummageItem = { kind: string, id: string?, count: number }
+-- #3608: `rolled` true when the row is the `binRoll` bin's (a BinRollTable row or a fixed first prize).
+export type RummageWin = { id: string, first: boolean, items: { RummageItem }?, rolled: boolean? }
+
+-- One of the Yard Sale's crates today: its crate id, its price in golden fish and whether this player bought it.
+export type YardSaleCrate = { crateId: string, price: number, bought: boolean }
+
+-- One extra as CampExtrasState sends it: `open` when the player's tier has its area; `held` what waits (potions,
+-- golden fish, prizes; for the Yard Sale the crates left to buy today); `nextAt` (server time) the next fill or the
+-- next day's stock, nil while full or shut; `stock` the Yard Sale's crates today.
+export type CampExtraView = {
+	open: boolean,
+	held: number,
+	nextAt: number?,
+	stock: { YardSaleCrate }?,
+	-- #3614: the lucky pick's rows for this player while the `yardSaleRoll` switch is on (shared/YardPick.rows)
+	pick: { { crateId: string, chance: number, golden: boolean, tier: number } }?,
+	-- #3715: the Picnic Basket's treat ids while the `picnicTreats` switch is on (shared/CampExtras.TREATS)
+	treats: { string }?,
+	party: boolean?, -- #5572: the Picnic Basket is a Picnic Party (switch picnicParty, shared/PicnicParty)
+	decor: { YardDecorRow }?, -- #1537: the Yard Sale's lawn rows today (shared/YardSale)
+	decorAt: number?, -- #1537: when the Yard Sale's next lawn stock arrives (server time), the next sunrise
+}
+
+-- Saved (version 35, #1537): the global game day the Yard Sale rows were bought on, and those ids.
+export type YardDecorState = { day: number, bought: { [string]: boolean } }
+-- One Yard Sale lawn row as CampExtrasState sends it: a piece or style id, its name, rarity, fixed coin price and the
+-- tier that opens it; `bought` today (or the server is behind the saved day), `owned` already.
+export type YardDecorRow = {
+	id: string,
+	name: string,
+	rarity: LawnRarity,
+	price: number,
+	tier: number,
+	bought: boolean,
+	owned: boolean,
+}
+
+-- #2651 part 4 (late-stations.md section 3): the Oasis Spa's save. `slots` is how many are open (1 free, the rest
+-- bought with golden fish); `soaking` holds the cat in each slot by its number as a string ("1" to "3"), with `at` the
+-- os.time() it went in. A finished cat waits in its slot until collected.
+export type SpaSoak = { uid: string, at: number }
+export type SpaSave = { slots: number, soaking: { [string]: SpaSoak } }
+
+-- The Relic Museum's save: each filled exhibit by catId, with the coat of the copy given ("base", "gold", "rainbow").
+export type MuseumSave = { [string]: string }
+
+-- LateStationsState (server to client): the Oasis Spa and the Relic Museum as the cards and the cannon picker show
+-- them. A spa slot's `doneAt` (its first level) and `fullAt` (its last, #2904) are server time (os.time()), and `levels`
+-- the levels it has earned so far; `ready` counts the slots with at least one. The museum's `canFill`
+-- counts the empty exhibits the player has a spare copy for (the "!"), `rooms` the areas whose rooms are complete.
+export type SpaSlotView = {
+	slot: number,
+	uid: string?,
+	catId: string?,
+	doneAt: number?,
+	fullAt: number?,
+	levels: number?,
+}
+export type SpaView = {
+	open: boolean,
+	slots: number,
+	nextPrice: number?,
+	soaking: { SpaSlotView },
+	ready: number,
+}
+export type MuseumView = {
+	open: boolean,
+	filled: MuseumSave,
+	count: number,
+	total: number,
+	canFill: number,
+	rooms: { string },
+	bonus: number,
+}
+export type LateStationsState = { live: boolean, spa: SpaView, museum: MuseumView }
+
+-- #2797 (retention-ideas.md 5d, save version 47, shared/Invites): the inviter's side, the joiners who have paid them
+-- (user ids, the last InviteRewardedMax), today's count (a UTC day) and whether the invite card has shown
+export type InviteSave = {
+	rewarded: { number },
+	today: { day: number, count: number },
+	cardShown: boolean,
+}
+-- the joiner's side: who invited them, whether their own first-catch fish is paid and whether the inviter's has been
+-- sent (paid on this server, or left in the inviter's pending key)
+export type ReferredBy = { userId: number, paid: boolean, queued: boolean }
+-- PlayerState.invite: the card's once-per-account flag, the fish each side gets, how many more joiners can pay today,
+-- and the card's play-time window in seconds
+export type InviteView = {
+	cardShown: boolean,
+	fish: number,
+	leftToday: number,
+	cardFrom: number,
+	cardBy: number,
+}
+
+-- CampExtrasState (server to client): every extra's view by id, and the UTC day it was worked out on.
+export type CampExtrasState = {
+	day: number,
+	picnic: CampExtraView,
+	yardSale: CampExtraView,
+	pond: CampExtraView,
+	lostFound: CampExtraView,
+}
+
+-- The Rescue Rally (F101, rescue-rally.md section 5). The save keeps the weekend number (Rally.weekend) and the laps
+-- this player has been paid prizes from in it, at most RallyMaxLaps; the bar itself is the server's.
+export type RallySave = {
+	weekend: number,
+	laps: number,
+}
+
+-- One step of the bar: at `share` of the goal (0.25, 0.5, 1) every player in the server who scored RallyMinPoints this
+-- lap gets `prize` (the Index prize shape).
+export type RallyStep = {
+	share: number,
+	prize: IndexPrize,
+}
+
+-- RallyState (server to client): `active` while a Rally runs, `endsAt` (os.time()) when it ends, 0 when not running;
+-- `startsAt` when the next one starts (the running one's start while active); the server's `lap` (1 up), its `goal`
+-- and `points`; this player's `myPoints` this lap, `lapsPaid` this weekend and `lapsDone`, true when they can earn
+-- nothing more this lap ("You've done your laps this weekend").
+export type RallyState = {
+	active: boolean,
+	endsAt: number,
+	startsAt: number,
+	lap: number,
+	goal: number,
+	points: number,
+	myPoints: number,
+	lapsPaid: number,
+	lapsDone: boolean,
+}
+
+-- One row of the Fresh Catch shelf (F94, section 3): a potion, or now and then a cheaper Classic Crate, for golden
+-- fish. `alert` rows send a ShopAlert when a window stocks them. The row's id is its potion's or crate's id.
+-- One item on the cafe menu (F90, cats-make-orders.md section 1): opened at `tier`, made at its station ("espresso",
+-- "oven" or "counter") in makeSeconds, shown as its model CatCafe_Menu_<model> on a plate and as `icon` (an
+-- rbxassetid once the render is uploaded) or `glyph` until then. Client only: the server never sees an order.
+export type MenuItem = {
+	id: string,
+	name: string,
+	tier: number,
+	station: string,
+	makeSeconds: number,
+	model: string,
+	icon: string?,
+	glyph: string,
+}
+
+export type FreshCatchRow = {
+	id: string,
+	kind: "potion" | "crate",
+	potionId: string?,
+	crateId: string?,
+	fish: number,
+	alert: boolean?,
+}
+
+-- One player's Fresh Catch stock as FreshCatchStock sends it (F94, section 6): every row in shelf order with the
+-- window's amount and how many of it this player bought; `window` is what BuyFreshCatch sends back, restocksAt is
+-- os.time().
+export type FreshCatchItem = { itemId: string, fish: number, amount: number, bought: number }
+export type FreshCatchStock = { window: number, restocksAt: number, stock: { FreshCatchItem } }
+
+-- The Corner Shop (corner-shop.md, #1052): sold for coins only.
+-- v2 (corner-shop-v2.md section 4, #1180): every row sold for coins at a fixed `price`, in a `family` (its daily limit,
+-- Config.CornerDailyLimits) and a `size` (Big and Mega rows are tier gated). A "potion" row gives `potionId` into the
+-- bag and a "food" row `foodId` into the Bag's cat food (its `xp` is that food's). The "show" rows (Bubble Machine and
+-- Cafe Fireworks) are gone (#1381, #1483). `needsTier` hides and refuses the row below that tier. #1281 (section 1b): a "bait" row sells the bowl food `lureId` into `lures` at its
+-- tier-scaled price (CornerShop.priceOf, so `price` is only its Tier 1 price).
+export type CornerShopSize = "small" | "regular" | "big" | "mega"
+export type CornerShopRow = {
+	id: string,
+	name: string,
+	family: string,
+	size: CornerShopSize,
+	kind: "potion" | "food" | "bait",
+	price: number,
+	potionId: string?,
+	foodId: string?,
+	lureId: string?, -- #1281: a "bait" row's bowl food
+	xp: number?,
+	needsTier: number?,
+	-- #3462: a row of the Tier 6 shelf: not shown or sold until the `cartTier6` switch is on (shared/CornerShop's top
+	-- shelf), rolled after every other row, and never part of a Buy all
+	topShelf: boolean?,
+}
+-- Saved (version 32): the window the bought counts belong to, and on UTC day `day` each row's buys (`today`, #1712) and
+-- the cat food XP bought (`foodXpToday`).
+export type CornerShopState = {
+	window: number,
+	bought: { [string]: number },
+	day: number,
+	today: { [string]: number },
+	foodXpToday: number,
+}
+-- One row as CornerShopStock sends it. The daily limits stay on the server and show only as a refusal toast (#1190).
+export type CornerShopItem = {
+	itemId: string,
+	price: number,
+	amount: number,
+	bought: number,
+	size: CornerShopSize,
+	needsTier: number?,
+	outToday: boolean?, -- #1435: true when the row has hit its family's daily limit today (#1712: per row); nil otherwise
+	-- #2593: how many more of the row today's family limit allows (0 when outToday), nil for a family with no limit. For
+	-- the Buy all card's plan only: the row itself still never shows the limit (#1190)
+	leftToday: number?,
+}
+-- What CornerShopStock sends: the window, when it restocks, each row in Catalog order, and the cat food XP bought
+-- today (`snackXp`, its v1 name, which the window reads).
+export type CornerShopStock = {
+	window: number,
+	restocksAt: number,
+	stock: { CornerShopItem },
+	snackXp: number,
+}
+
+-- The onboarding funnel's place (data-model section 14, growth analytics-plan 3.2): the last step logged, and later
+-- steps already done but held back until every step before them is logged. Keys are step numbers (JSON-shaped).
+export type TelemetryState = {
+	onboardingStep: number,
+	achieved: { [string]: boolean },
+	-- F87 (easy-start.md sections 5 and 6): the onboarding funnel's version (4 since #1888; Onboarding.fromOld moves a
+	-- 1, 2 or 3) and the UTC day number (os.time() // 86400) of the account's first join, 0 when it is not known (an
+	-- account from before version 19), for new_player_left and the session time markers
+	funnel: number,
+	firstDay: number,
+	-- #1273: the furthest step logged of the intro funnel (Onboarding.INTRO_STEPS), 0 before any. A field inside
+	-- telemetry with a default, so it needs no save version
+	introStep: number,
+	-- #2391: the furthest step logged of the first_hour funnel (Onboarding.FIRST_HOUR_STEPS), 0 before any; a default
+	-- too, and COUNT for a player who was out of the onboarding funnel when it came (a veteran's hour is behind them)
+	firstHourStep: number,
+	-- #3308: the furthest step logged of first_hour_v3 (Onboarding.FIRST_HOUR_STEPS), 0 before any. firstHourStep keeps
+	-- first_hour_v2's numbers for a server still on v2 during a rollout, and this code writes it as v2's count, so
+	-- such a server logs no v2 step for a player this code has seen. A server on v2 drops this field; a save it wrote
+	-- comes back with firstHourStep at 1 or more and so leaves v3 (no double counting)
+	firstHourV3Step: number,
+	-- #3695: the furthest step logged of the clean funnel onboarding_v7 (Onboarding.CLEAN_STEPS) and of playtime_v1
+	-- (Onboarding.PLAYTIME_STEPS), 0 before any and the count once out of it. Optional fields with defaults, so no save
+	-- version: a server without them drops them, and the save then comes back out of both funnels once it is past its
+	-- first catch or has logged any first_hour step (ProfileSchema), so nothing is counted twice
+	cleanStep: number?,
+	playtimeStep: number?,
+	-- #4504: the furthest step logged of onboarding_v8 (Onboarding.CLEAN_STEPS), 0 before any and the count once out
+	-- of it; cleanStep above keeps v7's numbers, written as v7's count by this code so a server still on v7 logs no v7
+	-- step for a player this code has seen. Optional with a default, so no save version: a server without it drops it,
+	-- and the save then comes back out of v8 once it is past its first catch (ProfileSchema)
+	cleanV8Step: number?,
+	-- Derek 2026-11-17 15:18 UTC: onboarding_v9 (Onboarding.CLEAN_STEPS) the same way; v8 is no longer logged
+	cleanV9Step: number?,
+	cleanV10Step: number?, -- #5533: onboarding_v10, a play first start save's furthest step (nil before it)
+	firstFiveStep: number?, -- #5551: first_five_v1 (shared/StartFunnel), a play first start save's furthest step
+	startSide: number?, -- #5551: the start_side kinds logged, StartFunnel.sideBit bits
+	-- #5291 (shared/MilestoneFunnel): the milestones_v1 steps logged, as a bit mask (step n is bit n - 1); -1 for a
+	-- save that is out of it, nil before Telemetry first sees the save with the switch on. Optional, so no save version
+	milestoneMask: number?,
+	-- #3666 (shared/IntroSplit): the intro test's group, "intro_on" or "intro_off"; nil for a save never in the test.
+	-- An optional field inside telemetry, so it needs no save version (a server without it drops it: the save then
+	-- reads as never in the test)
+	introGroup: string?,
+	orderGroup: string?, -- #5498: the walk-through order test arm (shared/TutorialOrder)
+	holdout: string?, -- #5499: the holdout group, "holdout" or "live" (shared/Holdout)
+	tier3Trip: number?, -- #5517: the Tier 3 to Neighbourhood stops logged, a bit mask (shared/Tier3Trip)
+	freeStart: boolean?, -- #5533: the save is on the play first start (shared/FreeStart)
+	startPaid: number?, -- #5533: the start's two goals paid, a bit mask (FreeStart.PAID_CAUGHT, PAID_HOME)
+}
+
+-- One player's dealer stock as DealerStock sends it: every dealer food in Dealer.FOODS order with tonight's amount
+-- (0 shows "None this time") and how many of it this player bought tonight. F94 (rewards-and-shops.md section 4):
+-- one stock per server per night; `night` is the server's night count, which BuyDealerFood sends back (was a 5
+-- minute `window` and its `restocksAt`).
+export type DealerFood = { lureId: string, cost: number, amount: number, bought: number }
+export type DealerStock = { night: number, stock: { DealerFood } }
+
+-- Saved per player (data-model section 14). JSON-safe values only.
+-- The player's settings (data-model section 14; shared/Settings validates them). Volumes run from 0 to 1.
+export type Settings = {
+	music: boolean,
+	sfx: boolean,
+	musicVolume: number,
+	sfxVolume: number,
+	screenShake: boolean,
+	lowPerformance: boolean,
+	showOtherCats: boolean,
+	markers: boolean, -- the location markers (Place icons)
+	tutorialButton: boolean, -- the HUD's Tutorial tile (F72)
+	shopAlerts: boolean, -- F94: the Fresh Catch's ShopAlert (FreshCatch.alertsOn)
+	tradeRequests: string, -- F102: who may ask to trade, "everyone", "friends" or "off" (Settings.choices)
+	roadmapOpen: boolean, -- #1893: the Grand Opening strip opened into its list
+	sessionRecap: boolean, -- #1920: the session recap card after Config.RecapAfterSeconds of play
+	perfAsked: boolean, -- #4311: the Low performance ask was answered (shared/PerfSuggest)
+	autoEquip: boolean, -- #1955: Auto Equip, on for new accounts and off for saves from before it
+	catIncome: boolean, -- #2551: the rate tags over working cats (UI WorldTags), on by default
+	goalFolded: boolean, -- #2714: the HUD's goal card folded into its chip (touch), off by default
+	catPickSort: string, -- #3940: the pick-a-cat list's Sort ("Money", "Level" or "Rarity")
+	catPickFlipped: boolean, -- #3940: that Sort turned round
+	catPickShow: string, -- #3940: the Show chips that are on ("Working,No trait"; "" for All)
+	autoBowlClaim: boolean, -- #4266: the Auto Bowl pass tames arrived bowl cats (shared/AutoBowl)
+	autoBowlRefill: boolean, -- #4266: the Auto Bowl pass refills empty bowls with owned food
+	bowlNewCatCard: boolean, -- #4266: a cat tamed at a bowl shows the big Cat found card (off: a toast)
+	stationCircles: boolean, -- #4668: the walk-up rings in front of the stations show, off by default
+	catNames: boolean, -- #5586: the names over the nearest wild cats show, on by default
+	vipTag: boolean, -- #4991: a VIP owner's gold tag over their head shows, off by default
+	afkMode: boolean, -- #5322: AFK mode stays on through a leave and a restart (server only, afkStay switch)
+}
+
+-- #1893 (first-hour.md 1c): the Grand Opening roadmap, milestone number -> true once done and paid, and finished
+-- after the last (or at once for a save already at Tier 3 when it shipped)
+-- finishedAt: the seconds of play (stats.playtimeSeconds plus the session) when the last milestone was done, for the
+-- bunting's two hours (#1922); nil for a roadmap finished before it was kept
+export type GrandOpeningState = {
+	done: { [number]: boolean },
+	finished: boolean?,
+	finishedAt: number?,
+}
+
+-- #1920 (first-hour.md 6): SessionRecap's numbers for this session: whole minutes played, cats new to the Index and
+-- coins earned since the join
+-- #2123 (first-hour.md 6a): shared/ReturnHook's pick, "bait", "treat" (with the Daily Treat `day`) or "quests"
+export type ReturnHookView = { kind: string, day: number? }
+-- #2916: one next goal (shared/ReturnGoals): `kind` one of ReturnGoals.KINDS; have and need for "cats", "rarity" and
+-- "coins" (their progress bar), tier the Tier it is for, area the area that Tier opens ("cats"), rarity ("rarity"),
+-- amount and hours for "away" (about this many coins while away, counted up to this many hours)
+-- #3022 (shared/SecondCat): the cafe's coins a second now and with one more plain Common working an open slot (equal
+-- when no slot is free, as in a new Tier 1 cafe), the cats checked in so far, and the coins a new kind of Common pays.
+-- #5533 goalChip: the play first start's two first goals ("Catch a cat +100", "Take it to camp +100")
+export type StartGoalsView = { caught: boolean, home: boolean }
+
+export type SecondCatView = { now: number, with: number, cats: number, bonus: number }
+
+export type ReturnGoalView = {
+	kind: string,
+	have: number?,
+	need: number?,
+	tier: number?,
+	area: string?,
+	rarity: string?,
+	amount: number?,
+	hours: number?,
+}
+-- #2123: `tomorrow` is the recap card's "Tomorrow" line (shared/ReturnHook, "recap")
+export type SessionRecapView = {
+	minutes: number,
+	newCats: number,
+	earned: number,
+	tomorrow: ReturnHookView?,
+	goals: { ReturnGoalView }?, -- #2916: the next goals with their progress (shared/ReturnGoals)
+}
+
+-- #4913 (shared/Pals): the Pal Day gift's last UTC day; no version bump, the palDay switch goes on only after a restart.
+export type PalDaySave = { day: number }
+
+-- #5172 (shared/Follower): the follower slot in the Cats menu; nil while the catFollower switch is off.
+export type FollowerView = {
+	open: boolean, -- Tier 2 or up
+	uid: string?, -- the following cat, nil for none
+	boost: "money" | "luck",
+	amount: number, -- what the following cat gives with that boost now, coat included (0.12 is +12% or +0.12 Luck)
+	switchIn: number, -- seconds until the boost can be switched again
+}
+
+-- #5172 (shared/Follower): the following cat's uid ("" for none) and the boost picked; no version bump.
+export type FollowerSave = { uid: string, boost: "money" | "luck" }
+
+-- #3651 (shared/Pet): the cat petted last and when its heart ends (os.time).
+export type PetSave = { uid: string, untilAt: number }
+
+export type PlayerProfile = {
+	version: number,
+	coins: number,
+	lifetimeCoins: number,
+	lastTick: number,
+	lastSeen: number,
+	rateAtLogout: number, -- the day rate
+	tier: number, -- 1 to 5 (section 5b)
+	upgradeLevels: { [string]: number },
+	decorOwned: { [string]: boolean },
+	decorPlaced: { [string]: boolean },
+	-- #1574 (trading.md section 1b, no save version bump): the Legendary and up pieces (crate decor and lawn pieces) the
+	-- player can trade; #3276: every owned one not in decorLocked (Trade.unlockedPieces)
+	decorUnlocked: { [string]: boolean },
+	-- #3276 (no save version bump): the Legendary and up pieces the player locked on their card; nothing arrives
+	-- locked, and decorUnlocked is kept as the mirror (Trade.unlockedPieces) for older servers
+	decorLocked: { [string]: boolean },
+	lures: { [string]: number },
+	bait: BaitState?,
+	bait2: BaitState?, -- #1161: the Second Bait Bowl's bait (save version 34), nil when that bowl is empty
+	pet: PetSave?, -- #3651: the happy cat (shared/Pet), nil with no heart; no version step, see Pet
+	freshCatch: FreshCatchState, -- F94 (save version 18; the dealer's saved counts went with it)
+	cats: { [string]: CatInstance },
+	collection: { [string]: number },
+	goldCollection: { [string]: number }, -- catId -> first gold caught at
+	rainbowCollection: { [string]: number }, -- F99: catId -> first rainbow caught at (save version 24)
+	indexRewards: { [string]: { [string]: boolean } }, -- areaId -> milestoneId -> claimed (F48)
+	spin: SpinState, -- F49
+	-- Golden fish (F52, golden-fish.md): the rare currency, earned only. Crates, their luck and the Market's perks
+	-- (F53) came in the same save version 7.
+	goldenFish: number,
+	lifetimeGoldenFish: number,
+	crates: { [string]: number }, -- crateId -> unopened count
+	crateLuck: { [string]: number }, -- crate pool (zone id or "classic") -> opens since its last Epic or better
+	fishPerks: { [string]: number }, -- perkId -> level bought
+	-- #2565: the Mystery Market items owned (itemId -> true), and whether the player has opened Juniper's window once
+	-- (the "!" over the cart until then). New fields with defaults: the shelf opens with a VERSION bump (MysteryOpen).
+	mystery: { [string]: boolean },
+	mysterySeen: boolean,
+	-- #4055 (save version 49, shared/FishStore): the Store passes bought with golden fish (FishStore key -> true); each
+	-- counts as owning that pass (PassService.addBought)
+	fishBought: { [string]: boolean },
+	tickets: TicketSave, -- #4061 (save version 49): the Ticket Booth
+	dragon: DragonSave, -- #4062 (save version 49): the Dragon Keep
+	fusion: FusionSave, -- #4104 (save version 50): the Fusion Observatory
+	-- #4251 (save version 51, shared/HarvestSave): Harvest Hollow's pumpkins, Stall items bought, the arch's last +40
+	-- day and whether the player caught a harvest cat (the Feast Pie's helpers)
+	harvest: {
+		pumpkins: number,
+		bought: { [string]: boolean },
+		visitDay: number,
+		helped: boolean,
+		pieReward: boolean, -- #4251 part 6: got the full Feast Pie's reward
+	},
+	-- #3699 (shared/BagColours): the Backpack's two colour picks, nil while both are the built ones. No VERSION bump:
+	-- an older server dropping it only loses a colour pick, and the switch goes on after a restart with this code.
+	bagColours: { main: string, trim: string }?,
+	-- #5502 (shared/Advent): the advent calendar's doors opened and catch-ups used, and the Christmas event's
+	-- Snowflakes. No VERSION bump: an older server drops them, so adventCalendar goes on only after the Christmas
+	-- restart.
+	advent: { year: number, opened: number, day: number, caught: number }?,
+	snowflakes: number?,
+	shoeColours: { main: string, trim: string }?, -- #4049: the Speed Shoes' picks, the same way
+	-- #3996 (shared/DailyDeal): the UTC day the player last bought Today's Deal, nil for never. No VERSION bump: an
+	-- older server dropping it only lets the same day's deal be bought once more, which pays as normal.
+	dealDay: number?,
+	-- #2792 (shared/FirstVisits): the special visitors met once ("rich", "mystery", "collector" -> true). No VERSION
+	-- bump: an older server dropping it only matters inside the first FirstVisitWindowSeconds of play.
+	firstVisits: { [string]: boolean },
+	codesRedeemed: { [string]: number }, -- code id -> os.time() it was redeemed (F65)
+	introSeen: boolean, -- the intro cutscene has played to the end or been skipped once (F72)
+	potions: { [string]: number }, -- F64: potionId -> count in the bag
+	-- F64: potionId -> seconds of play time left. The timers run only while the player is in the game, so settle
+	-- counts them down with the elapsed time it pays (Economy.settle) and nothing runs them down offline.
+	buffs: { [string]: number },
+	quests: QuestState, -- F73
+	achievements: { [string]: boolean }, -- F73: achievementId -> claimed
+	dailyTreat: DailyTreatState, -- F70
+	palDay: PalDaySave, -- #4913: the UTC day (Spin.day) of the last Pal Day gift, 0 for never
+	follower: FollowerSave, -- #5172 (shared/Follower): the cat that follows the player ("" for none) and its boost
+	stats: Stats,
+	tutorialStep: number,
+	settings: Settings,
+	flags: { autoPress: boolean }, -- for review only: set when the last 50 circles look scripted (section 10)
+	telemetry: TelemetryState,
+	-- F87 (easy-start.md section 6, save version 20): the context tips seen (tip id or an ask's id to true; ClearTips
+	-- keeps only the asks), the one slide-in feedback ask, and the "Need a hand?" card's tutorial steps ("0" to "5")
+	tipsSeen: { [string]: boolean },
+	feedbackAsked: boolean,
+	sessionFeedbackDay: number, -- #3272 (no version bump): the UTC day the session ask was last answered, 0 before
+	stuckHelpShown: { [string]: boolean },
+	starterCatClaimed: boolean, -- F96 (starter-cat.md section 4, save version 21): the free Bellhop Cat taken home
+	notifyAskAt: number, -- F96 (section 3, save version 22): os.time() the notification ask first showed, 0 before
+	campExtras: CampExtrasSave, -- F100 (camp-extras.md section 4, save version 25)
+	spa: SpaSave, -- #2651 part 4 (late-stations.md section 1, save version 46): the Oasis Spa
+	museum: MuseumSave, -- #2651 part 4 (late-stations.md section 2, save version 46): the Relic Museum
+	invites: InviteSave, -- #2797 (save version 47): the invite reward, the inviter's side
+	referredBy: ReferredBy?, -- #2797 (save version 47): the joiner's side, set once on a fresh save
+	traits: TraitSave, -- #3196 (trait-station.md, save version 48): the Mystic Pool's tokens, free rolls and timer
+	rally: RallySave, -- F101 (rescue-rally.md section 5, save version 26)
+	-- F102 (trading.md sections 4 and 5, save version 27): the last TradeLogMax trades for the Trades page, and the ids
+	-- of the last TradeIdsMax trades applied to this save, so a trade pending after a shutdown is applied only once
+	tradeLog: { TradeLogEntry },
+	tradeIds: { string },
+	-- F91 (front-lawn.md section 5, save version 28): the lawn pieces and styles bought or given (id to true), the
+	-- piece on each lawn spot (spot id to piece id) and the path and fence in use
+	lawnOwned: { [string]: boolean },
+	lawn: { [string]: string },
+	lawnStyles: LawnStyles,
+	cornerShop: CornerShopState, -- #1052 (corner-shop.md section 5, save version 29; v2 counters version 32)
+	yardDecor: YardDecorState, -- #1537 (lawn-nursery.md section 7, save version 35): the Yard Sale rows bought today
+	catFood: { [string]: number }, -- #1181 (corner-shop-v2.md section 3, save version 32): food id -> count in the Bag
+	hideCredit: boolean?, -- #1083 (idea-credits.md section 4, save version 30): true keeps the name off the Thank You board
+	receipts: { string }, -- #1182 (save version 31): the newest Products.RECEIPT_LIMIT developer product PurchaseIds granted
+	-- #1625 (save version 35): the once-per-account products already bought (product id -> true), the saved sign
+	-- styles owned (SignStyles id -> true; pass styles are not saved) and the sign's pick (nil: the plain sign)
+	onceBought: { [string]: boolean },
+	signStyles: { [string]: boolean },
+	signStyle: string?,
+	storeSeen: { [string]: number }, -- #1842 (no new version): Store tab id -> the tab version last opened (StoreTabs)
+	jukebox: string?, -- #1168 row 2: the Jukebox pick: a track, "shuffle", "default" (rotation) or nil (never picked: Shuffle)
+	pass: PassState, -- #1645 (save version 36): the Cafe Pass
+	looks: LookPicks, -- #1624 (save version 38): the cafe theme and uniform picks (shared/Looks)
+	grandOpening: GrandOpeningState, -- #1893 (save version 41): the Grand Opening roadmap (shared/GrandOpening)
+	-- #1897 (save version 41): the guaranteed Rare-or-better bait was set (Bait.wowDue), once per account
+	firstWow: boolean,
+	-- #1947 (save version 42, like-prompts.md section 2): the like and favourite gifts were paid (shared/PlaytimeGifts)
+	likeGift: boolean,
+	favGift: boolean,
+	-- #2798 (shared/CozyCafe): Cozy Cafe bags given on a UTC day. No VERSION bump: an older server dropping it can only
+	-- give that day's few small bags again
+	cozy: CozySave,
+	-- #2791 (shared/PlaytimeGifts): the gift ladder's small steps paid ("m2", "m4", "m6", "m15", "m20" -> true). No
+	-- VERSION bump: an older server dropping it can only pay a few small steps again.
+	giftSteps: { [string]: boolean },
+	-- #5506 (shared/DailyGifts): today's playtime gifts, the UTC day, seconds played that day and the steps paid. No
+	-- VERSION bump (an automatic publish restarts every server on one): an older server dropping it can only start
+	-- that day's ladder again, so the dailyGifts switch goes on only after a restart Derek calls.
+	dailyGifts: { day: number, seconds: number, claimed: number }?,
+	-- #5505 (shared/DaysPlayed): the UTC days played, the last one counted and the highest milestone paid. No VERSION
+	-- bump (an automatic publish restarts every server on one); the awayPromise switch goes on after Derek's restart.
+	daysPlayed: { count: number, last: number, paid: number }?,
+	-- #2486 (save version 43, live-events.md section 2e): each Cafe Event reward piece given, cosmeticId -> os.time()
+	-- it was first given, and the last event (its reward key, CafeEvents.rewardKey) this account was rewarded in, ""
+	-- for none; the "Cafe Party Guest" badge reads it
+	eventRewards: { [string]: number },
+	eventLast: string,
+}
+
+-- What ProfileSync sends. Matches ui-contract PlayerState plus a few extras the controller uses.
+-- F88 (luck-and-rare-moments.md 1d): a source of Luck for the chip's card: "statue", "potion" or "lucky_day", what it
+-- adds, and when it ends (os.time()) for the potion and the Lucky Day.
+export type LuckSource = { id: string, value: number, endsAt: number? }
+
+export type PlayerState = {
+	money: number,
+	incomePerSecond: number,
+	-- the day rate prizes pay from (Economy.incomePerSecond: no night drop, tip potion or Cafe Event money), for prize
+	-- previews such as the Daily Treat's coins (Laptop-Tester 2026-11-08, #2486)
+	prizeRate: number?,
+	tier: number,
+	cafeProgress: number?,
+	cafeProgressText: string?,
+	tables: number,
+	customers: number?, -- not sent; customers are simulated on the client
+	catsOwned: { [string]: { count: number } },
+	upgradeLevels: { [string]: number },
+	decorOwned: { [string]: boolean },
+	decorPlaced: { [string]: boolean },
+	decorUnlocked: { [string]: boolean }, -- #1574: the Legendary and up pieces unlocked to trade
+	lures: { [string]: number },
+	bait: BaitView?, -- nil when the bowl is empty
+	bait2: BaitView?, -- #1161: the second bowl's, nil when it is empty
+	secondBowl: SecondBowl?, -- #1161: "on" (the pass: bowl 2 takes food) or "offer" (show the pass in the Store)
+	autoBowl: { owned: boolean }?, -- #4266: whether the Auto Bowl pass is owned (its switches are in settings)
+	-- extras (not in the UI contract, used by the client controller)
+	cats: { [string]: CatView },
+	collection: { [string]: number },
+	goldCollection: { [string]: number },
+	rainbowCollection: { [string]: number }, -- F99
+	indexRewards: { [string]: { [string]: boolean } }, -- F48
+	spin: SpinState, -- F49
+	goldenFish: number, -- F52
+	crates: { [string]: number }, -- F53
+	crateLuck: { [string]: number },
+	fishPerks: { [string]: number },
+	mystery: { [string]: boolean }, -- #2565
+	mysterySeen: boolean,
+	bagColours: { main: string, trim: string }?, -- #3699: the Backpack's colour picks, nil for the built ones
+	shoeColours: { main: string, trim: string }?, -- #4049: the Speed Shoes' colour picks, nil for the built ones
+	-- #3996: Today's Deal (DailyDeal.view): today's deal number, bought today, tomorrow's; false below Tier 2
+	dailyDeal: DailyDealView | false,
+	mysteryOpen: boolean, -- BuyMystery is taken here (Config.MysteryOpen, or Studio)
+	-- #4055: the Store's golden fish prices (FishStore.view), nil while the fishStore switch is off
+	fishStore: { { key: string, fish: number, bought: boolean, made: boolean } }?,
+	ticketBooth: TicketBoothView?, -- #4061: nil while the ticketBooth switch is off or below TicketBoothTier
+	dragon: DragonView?, -- #4062: nil while the dragonKeep switch is off or below the Castle's tier
+	fusion: FusionView?, -- #4104: nil while the fusion switch is off or below FusionTier
+	goldLuck: number, -- F54: the Index gold track's summed luck, capped at GoldLuckMax
+	rainbowLuck: number, -- F99: the Index Rainbow track's summed luck, capped at RainbowLuckMax
+	baitSpeed: number, -- F54: the All Cats track's summed bait speed, capped at BaitSpeedMax
+	firstBait: boolean?, -- #1895: no bait set yet on this account, so the next waits at most FirstBaitReadySeconds
+	-- #1893: the Grand Opening roadmap's milestones done and whether it is over; the strip shows from tutorialStep 5
+	-- while finished is not true (a save already at Tier 3 when it shipped is finished)
+	grandOpening: GrandOpeningState?,
+	plotIndex: number,
+	carrying: string?, -- catId while carrying a caught stray home
+	dataSaves: boolean,
+	tutorialStep: number,
+	-- #1936 (release.md section 3): seconds of play on the account when this state was sent (stats.playtimeSeconds
+	-- plus the session); the client counts on from its arrival for the store guard. nil from an older server
+	playSeconds: number?,
+	-- #2791 (retention-ideas.md 5a): the gift ladder's next two steps (PlaytimeGifts.upcoming), for the HUD's gift icon
+	-- and its countdown; empty once the ladder is done, nil from an older server
+	giftNext: { GiftStepView }?,
+	-- #5502: the advent calendar board (shared/Advent.view), nil while either switch is off
+	advent: { live: boolean, opened: number, due: number, ready: boolean, reason: string }?,
+	snowflakes: number?, -- #5502: the Christmas event's Snowflakes (the Gift Stall reads it)
+	-- #2797 (retention-ideas.md 5d): the invite card and the Friends button (shared/Invites.view); nil from an older server
+	invite: InviteView?,
+	-- #3196: the Mystic Pool card; nil while the `traits` flag is off, the station is shut, or from an older server
+	traits: TraitsView?,
+	-- #4195: the Admin Wheel that is up now (AdminWheel.view): its event's id and end, and whether this account has
+	-- spun it; nil with no wheel up
+	adminWheel: { eventId: string, spun: boolean, endsAt: number, spins: number, left: number }?, -- #4876 spins, left
+	-- #2123 (first-hour.md 6a): the welcome back card's line, picked at this join from the save as it was left
+	-- (shared/ReturnHook, "join"); nil for none, and from an older server
+	returnHook: ReturnHookView?,
+	-- #4626: tomorrow's reason to come back for the minute 6 line (shared/ReturnHook.early, "gift" or "treat"); nil
+	-- with the returnHookEarly switch off, from Tier 3, with nothing to name, and from an older server
+	tomorrowHook: ReturnHookView?,
+	returnGoals: { ReturnGoalView }?, -- #2916: a returning player's next goals on the welcome back card
+	-- #3022: set from the first customer served until the second cat is checked in (shared/SecondCat.view); nil
+	-- otherwise, and from an older server
+	secondCat: SecondCatView?,
+	-- #5533 goalChip (shared/FreeStart.goals): a play first start save's two first goals below Tier 3, done or not; nil
+	-- otherwise, with the switch off and from an older server
+	startGoals: StartGoalsView?,
+	-- #5031: Tier 2's cats still to get after the first check-in (shared/RankUpRightAway.catsShort), 0 once met; nil
+	-- with the rankUpRightAway switch off and from an older server
+	rankUpShort: number?,
+	-- #5038: the goal card's one next thing toward Tier 3 at Tier 2 (shared/Tier3Path.goalLine, wide and narrow), nil
+	-- with the tier3Path switch off, once met, and from an older server
+	tier3Goal: { wide: string, narrow: string }?,
+	-- #2912: true from the first bait cat resolved until the first rescue starts (shared/StuckGoal.waiting)
+	stuckGoal: boolean?,
+	introSeen: boolean, -- F72: false plays the intro cutscene once this session's first sync carries a plot
+	-- #3666: whether the intro plays itself for this player (IntroSplit.plays); nil from an older server, which
+	-- reads as Config.IntroAutoPlay
+	introAuto: boolean?,
+	-- #4001: the save is in the short intro test's "short" arm (shared/IntroSplit.SHORT): its first play is the short
+	-- intro; nil or false plays the long one there (a replay is always the short one)
+	introShort: boolean?,
+	potions: { [string]: number }, -- F64: potionId -> count in the bag
+	catFood: { [string]: number }, -- #1181: food id -> count in the Bag
+	hideCredit: boolean, -- #1083: true while the player keeps their name off the Thank You board (SetHideCredit)
+	buffs: { [string]: number }, -- F64: each running potion's endsAt in server time (Workspace:GetServerTimeNow())
+	settings: Settings, -- the Settings screen follows these; Audio mutes and sets its channels by them
+	quests: QuestsView, -- F73: the Quests window's Daily and Weekly tabs and the HUD tracker
+	achievements: { [string]: AchievementView }, -- F73: every Catalog.achievements id
+	dailyTreat: DailyTreatView, -- F70: the Daily Treat window's card and the HUD button's dot
+	stats: Stats, -- F73
+	-- F87: the client skips a tip, the slide-in ask or the help card it finds here (section 3, 4 and 2g)
+	tipsSeen: { [string]: boolean },
+	feedbackAsked: boolean,
+	sessionFeedbackDay: number, -- #3272: the client asks at most once a UTC day
+	stuckHelpShown: { [string]: boolean },
+	starterCatClaimed: boolean, -- F96: the Bellhop Cat's stand card reads "Already home with you"
+	starterBought: boolean, -- #1625: the Starter Bundle is bought, so its Store card hides
+	storeSeen: { [string]: number }, -- #1842: the Store tab versions last opened; a tab shows "New" below StoreTabs.VERSIONS
+	jukeboxTracks: { string }, -- #1168 row 2: the Jukebox tracks owned (all four with the pass, else none)
+	jukebox: string?, -- #1168 row 2: the pick (Jukebox.shown): a track or "shuffle"; nil for the rotation
+	codesRedeemed: { [string]: number }?, -- #1714: code id -> os.time() redeemed, for the Store's Codes tab
+	signStyles: { string }, -- #1625: every sign style owned (SignStyles.owned), saved or through a pass
+	signStyle: string?, -- #1625: the pick SetSignStyle saved, nil for the plain sign
+	looks: LooksView, -- #1624: the Style tab's theme and uniform rows (shared/Looks), SetLook
+	luck: number, -- F88: the player's Luck now (shared/Luck), x1 to LuckMax; the HUD chip shows it above 1
+	luckSources: { LuckSource }, -- F88: what adds it, in order (statue, potion, lucky_day)
+	-- Derek 2026-11-15: the Dragon Keep's crate, trait and spin luck (0.15 is +15%), for the odds lists; nil before
+	cardLuck: { crate: number, trait: number, spin: number }?,
+	follower: FollowerView?, -- #5172
+	-- F95 (economy-ladder.md section 5): the Long Nap pass is owned, so the welcome back card says full pay up to
+	-- OfflineCapPassSeconds instead of half pay up to OfflineCapSeconds
+	longNap: boolean,
+	-- #1624: what the store passes give, for the money card's Boosts list: `cafe` added into the cafe bonus (VIP,
+	-- Cafe Style, Grand Cafe), `staff` the working cats' multiplier (Accessories, Uniforms), `rich` how many times as
+	-- often rich visitors come, `money` the Money pass multiplier
+	passBoosts: PassBoostsView,
+	extraSlots: number?, -- #1624: role slots past the tier's own (Catalog.slotIsOpen), from Grand Cafe and Extra Slot
+	tradeLog: { TradeLogEntry }, -- F102: the Trades page, newest first
+	-- F91: the Decor screen's Front lawn tab (what is owned, on each spot and in use); the street reads the plot's
+	-- Lawn_<spotId>, LawnPath and LawnFence attributes instead
+	lawnOwned: { [string]: boolean },
+	lawn: { [string]: string },
+	lawnStyles: LawnStyles,
+	-- #4251 Harvest Hollow (harvest-hollow-spec sections 3 to 5): pumpkins, the Stall items bought, the shared Feast Pie
+	-- and whether this player caught a harvest cat for it; nil until the server side sends it
+	harvest: {
+		pumpkins: number,
+		bought: { [string]: boolean }?,
+		pie: { count: number, goal: number }?,
+		helped: boolean?,
+		pieReward: boolean?, -- #4251 part 6: owns the Feast Pie decor from the full pie
+	}?,
+	serverTime: number,
+}
+
+return {}

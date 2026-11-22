@@ -1,0 +1,596 @@
+--!strict
+-- Context tips and the feedback values (F87, easy-start.md sections 3, 4 and 6; shared/Tips).
+return function()
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
+	local Shared = ReplicatedStorage:WaitForChild("Shared")
+	local Config = require(Shared.Config)
+	local ProfileSchema = require(Shared.ProfileSchema)
+	local Tips = require(Shared.Tips)
+
+	local DAY: Tips.Moment = { duskWarning = false, night = false }
+
+	local function fresh(): any
+		local profile: any = ProfileSchema.template(1000)
+		return profile
+	end
+
+	describe("the tip table (section 3)", function()
+		it("lists the 17 tips in the design's order with their kind", function()
+			local got: { string } = {}
+			for _, def in Tips.LIST do
+				table.insert(got, def.id .. ":" .. def.kind)
+			end
+			expect(got :: any).to.deepEqual({
+				"bowl:cut",
+				"second_cat:card",
+				"stuck_cat:card",
+				"tackle:card",
+				"dropped:card",
+				"night:card",
+				"rank_up:cut",
+				"golden_fish:cut",
+				"potion:card",
+				"dealer:cut",
+				"spin_wheel:cut",
+				"codes_cat:card",
+				"luck:card",
+				"offline:card",
+				"tackle_try:card", -- #2302
+				"park_first:card", -- #2915
+				"pet:card", -- Derek 2026-11-13: the first pet
+			})
+		end)
+
+		it("leaves to the client only what it alone can see", function()
+			local client: { string } = {}
+			for _, def in Tips.LIST do
+				if def.by == "client" then
+					table.insert(client, def.id)
+				end
+			end
+			expect(client :: any).to.deepEqual({
+				"stuck_cat",
+				"codes_cat",
+				"luck",
+				"offline",
+				"tackle_try",
+				"park_first",
+				"pet",
+			})
+		end)
+
+		it("takes the tips and the three asks on TipSeen, nothing else", function()
+			for _, def in Tips.LIST do
+				expect(Tips.seenId(def.id)).to.equal(true)
+				expect(Tips.get(def.id)).to.equal(def)
+			end
+			expect(Tips.seenId(Tips.LIKE_ASK)).to.equal(true)
+			expect(Tips.seenId(Tips.FEEDBACK_ASK)).to.equal(true)
+			expect(Tips.seenId(Tips.STUCK_HELP)).to.equal(true)
+			expect(Tips.seenId("free_coins")).to.equal(false)
+			expect(Tips.get(Tips.LIKE_ASK)).never.to.be.ok()
+		end)
+
+		it("shows the offline line after 10 minutes away", function()
+			expect(Tips.OFFLINE_SECONDS).to.equal(600)
+		end)
+	end)
+
+	describe("due", function()
+		it("has nothing for a new player by day", function()
+			expect(#Tips.due(fresh(), DAY)).to.equal(0)
+		end)
+
+		it("shows the bowl cut with food and an empty bowl, and not with the bowl full", function()
+			local profile = fresh()
+			profile.upgradeLevels.lure_bowl = 1
+			profile.lures = { kibble = 2 }
+			-- not during the tutorial, whose bowl step teaches the given bowl (#4125)
+			expect(#Tips.due(profile, DAY)).to.equal(0)
+			profile.tutorialStep = 5
+			expect(Tips.due(profile, DAY) :: any).to.deepEqual({ "bowl", "spin_wheel" })
+			profile.tipsSeen = { spin_wheel = true }
+			expect(Tips.due(profile, DAY) :: any).to.deepEqual({ "bowl" })
+			profile.bait = { lureId = "kibble", placedAt = 0, readyAt = 10 }
+			expect(#Tips.due(profile, DAY)).to.equal(0)
+			profile.bait = nil
+			profile.lures = { kibble = 0 }
+			expect(#Tips.due(profile, DAY)).to.equal(0)
+		end)
+
+		it("shows night in the dusk warning and the dealer at night from Tier 2", function()
+			local profile = fresh()
+			expect(Tips.due(profile, { duskWarning = true, night = false }) :: any).to.deepEqual({
+				"night",
+			})
+			profile.tier = 2
+			expect(#Tips.due(profile, DAY)).to.equal(0)
+			expect(Tips.due(profile, { duskWarning = false, night = true }) :: any).to.deepEqual({
+				"dealer",
+			})
+		end)
+
+		it("shows golden fish, potion and spin wheel from the save, in table order", function()
+			local profile = fresh()
+			profile.goldenFish = 3
+			profile.potions = { tip_potion = 1 }
+			profile.tutorialStep = 5
+			profile.lures = {} -- the given Kibble used, so no bowl cut
+			expect(Tips.due(profile, DAY) :: any).to.deepEqual({
+				"golden_fish",
+				"potion",
+				"spin_wheel",
+			})
+		end)
+
+		it("never lists a tip already seen", function()
+			local profile = fresh()
+			profile.goldenFish = 3
+			profile.tipsSeen = { golden_fish = true }
+			expect(#Tips.due(profile, DAY)).to.equal(0)
+		end)
+
+		it("never lists the tackling lesson, which plays only in the intro (#2544)", function()
+			local profile = fresh()
+			expect(table.find(Tips.due(profile, DAY), Tips.LESSON)).never.to.be.ok()
+			profile.introSeen = true -- seen the intro but not the lesson (a replay saves nothing)
+			expect(table.find(Tips.due(profile, DAY), Tips.LESSON)).never.to.be.ok()
+			expect(#Tips.due(profile, DAY)).to.equal(0)
+			-- its seen flag is still kept, for the intro's first play
+			expect(Tips.seenId(Tips.LESSON)).to.equal(true)
+			expect(Tips.LESSON).to.equal("tackle_lesson")
+		end)
+
+		it(
+			"keeps the lesson's seen flag through a save and load, and never marks it for a veteran (#2409)",
+			function()
+				expect(Tips.sanitizeSeen({ tackle_lesson = true }, false) :: any).to.deepEqual({
+					tackle_lesson = true,
+				})
+				expect(Tips.sanitizeSeen({}, true)[Tips.LESSON]).never.to.be.ok()
+				local profile = ProfileSchema.template(0)
+				profile.introSeen = true
+				profile.tipsSeen[Tips.LESSON] = true
+				local loaded = ProfileSchema.migrate(profile, 0)
+				expect(loaded.tipsSeen[Tips.LESSON]).to.equal(true)
+				expect(#Tips.due(loaded, DAY)).to.equal(0)
+			end
+		)
+
+		it("lists only server tips", function()
+			local profile = fresh()
+			profile.goldenFish = 3
+			profile.tier = 2
+			profile.tutorialStep = 5
+			profile.potions = { tip_potion = 1 }
+			for _, id in Tips.due(profile, { duskWarning = true, night = true }) do
+				if id == Tips.LESSON then
+					continue -- #2409: the lesson is not in LIST
+				end
+				local def = Tips.get(id)
+				assert(def ~= nil, id)
+				expect(def.by).to.equal("server")
+			end
+		end)
+	end)
+
+	describe("saved state (section 6)", function()
+		it("keeps only known tips and the like ask, each true", function()
+			expect(
+				Tips.sanitizeSeen(
+					{ bowl = true, like_ask = true, feedback_ask = true, night = 1, x = true },
+					false
+				) :: any
+			).to.deepEqual({
+				bowl = true,
+				like_ask = true,
+			})
+			expect(next(Tips.sanitizeSeen("junk", false))).never.to.be.ok()
+		end)
+
+		it("marks every tip seen for a veteran and keeps what it had", function()
+			local seen = Tips.sanitizeSeen({ like_ask = true }, true)
+			for _, def in Tips.LIST do
+				expect(seen[def.id]).to.equal(true)
+			end
+			expect(seen[Tips.LIKE_ASK]).to.equal(true)
+		end)
+
+		it("keeps the help card's steps 0 to 5", function()
+			expect(
+				Tips.sanitizeHelp({ ["0"] = true, ["5"] = true, ["6"] = true, ["2"] = "yes" }) :: any
+			).to.deepEqual({
+				["0"] = true,
+				["5"] = true,
+			})
+			expect(next(Tips.sanitizeHelp(nil))).never.to.be.ok()
+		end)
+
+		it("Show tips again forgets the tips but never the like ask", function()
+			expect(Tips.cleared({ bowl = true, night = true, like_ask = true }) :: any).to.deepEqual({
+				like_ask = true,
+			})
+			expect(next(Tips.cleared({ bowl = true }))).never.to.be.ok()
+		end)
+	end)
+
+	describe("the Mystic Pool's cutscene mark (#3430)", function()
+		it("is due once the pool is open to the player and the tutorial is done", function()
+			expect(Tips.mysticIntroDue({}, { tokens = 5 }, 5)).to.equal(true)
+			expect(Tips.mysticIntroDue(nil, {}, 9)).to.equal(true)
+		end)
+
+		it("is not due with the switch off, mid tutorial or once seen", function()
+			expect(Tips.mysticIntroDue({}, nil, 5)).to.equal(false)
+			expect(Tips.mysticIntroDue({}, false, 5)).to.equal(false)
+			expect(Tips.mysticIntroDue({}, {}, 4)).to.equal(false)
+			expect(Tips.mysticIntroDue({}, {}, nil)).to.equal(false)
+			expect(Tips.mysticIntroDue({ mystic_intro = true }, {}, 5)).to.equal(false)
+		end)
+
+		it("rides tipsSeen through a save and through Show tips again", function()
+			expect(Tips.seenId(Tips.MYSTIC_INTRO)).to.equal(true)
+			expect(Tips.isAsk(Tips.MYSTIC_INTRO)).to.equal(false)
+			expect(Tips.sanitizeSeen({ mystic_intro = true }, false) :: any).to.deepEqual({
+				mystic_intro = true,
+			})
+			expect(Tips.cleared({ bowl = true, mystic_intro = true }) :: any).to.deepEqual({
+				mystic_intro = true,
+			})
+		end)
+	end)
+
+	describe("feedback (section 4)", function()
+		it("has the three faces and six chips as short fixed values", function()
+			expect(Tips.FACES :: any).to.deepEqual({ "love", "ok", "no" })
+			expect(Tips.CHIPS :: any).to.deepEqual({
+				"too_hard",
+				"confusing",
+				"boring",
+				"laggy",
+				"more_cats",
+				"other",
+			})
+		end)
+	end)
+
+	-- QA edges: what TipSeen, the save and ClearTips do with input nobody planned for.
+	describe("edges (QA)", function()
+		-- TipSeen goes through the server's Guard.id first (ASCII letters, digits, _ and -, 1 to MaxIdLength),
+		-- so an id outside it could never be saved.
+		it("every id TipSeen takes passes the server's id guard", function()
+			local ids: { string } = {
+				Tips.LIKE_ASK,
+				Tips.FAVORITE_ASK,
+				Tips.NOTIFY_ASK,
+				Tips.FEEDBACK_ASK,
+				Tips.STUCK_HELP,
+			}
+			for _, def in Tips.LIST do
+				table.insert(ids, def.id)
+			end
+			for _, id in ids do
+				expect(#id >= 1 and #id <= Config.MaxIdLength).to.equal(true)
+				expect(id:match("^[%l%d_%-]+$")).to.equal(id)
+			end
+		end)
+
+		it("refuses names a table lookup could fake and near misses of real ids", function()
+			for _, id in
+				{
+					"LIST",
+					"get",
+					"seenId",
+					"due",
+					"FACES",
+					"__index",
+					"Bowl",
+					"bowl ",
+					"",
+					"like_asks",
+				}
+			do
+				expect(Tips.seenId(id)).to.equal(false)
+			end
+		end)
+
+		it(
+			"a saved tipsSeen drops the asks kept elsewhere, values not true and keys not text",
+			function()
+				local raw: any = {
+					feedback_ask = true,
+					stuck_help = true,
+					bowl = "true",
+					night = 1,
+					potion = false,
+					[5] = true,
+					free_coins = true,
+				}
+				expect(next(Tips.sanitizeSeen(raw, false))).never.to.be.ok()
+				for _, junk in { nil, 5, "bowl", true } :: { any } do
+					expect(next(Tips.sanitizeSeen(junk, false))).never.to.be.ok()
+				end
+				-- a veteran sees every tip but is still owed the one like ask
+				local veteran = Tips.sanitizeSeen(raw, true)
+				local count = 0
+				for key in veteran do
+					count += 1
+					expect(Tips.get(key)).to.be.ok()
+				end
+				expect(count).to.equal(#Tips.LIST)
+				expect(veteran[Tips.LIKE_ASK]).never.to.be.ok()
+			end
+		)
+
+		it("a saved stuckHelpShown keeps only steps 0 to 5 marked true", function()
+			local raw: any = {
+				["-1"] = true,
+				["6"] = true,
+				["1.5"] = true,
+				["2"] = "yes",
+				["3"] = true,
+				[4] = true,
+			}
+			expect(Tips.sanitizeHelp(raw) :: any).to.deepEqual({ ["3"] = true })
+			expect(next(Tips.sanitizeHelp(nil))).never.to.be.ok()
+		end)
+
+		it(
+			"Show tips again on a veteran's save leaves nothing, so every tip can show again",
+			function()
+				expect(next(Tips.cleared(Tips.sanitizeSeen(nil, true)))).never.to.be.ok()
+			end
+		)
+	end)
+
+	describe("the asks (F96, starter-cat.md section 3)", function()
+		local Catalog = require(Shared.Catalog)
+		local NOW = 100 * 86400 -- os.time(), UTC day 100
+		local TODAY = 100
+
+		local function legendaryId(): string
+			for _, def in Catalog.cats do
+				if def.rarity == "Legendary" then
+					return def.id
+				end
+			end
+			error("no Legendary cat")
+		end
+
+		-- past the first loop on its first day, nothing done that an ask waits for
+		local function settled(): any
+			local profile = fresh()
+			profile.tutorialStep = 5
+			profile.telemetry.firstDay = TODAY
+			profile.stats.playtimeSeconds = Tips.ASK_PLAY_SECONDS -- #4854
+			return profile
+		end
+
+		-- every ask's moment has come
+		local function ready(): any
+			local profile = settled()
+			profile.stats.baitsTamed = 1
+			profile.stats.playtimeSeconds = Tips.NOTIFY_PLAY_SECONDS
+			profile.stats.rescues = 1
+			profile.tier = 2
+			profile.collection[legendaryId()] = NOW
+			return profile
+		end
+
+		it(
+			"are the notification, favorite and like asks, in that order, each taken on TipSeen",
+			function()
+				expect(Tips.ASKS :: any).to.deepEqual({
+					"notify_ask",
+					"favorite_ask",
+					"like_ask",
+					"invite_ask",
+				})
+				for _, id in Tips.ASKS do
+					expect(Tips.isAsk(id)).to.equal(true)
+					expect(Tips.seenId(id)).to.equal(true)
+					expect(Tips.get(id)).never.to.be.ok()
+				end
+				for _, id in { Tips.FEEDBACK_ASK, Tips.STUCK_HELP, "bowl", "notify", "" } do
+					expect(Tips.isAsk(id)).to.equal(false)
+				end
+			end
+		)
+
+		it("asks nothing before the first loop is done, whatever is due", function()
+			local profile = ready()
+			profile.tutorialStep = 4
+			expect(Tips.dueAsk(profile, NOW, TODAY + 3)).to.equal(nil)
+			expect(Tips.dueAsk(settled(), NOW, TODAY)).to.equal(nil)
+		end)
+
+		it("offers one ask at a time in order, and nothing once all three are seen", function()
+			local profile = ready()
+			expect(Tips.dueAsk(profile, NOW, TODAY)).to.equal(Tips.NOTIFY_ASK)
+			profile.tipsSeen[Tips.NOTIFY_ASK] = true
+			expect(Tips.dueAsk(profile, NOW, TODAY)).to.equal(Tips.FAVORITE_ASK)
+			profile.tipsSeen[Tips.FAVORITE_ASK] = true
+			expect(Tips.dueAsk(profile, NOW, TODAY)).to.equal(Tips.LIKE_ASK)
+			profile.tipsSeen[Tips.LIKE_ASK] = true
+			expect(Tips.dueAsk(profile, NOW, TODAY + 9)).to.equal(Tips.INVITE_ASK) -- F92
+			profile.tipsSeen[Tips.INVITE_ASK] = true
+			expect(Tips.dueAsk(profile, NOW, TODAY + 9)).to.equal(nil)
+		end)
+
+		it(
+			"asks for notifications after 30 minutes, the first rank up and a rescue, or minutes into a later visit (#2313, #2553)",
+			function()
+				local HALF_HOUR = Tips.NOTIFY_PLAY_SECONDS
+				expect(HALF_HOUR).to.equal(30 * 60)
+				local profile = settled()
+				profile.stats.baitsTamed = 3 -- no longer the trigger
+				expect(Tips.dueAsk(profile, NOW, TODAY, 99 * 60)).to.equal(nil) -- Tier 1, however long
+				profile.tier = 2
+				profile.tipsSeen[Tips.FAVORITE_ASK] = true -- so the favorite ask (also Tier 2) does not answer first
+				profile.tipsSeen[Tips.INVITE_ASK] = true
+				expect(Tips.dueAsk(profile, NOW, TODAY, HALF_HOUR - 1)).to.equal(nil)
+				-- #2553: the half hour and Tier 2 still wait for a first rescue
+				expect(Tips.dueAsk(profile, NOW, TODAY, HALF_HOUR)).to.equal(nil)
+				profile.stats.rescues = 1
+				expect(Tips.dueAsk(profile, NOW, TODAY, HALF_HOUR)).to.equal(Tips.NOTIFY_ASK)
+				-- without the session's seconds it reads the saved play
+				profile.stats.playtimeSeconds = HALF_HOUR
+				expect(Tips.dueAsk(profile, NOW, TODAY)).to.equal(Tips.NOTIFY_ASK)
+				-- a return visit on a later day is enough on its own, five minutes in (#2553)
+				local RETURN = Tips.NOTIFY_RETURN_SECONDS
+				expect(RETURN).to.equal(5 * 60)
+				local back = settled()
+				back.stats.sessions = 2
+				expect(Tips.dueAsk(back, NOW, TODAY, 60, RETURN)).to.equal(nil) -- same day
+				back.tipsSeen[Tips.LIKE_ASK] = true -- the like ask also opens on a later day
+				expect(Tips.dueAsk(back, NOW, TODAY + 1, 60, RETURN - 1)).to.equal(nil)
+				expect(Tips.dueAsk(back, NOW, TODAY + 1, 60, RETURN)).to.equal(Tips.NOTIFY_ASK)
+				expect(Tips.dueAsk(back, NOW, TODAY + 1, 60)).to.equal(nil) -- no session time given
+				-- the first session never asks, even past midnight
+				back.stats.sessions = 1
+				expect(Tips.dueAsk(back, NOW, TODAY + 1, 60, RETURN)).to.equal(nil)
+				back.stats.sessions = 2
+				back.tutorialStep = 4
+				expect(Tips.dueAsk(back, NOW, TODAY + 1, 60, RETURN)).to.equal(nil)
+				-- shown once and dismissed: it waits the 30 days
+				profile.notifyAskAt = NOW
+				expect(Tips.NOTIFY_RETRY_SECONDS).to.equal(30 * 86400)
+				expect(Tips.dueAsk(profile, NOW + Tips.NOTIFY_RETRY_SECONDS - 1, TODAY)).to.equal(
+					nil
+				)
+				expect(Tips.dueAsk(profile, NOW + Tips.NOTIFY_RETRY_SECONDS, TODAY)).to.equal(
+					Tips.NOTIFY_ASK
+				)
+				-- the second showing puts it away
+				profile.tipsSeen[Tips.NOTIFY_ASK] = true
+				expect(Tips.dueAsk(profile, NOW + 99 * 86400, TODAY)).to.equal(nil)
+			end
+		)
+
+		it(
+			"holds the favorite, like and invite asks for the first 5 minutes of play (#4854)",
+			function()
+				expect(Tips.ASK_PLAY_SECONDS).to.equal(5 * 60)
+				local profile = settled()
+				profile.tier = 2
+				profile.collection[legendaryId()] = NOW
+				profile.stats.playtimeSeconds = 0
+				expect(Tips.dueAsk(profile, NOW, TODAY + 3, Tips.ASK_PLAY_SECONDS - 1)).to.equal(
+					nil
+				)
+				expect(Tips.dueAsk(profile, NOW, TODAY + 3)).to.equal(nil) -- reads the saved play
+				expect(Tips.dueAsk(profile, NOW, TODAY + 3, Tips.ASK_PLAY_SECONDS)).to.equal(
+					Tips.FAVORITE_ASK
+				)
+				profile.tipsSeen[Tips.FAVORITE_ASK] = true
+				profile.tipsSeen[Tips.LIKE_ASK] = true
+				expect(Tips.dueAsk(profile, NOW, TODAY + 3, 120)).to.equal(nil)
+				expect(Tips.dueAsk(profile, NOW, TODAY + 3, Tips.ASK_PLAY_SECONDS)).to.equal(
+					Tips.INVITE_ASK
+				)
+			end
+		)
+
+		it("asks for a favorite from Tier 2", function()
+			local profile = settled()
+			profile.tier = 1
+			expect(Tips.dueAsk(profile, NOW, TODAY)).to.equal(nil)
+			profile.tier = 2
+			expect(Tips.dueAsk(profile, NOW, TODAY)).to.equal(Tips.FAVORITE_ASK)
+		end)
+
+		it(
+			"asks for a like after a first Legendary or better, or on a later day than the first",
+			function()
+				local profile = settled()
+				expect(Tips.dueAsk(profile, NOW, TODAY)).to.equal(nil)
+				-- a later visit opens the notification ask first (#2313, #2553), then the like ask
+				profile.stats.sessions = 2
+				local RETURN = Tips.NOTIFY_RETURN_SECONDS
+				expect(Tips.dueAsk(profile, NOW + 86400, TODAY + 1, nil, RETURN)).to.equal(
+					Tips.NOTIFY_ASK
+				)
+				profile.tipsSeen[Tips.NOTIFY_ASK] = true
+				expect(Tips.dueAsk(profile, NOW + 86400, TODAY + 1, nil, RETURN)).to.equal(
+					Tips.LIKE_ASK
+				)
+				profile.collection[legendaryId()] = NOW
+				expect(Tips.dueAsk(profile, NOW, TODAY)).to.equal(Tips.LIKE_ASK)
+				local mythical = settled()
+				for _, def in Catalog.cats do
+					if def.rarity == "Mythical" then
+						mythical.collection[def.id] = NOW
+						break
+					end
+				end
+				expect(Tips.dueAsk(mythical, NOW, TODAY)).to.equal(Tips.LIKE_ASK)
+			end
+		)
+
+		it("keeps the asks through a save and through Show tips again", function()
+			local raw: any =
+				{ notify_ask = true, favorite_ask = true, like_ask = true, bowl = true }
+			expect(Tips.sanitizeSeen(raw, false) :: any).to.deepEqual(raw)
+			expect(Tips.cleared(raw) :: any).to.deepEqual({
+				notify_ask = true,
+				favorite_ask = true,
+				like_ask = true,
+			})
+		end)
+	end)
+
+	describe("the early like ask (#5152, likeAskEarly)", function()
+		local DAY_NO = 20774
+		local function day1(tier: number, played: number): any
+			local profile = fresh()
+			profile.telemetry.firstDay = DAY_NO
+			profile.tier = tier
+			profile.stats.playtimeSeconds = played
+			return profile
+		end
+		local parkCommon: any = { area = "park", rarity = "Common" }
+		local alleyCommon: any = { area = "alley", rarity = "Common" }
+		local alleyRare: any = { area = "alley", rarity = "Rare" }
+		local alleyEpic: any = { area = "alley", rarity = "Epic" }
+
+		it("names the moment: a Park catch after the rank up, else a Rare or better", function()
+			local ten = Tips.LIKE_EARLY_SECONDS
+			expect(ten).to.equal(600)
+			expect(Tips.likeEarly(day1(2, ten), DAY_NO, nil, parkCommon)).to.equal("park_catch")
+			expect(Tips.likeEarly(day1(2, ten), DAY_NO, nil, alleyRare)).to.equal("rare_catch")
+			expect(Tips.likeEarly(day1(1, ten), DAY_NO, nil, alleyEpic)).to.equal("rare_catch")
+			expect(Tips.likeEarly(day1(2, ten), DAY_NO, nil, alleyCommon)).to.equal(nil)
+			-- a Park cat before the rank up is not the Park moment
+			expect(Tips.likeEarly(day1(1, ten), DAY_NO, nil, parkCommon)).to.equal(nil)
+		end)
+
+		it("only on the first UTC day, after 10 minutes of play, while the like ask has not shown", function()
+			local ten = Tips.LIKE_EARLY_SECONDS
+			expect(Tips.likeEarly(day1(2, ten - 1), DAY_NO, nil, alleyRare)).to.equal(nil)
+			expect(Tips.likeEarly(day1(2, 0), DAY_NO, ten, alleyRare)).to.equal("rare_catch") -- this session's play
+			expect(Tips.likeEarly(day1(2, ten), DAY_NO + 1, nil, alleyRare)).to.equal(nil)
+			local seen = day1(2, ten)
+			seen.tipsSeen[Tips.LIKE_ASK] = true
+			expect(Tips.likeEarly(seen, DAY_NO, nil, parkCommon)).to.equal(nil)
+		end)
+
+		it("keeps the recap line's mark like an ask", function()
+			expect(Tips.seenId(Tips.LIKE_RECAP)).to.equal(true)
+			expect(Tips.isAsk(Tips.LIKE_RECAP)).to.equal(false) -- never a dueAsk ask
+			local kept = Tips.sanitizeSeen({ [Tips.LIKE_RECAP] = true }, false)
+			expect(kept[Tips.LIKE_RECAP]).to.equal(true)
+			expect(Tips.cleared({ [Tips.LIKE_RECAP] = true })[Tips.LIKE_RECAP]).to.equal(true)
+		end)
+	end)
+
+	describe("constants (section 6)", function()
+		it("matches the design's timings", function()
+			expect(Config.StuckNudgeSeconds).to.equal(40)
+			expect(Config.StuckHelpSeconds).to.equal(90)
+			expect(Config.TipGapSeconds).to.equal(150) -- #2407: was 60
+			expect(Config.TipCutMaxSeconds).to.equal(4)
+			expect(Config.FeedbackAskMinutes).to.equal(12)
+			expect(Config.FeedbackSessionLimit).to.equal(5)
+		end)
+	end)
+end
