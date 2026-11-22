@@ -1,0 +1,564 @@
+--!strict
+-- The Thank You board's face (#1083, idea-credits.md section 3): on the board in the Town Square, under a cat-paw
+-- header "Thank you for the ideas!", one card per credited idea, newest first: the idea in our words in bold, and
+-- under it "v190 · Idea from MochiPie" (or "Idea from a player" when the name is hidden or the lookup failed). The
+-- server builds the rows (IdeaCreditsService, display names only) and sends them with ThanksBoard(rows, hasCredit);
+-- this draws them. Six cards to a page so the words stay readable from a few steps away; "Older ideas" and "Newer"
+-- page through the rest. With no credits yet, one line says how a name gets here.
+--
+-- Roblox terms: a SurfaceGui is 2D UI drawn on one face of a part. It sits in PlayerGui with its Adornee set to the
+-- board's part named Screen (a SurfaceGui must be in PlayerGui to take clicks); when the board streams out and back
+-- in, its tag fires again and the page is hung on the new copy.
+
+local CollectionService = game:GetService("CollectionService")
+local Workspace = game:GetService("Workspace")
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Create = require(script.Parent.Parent.Components.Create)
+local FitText = require(script.Parent.Parent.Components.FitText)
+local IconArt = require(script.Parent.Parent.Components.IconArt)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local ThanksBoardLogic = require(script.Parent.Parent.Components.ThanksBoardLogic)
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")) :: any
+local Theme = require(script.Parent.Parent.Theme)
+local WhatsNew = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("WhatsNew")) :: any
+
+export type ThanksBoard = {
+	setRows: (self: ThanksBoard, rows: { ThanksBoardLogic.Row }) -> (),
+	destroy: (self: ThanksBoard) -> (),
+}
+
+local TAG = "ThanksBoard"
+local PIXELS_PER_STUD = 64 -- the 7.6 x 5.2 stud Screen is 486 x 333
+-- #5228: a bigger board (Model-Agent) keeps this layout and grows its words: the page is always drawn as wide as
+-- the 7.6 stud Screen at 64 px a stud, so PixelsPerStud falls as the part grows
+local DESIGN_WIDTH = 7.6 * PIXELS_PER_STUD
+
+local function pixelsFor(part: BasePart): number
+	return if part.Size.X > 0 then DESIGN_WIDTH / part.Size.X else PIXELS_PER_STUD
+end
+-- #5228 (Derek 2026-11-18: "make it so feedback board is always rendered in and text is a bit bigger so people can
+-- acc read if not on pc"): drawn from across the square (was 80), with bigger words, four cards a page and six
+-- What's new lines (were six and eight)
+local MAX_DISTANCE = 250
+local MARGIN = 8
+local HEADER = 46
+local FOOTER = 34
+local COCOA = Color3.fromRGB(92, 58, 38)
+local BERRY = Color3.fromRGB(196, 74, 104)
+
+local ThanksBoard = {}
+ThanksBoard.__index = ThanksBoard
+
+-- The newest rows and the board drawing them: init keeps neither (it is at Luau's 200 locals), so ThanksBoard(rows)
+-- can arrive before or after the board is built.
+local latest: { ThanksBoardLogic.Row } = {}
+local current: any = nil
+
+local function text(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.body,
+		TextColor3 = COCOA,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	return Create("TextLabel", merged)
+end
+
+-- #1216: the What's new panel (Model-Agent's WhatsNewPanel, 7.6 x 4.8 studs, stacked over the credits). #1768: one
+-- compact line per update, the date on its right, so WhatsNew.SHOWN (8) fit under the title; a player's idea adds a
+-- credit line under its update.
+local NEW_TITLE = 40
+local NEW_ROW = 38 -- #5228: was 30
+local NEW_CREDIT = 20 -- #5228: was 18
+local NEW_DATE_W = 70 -- #5228: was 60
+local NEW_SHOWN = 6 -- #5228: the lines the panel has room for at the bigger size (WhatsNew.SHOWN is 8)
+local CARD_CREDIT = 30 -- #5228 (was 26): the credit at a card's foot (#3926): one line, or two small ones for a long name
+local CARD_TEXT_MIN = 11 -- px: 0.17 studs, the smallest a card's words shrink to (#3926)
+
+local function partOf(model: Instance, name: string): BasePart?
+	local part = model:FindFirstChild(name, true)
+	return if part and part:IsA("BasePart") then part :: BasePart else nil
+end
+
+local function screenOf(model: Instance): BasePart?
+	local screen = model:FindFirstChild("Screen", true)
+	return if screen and screen:IsA("BasePart") then screen :: BasePart else nil
+end
+
+function ThanksBoard.new(parent: Instance): ThanksBoard
+	local self = setmetatable({}, ThanksBoard) :: any
+	self._rows = {} :: { ThanksBoardLogic.Row }
+	self._page = 1
+	self._connections = {} :: { RBXScriptConnection }
+
+	local gui: SurfaceGui = Create("SurfaceGui", {
+		Name = "CatCafeThanksBoard",
+		ResetOnSpawn = false,
+		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud,
+		PixelsPerStud = PIXELS_PER_STUD,
+		LightInfluence = 0,
+		MaxDistance = MAX_DISTANCE,
+		ClipsDescendants = true,
+		Enabled = false,
+		Parent = parent,
+	})
+	self._gui = gui
+	local page: Frame = Create("Frame", {
+		Name = "Page",
+		BackgroundColor3 = Theme.colors.cream,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = gui,
+	})
+	local header = text({
+		Name = "Header",
+		Position = UDim2.fromOffset(MARGIN, 4),
+		Size = UDim2.new(1, -MARGIN * 2, 0, HEADER),
+		FontFace = Theme.fonts.display,
+		TextSize = 30,
+		TextColor3 = Theme.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = "🐾 Thank you for the ideas!",
+		Parent = page,
+	})
+	Outline.text(header, 2.5)
+	self._list = Create("Frame", {
+		Name = "Cards",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(MARGIN, HEADER + 6),
+		Size = UDim2.new(1, -MARGIN * 2, 1, -(HEADER + 6 + FOOTER)),
+		Parent = page,
+	}, {
+		Create("UIGridLayout", {
+			CellSize = UDim2.new(0.5, -4, 0.5, -3), -- #5228: two by two (was two by three)
+			CellPadding = UDim2.fromOffset(8, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	self._empty = text({
+		Name = "Empty",
+		Position = UDim2.fromOffset(MARGIN * 2, HEADER + 20),
+		Size = UDim2.new(1, -MARGIN * 4, 0, 120),
+		TextSize = 22,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = ThanksBoardLogic.EMPTY,
+		Visible = false,
+		Parent = page,
+	})
+	local function pager(
+		name: string,
+		label: string,
+		x: number,
+		anchor: number,
+		step: number
+	): TextButton
+		local button: TextButton = Create("TextButton", {
+			Name = name,
+			AutoButtonColor = true,
+			BackgroundColor3 = BERRY,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(anchor, 1),
+			Position = UDim2.new(x, if anchor == 0 then MARGIN else -MARGIN, 1, -4),
+			Size = UDim2.fromOffset(150, FOOTER - 6),
+			FontFace = Theme.fonts.display,
+			TextSize = 18,
+			TextColor3 = Theme.colors.white,
+			Text = label,
+			Visible = false,
+			Parent = page,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		table.insert(
+			self._connections,
+			button.Activated:Connect(function()
+				self._page += step
+				self:_paint()
+			end)
+		)
+		return button
+	end
+	self._newer = pager("Newer", "‹ Newer", 0, 0, -1)
+	self._older = pager("Older", "Older ideas ›", 1, 1, 1)
+	self._pageLabel = text({
+		Name = "PageNumber",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -6),
+		Size = UDim2.fromOffset(120, FOOTER - 8),
+		TextSize = 16,
+		TextColor3 = COCOA,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = page,
+	})
+	self._cards = {} :: { Frame }
+
+	-- the header sits on a berry band
+	Create("Frame", {
+		Name = "Band",
+		BackgroundColor3 = BERRY,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, HEADER + 8),
+		ZIndex = 0,
+		Parent = page,
+	})
+
+	self._panelWait = {} :: { [Instance]: boolean }
+	self:_buildWhatsNew(parent)
+	current = self
+	self._rows = latest
+	self:_paint()
+	for _, model in CollectionService:GetTagged(TAG) do
+		self:_hang(model)
+	end
+	table.insert(
+		self._connections,
+		CollectionService:GetInstanceAddedSignal(TAG):Connect(function(model: Instance)
+			self:_hang(model)
+		end)
+	)
+	return self :: ThanksBoard
+end
+
+-- #1216 (idea-credits.md section 7): "What's new", newest first, one line each with its icon, the text in bold cocoa
+-- and "Nov 4" on the right; an update from a player's idea has "💡 Idea from MochiPie" under it. No animation.
+function ThanksBoard._buildWhatsNew(self: any, parent: Instance)
+	local gui: SurfaceGui = Create("SurfaceGui", {
+		Name = "CatCafeWhatsNew",
+		ResetOnSpawn = false,
+		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud,
+		PixelsPerStud = PIXELS_PER_STUD,
+		LightInfluence = 0,
+		MaxDistance = MAX_DISTANCE,
+		ClipsDescendants = true,
+		Enabled = false,
+		Parent = parent,
+	})
+	self._newGui = gui
+	local page: Frame = Create("Frame", {
+		Name = "Page",
+		BackgroundColor3 = Theme.colors.cream,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = gui,
+	})
+	text({
+		Name = "Title",
+		Position = UDim2.fromOffset(MARGIN + 4, 4),
+		Size = UDim2.new(1, -MARGIN * 2, 0, NEW_TITLE - 4),
+		FontFace = Theme.fonts.display,
+		TextSize = 28,
+		TextColor3 = BERRY,
+		Text = "What's new",
+		Parent = page,
+	})
+	local list: Frame = Create("Frame", {
+		Name = "Rows",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(MARGIN, NEW_TITLE),
+		Size = UDim2.new(1, -MARGIN * 2, 1, -NEW_TITLE - 4),
+		Parent = page,
+	}, {
+		Create(
+			"UIListLayout",
+			{ Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }
+		),
+	})
+	-- the NEXT row on top (ThanksBoardLogic.nextUpdate): the next update, when (ET) and the Notify Me call; it keeps
+	-- its room even while hidden, so the rows under it never jump
+	local nextRow: Frame = Create("Frame", {
+		Name = "Next",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, NEW_ROW + NEW_CREDIT),
+		LayoutOrder = 0,
+		Parent = list,
+	})
+	local bell = text({
+		Name = "Icon",
+		Position = UDim2.fromOffset(0, 2),
+		Size = UDim2.fromOffset(30, 30),
+		TextSize = 26, -- #5228: was 22
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = "🔔",
+		Parent = nextRow,
+	})
+	IconArt.set(bell, "🔔")
+	local nextText = text({
+		Name = "Text",
+		Position = UDim2.fromOffset(34, 2),
+		Size = UDim2.new(1, -34, 0, 32),
+		FontFace = Theme.fonts.display,
+		TextSize = 28, -- #5228: was 22
+		TextColor3 = BERRY,
+		Text = "",
+		Parent = nextRow,
+	})
+	FitText.shrink(nextText, CARD_TEXT_MIN)
+	local nextWhen = text({
+		Name = "When",
+		Position = UDim2.fromOffset(34, NEW_ROW - 2),
+		Size = UDim2.new(1, -34, 0, 20),
+		TextSize = 19, -- #5228: was 16
+		TextColor3 = Color3.fromRGB(140, 120, 104),
+		Text = "",
+		Parent = nextRow,
+	})
+	FitText.shrink(nextWhen, CARD_TEXT_MIN)
+	self._nextText = nextText
+	self._nextWhen = nextWhen
+	self._nextRow = nextRow
+	self:_paintNext()
+	task.spawn(function()
+		while self._newGui == gui and gui.Parent ~= nil do
+			task.wait(30)
+			self:_paintNext()
+		end
+	end)
+	-- Derek2 11-07: a credit line ("Thanks to ...") makes its row taller, so the rows stop where WhatsNew.SHOWN plain
+	-- rows would end and the oldest give way, never running off the panel
+	local budget = NEW_SHOWN * (NEW_ROW + 2)
+	local used = NEW_ROW + NEW_CREDIT + 2
+	for order, line in ThanksBoardLogic.whatsNew(WhatsNew.latest(), {}) do
+		local height = NEW_ROW + (if line.credit ~= nil then NEW_CREDIT else 0)
+		if used + height + 2 > budget then
+			break
+		end
+		used += height + 2
+		local row: Frame = Create("Frame", {
+			Name = line.id,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, height),
+			LayoutOrder = order,
+			Parent = list,
+		})
+		local icon = text({
+			Name = "Icon",
+			Position = UDim2.fromOffset(0, 2),
+			Size = UDim2.fromOffset(30, 30),
+			TextSize = 26, -- #5228: was 22
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Text = line.glyph,
+			Parent = row,
+		})
+		IconArt.set(icon, line.glyph)
+		-- #3926: a long update shrinks to fit beside the date instead of ending in "..."
+		FitText.shrink(
+			text({
+				Name = "Text",
+				Position = UDim2.fromOffset(34, 2),
+				Size = UDim2.new(1, -34 - NEW_DATE_W, 0, 32), -- long ones shrink to fit beside the date
+				FontFace = Theme.fonts.display,
+				TextSize = 28, -- #5228: 0.44 studs at 64 px a stud (was 22), readable on a phone from a few steps
+				Text = line.text,
+				Parent = row,
+			}),
+			CARD_TEXT_MIN
+		)
+		text({
+			Name = "Date",
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, 0, 0, 6), -- on the update's own line, at the right
+			Size = UDim2.fromOffset(NEW_DATE_W, 22),
+			TextSize = 19, -- #5228: 0.3 studs (was 16)
+			TextColor3 = Color3.fromRGB(140, 120, 104),
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = line.date,
+			Parent = row,
+		})
+		FitText.shrink(
+			text({
+				Name = "Credit",
+				Position = UDim2.fromOffset(34, NEW_ROW - 2),
+				Size = UDim2.new(1, -34, 0, 20),
+				TextSize = 19, -- #5228: was 16
+				TextColor3 = BERRY,
+				Text = line.credit or "",
+				Visible = line.credit ~= nil,
+				Parent = row,
+			}),
+			CARD_TEXT_MIN
+		)
+	end
+	self._newRows = list
+end
+
+-- The NEXT row: the next update from Config.UpdateEvents, hidden while none is due.
+function ThanksBoard._paintNext(self: any)
+	local row: Frame? = self._nextRow
+	if row == nil then
+		return
+	end
+	local next = ThanksBoardLogic.nextUpdate(Config.UpdateEvents, os.time())
+	for _, child in row:GetChildren() do
+		if child:IsA("GuiObject") then
+			(child :: GuiObject).Visible = next ~= nil
+		end
+	end
+	if next ~= nil then
+		self._nextText.Text = next.text
+		self._nextWhen.Text = next.when
+	end
+end
+
+-- The credit lines under linked updates, named from the board's rows (they arrive with ThanksBoard).
+function ThanksBoard._paintWhatsNew(self: any)
+	local list: Frame? = self._newRows
+	if list == nil then
+		return
+	end
+	for _, line in ThanksBoardLogic.whatsNew(WhatsNew.latest(), self._rows) do
+		local row = list:FindFirstChild(line.id)
+		local credit = if row then row:FindFirstChild("Credit") :: TextLabel? else nil
+		if credit then
+			credit.Text = line.credit or ""
+			credit.Visible = line.credit ~= nil
+		end
+	end
+end
+
+-- Hangs the page on a placed board's Screen (the tagged template in ReplicatedStorage.Assets gets none).
+function ThanksBoard._hang(self: any, model: Instance)
+	if not model:IsDescendantOf(Workspace) then
+		return
+	end
+	local screen = screenOf(model)
+	if screen == nil then
+		-- the Screen part may stream in after the model
+		local waiting: RBXScriptConnection
+		waiting = model.DescendantAdded:Connect(function(child: Instance)
+			if child.Name == "Screen" and child:IsA("BasePart") then
+				waiting:Disconnect()
+				self:_hang(model)
+			end
+		end)
+		table.insert(self._connections, waiting)
+		return
+	end
+	self._gui.Adornee = screen
+	self._gui.PixelsPerStud = pixelsFor(screen)
+	self._gui.Face = Enum.NormalId.Front
+	self._gui.Enabled = true
+	-- What's new on its own panel, once the board has it (#1216); a board without one just has no panel
+	local panel = partOf(model, "WhatsNewPanel")
+	local newGui: SurfaceGui? = self._newGui
+	if panel and newGui then
+		newGui.Adornee = panel
+		newGui.PixelsPerStud = pixelsFor(panel)
+		newGui.Face = Enum.NormalId.Front
+		newGui.Enabled = true
+	elseif newGui and not self._panelWait[model] then
+		-- the panel may stream in after the Screen
+		self._panelWait[model] = true
+		local waiting: RBXScriptConnection
+		waiting = model.DescendantAdded:Connect(function(child: Instance)
+			if child.Name == "WhatsNewPanel" and child:IsA("BasePart") then
+				waiting:Disconnect()
+				self._panelWait[model] = nil
+				self:_hang(model)
+			end
+		end)
+		table.insert(self._connections, waiting)
+	end
+end
+
+-- ThanksBoard(rows, hasCredit) from the server: kept, and drawn on the board once there is one.
+function ThanksBoard.show(rows: { ThanksBoardLogic.Row })
+	latest = rows
+	if current then
+		current:setRows(rows)
+	end
+end
+
+function ThanksBoard.setRows(self: any, rows: { ThanksBoardLogic.Row })
+	self._rows = rows
+	self:_paint()
+end
+
+function ThanksBoard._card(self: any, index: number): Frame
+	local card: Frame? = self._cards[index]
+	if card then
+		return card
+	end
+	local made: Frame = Create("Frame", {
+		Name = "Card" .. index,
+		BackgroundColor3 = Theme.colors.white,
+		BorderSizePixel = 0,
+		LayoutOrder = index,
+		Parent = self._list,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 10) }),
+		Create("UIStroke", { Color = Color3.fromRGB(226, 205, 178), Thickness = 2 }),
+	})
+	-- #3926 (Derek 2026-11-13: "a lot of thank you for ideas get cut off"): the idea takes every line above the credit
+	-- and its words shrink to fit (down to CARD_TEXT_MIN) instead of ending in "...", as does the credit line
+	FitText.shrink(
+		text({
+			Name = "Idea",
+			Position = UDim2.fromOffset(10, 5),
+			Size = UDim2.new(1, -20, 1, -(5 + CARD_CREDIT + 6)),
+			FontFace = Theme.fonts.display,
+			TextSize = 28, -- #5228: was 21
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			Parent = made,
+		}),
+		CARD_TEXT_MIN
+	)
+	FitText.shrink(
+		text({
+			Name = "Credit",
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.new(0, 10, 1, -4),
+			Size = UDim2.new(1, -20, 0, CARD_CREDIT),
+			TextSize = 20, -- #5228: was 16
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Bottom,
+			TextColor3 = BERRY,
+			Parent = made,
+		}),
+		CARD_TEXT_MIN
+	)
+	self._cards[index] = made
+	return made
+end
+
+function ThanksBoard._paint(self: any)
+	self:_paintWhatsNew()
+	local view = ThanksBoardLogic.page(self._rows, self._page)
+	self._page = view.page
+	for index, row in view.rows do
+		local card = self:_card(index)
+		card.Visible = true
+		(card:FindFirstChild("Idea") :: TextLabel).Text = row.idea;
+		(card:FindFirstChild("Credit") :: TextLabel).Text = ThanksBoardLogic.creditLine(row)
+	end
+	for index = #view.rows + 1, #self._cards do
+		self._cards[index].Visible = false
+	end
+	self._empty.Visible = #self._rows == 0
+	self._newer.Visible = view.page > 1
+	self._older.Visible = view.page < view.pages
+	self._pageLabel.Text = if view.pages > 1 then ("%d / %d"):format(view.page, view.pages) else ""
+end
+
+function ThanksBoard.destroy(self: any)
+	for _, connection in self._connections do
+		connection:Disconnect()
+	end
+	self._gui:Destroy()
+	local newGui: SurfaceGui? = self._newGui
+	if newGui then
+		newGui:Destroy()
+	end
+	if current == self then
+		current = nil
+	end
+end
+
+return ThanksBoard

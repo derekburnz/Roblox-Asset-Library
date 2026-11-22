@@ -1,0 +1,413 @@
+--!strict
+-- The session recap card (#1920, first-hour.md section 6): once a session, a small card slides up from the bottom
+-- centre with "Your cafe so far" and up to four lines (Components/RecapLogic), leading with what's next. There is no
+-- dark backdrop, no countdown bar and no store link: an X closes it and it slides away by itself after
+-- RecapLogic.AUTO_HIDE seconds. Leaving the game loses nothing, so nothing here says otherwise.
+--   show(lines, onClosed, goals?)   onClosed(secondsUp) once the card has gone, closed or timed out
+-- #2916 (an open loop at exit): `goals` (Gameplay's next goals as Components/ReturnGoalWords rows, at most three) sit
+-- under the "Today" line, each its words over a thin progress bar with its count ("3/5"; "away" has no bar), in place
+-- of the one "what's next" line.
+--   hide()
+--   isShowing() -> boolean
+
+local GuiService = game:GetService("GuiService")
+local TweenService = game:GetService("TweenService")
+
+local Button = require(script.Parent.Parent.Components.Button)
+local Create = require(script.Parent.Parent.Components.Create)
+local GamepadNav = require(script.Parent.Parent.Components.GamepadNav)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local RecapLogic = require(script.Parent.Parent.Components.RecapLogic)
+local ReturnGoalWords = require(script.Parent.Parent.Components.ReturnGoalWords)
+local Scale = require(script.Parent.Parent.Scale)
+local Sound = require(script.Parent.Parent.Components.Sound)
+local Theme = require(script.Parent.Parent.Theme)
+
+export type RecapCard = {
+	screenGui: ScreenGui,
+	show: (
+		self: RecapCard,
+		lines: { string },
+		onClosed: (secondsUp: number) -> (),
+		goals: { ReturnGoalWords.Row }?
+	) -> (),
+	hide: (self: RecapCard) -> (),
+	isShowing: (self: RecapCard) -> boolean,
+	destroy: (self: RecapCard) -> (),
+}
+
+local CARD_W = 420 -- #2235: room for the bigger lines on one row each where it can
+local BOTTOM = 92 -- over the bottom row of HUD buttons
+local PAD = 14
+local TITLE_H = 30
+local GAP = 6
+local LINE_SIZE = Theme.sizes.textBody + 1 -- #2235 (Derek2: "the text from cafe so far is hard to read"), was 15
+local CALLOUT_PAD = 6 -- round the offline line's mint callout
+local BAR_H = 8 -- #2916: a goal's progress bar
+local COUNT_W = 96 -- #2916: the count right of the bar ("3/10", "3 / 5 upgrades")
+local SLIDE = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local SLIDE_OUT = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+local RecapCard = {}
+RecapCard.__index = RecapCard
+
+function RecapCard.new(parent: Instance): RecapCard
+	local self = setmetatable({}, RecapCard) :: any
+	self._token = 0
+	self._onClosed = nil :: ((secondsUp: number) -> ())?
+	self._shownAt = 0
+	self._labels = {} :: { TextLabel }
+
+	local screenGui: ScreenGui = Create("ScreenGui", {
+		Name = "CatCafeRecap",
+		ResetOnSpawn = false,
+		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 11, -- over the HUD (10), under the windows
+		Parent = parent,
+	})
+	self.screenGui = screenGui
+	local root: Frame = Create("Frame", {
+		Name = "Root",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Parent = screenGui,
+	})
+	self._uiScale = Scale.bind(root)
+
+	local card: Frame = Create("Frame", {
+		Name = "Card",
+		BackgroundColor3 = Theme.modal.panel,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -BOTTOM),
+		Size = UDim2.fromOffset(CARD_W, TITLE_H + PAD * 2),
+		Visible = false,
+		Parent = root,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius + 4) }),
+	})
+	Outline.border(card, Theme.sizes.outline + 1)
+	self._card = card
+
+	Create("TextLabel", {
+		Name = "Title",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(PAD, PAD - 4),
+		Size = UDim2.new(1, -(PAD * 2 + Theme.sizes.touchMin), 0, TITLE_H),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 4,
+		TextColor3 = Theme.modal.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = RecapLogic.TITLE,
+		Parent = card,
+	})
+	-- #2325 (Derek2: "the bolding I have seen there ... is really hard to read"): no dark text outline round dark
+	-- letters on the light card, so they keep their shape (the uigate darkstroke check guards it)
+	self._closeButton = Button.new({
+		name = "Close",
+		text = "X",
+		style = "close",
+		size = UDim2.fromOffset(Theme.sizes.touchMin, Theme.sizes.touchMin),
+		anchorPoint = Vector2.new(1, 0),
+		position = UDim2.new(1, -6, 0, 6),
+		textSize = Theme.sizes.textLarge,
+		zIndex = 3,
+		parent = card,
+		onClick = function()
+			self:hide()
+		end,
+	})
+	-- #2235: the lines stack in a list and each is as tall as its wrapped text (AutomaticSize), so a line that fits
+	-- on one row leaves no blank row under it (the old guess counted characters and gave the offline line two)
+	local lines: Frame = Create("Frame", {
+		Name = "Lines",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(PAD, PAD + TITLE_H + 4),
+		Size = UDim2.new(1, -PAD * 2, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = card,
+	}, {
+		Create("UIListLayout", {
+			Padding = UDim.new(0, GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	self._lines = lines
+	for index = 1, RecapLogic.MAX_LINES do
+		-- #2295 (desktop test of #2243: the callout read "...100% pay, up to" with "16 h" cut off): Roblox's
+		-- AutomaticSize measured a label's wrapped text at its full width, not inside its own UIPadding, so the padded
+		-- callout came out one row tall. Each line is now a Row frame that carries the fill and the padding, with the
+		-- words' label inside it at the padded width, so the label's measured height is the real one.
+		local row: Frame = Create("Frame", {
+			Name = "Row" .. index,
+			BackgroundTransparency = 1,
+			BackgroundColor3 = Theme.colors.mint,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = index * 10,
+			Visible = false,
+			Parent = lines,
+		}, {
+			Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+			Create("UIPadding", { Name = "Callout" }),
+		})
+		local label: TextLabel = Create("TextLabel", {
+			Name = "Line" .. index,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			FontFace = Theme.fonts.bodyBold,
+			TextSize = LINE_SIZE,
+			TextColor3 = Theme.modal.text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			TextWrapped = true,
+			Text = "",
+			Visible = false,
+			Parent = row,
+		})
+		self._labels[index] = label
+	end
+	-- #2916: the goals, each its words over a bar and a count; the block sits under the Today line
+	local goalsFrame: Frame = Create("Frame", {
+		Name = "Goals",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 15,
+		Visible = false,
+		Parent = lines,
+	}, {
+		Create("UIListLayout", {
+			Padding = UDim.new(0, GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	self._goalsFrame = goalsFrame
+	self._goals =
+		{} :: { { frame: Frame, text: TextLabel, bar: Frame, fill: Frame, count: TextLabel } }
+	for index = 1, ReturnGoalWords.MAX do
+		local frame: Frame = Create("Frame", {
+			Name = "Goal" .. index,
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			LayoutOrder = index,
+			Visible = false,
+			Parent = goalsFrame,
+		}, {
+			Create("UIListLayout", {
+				Padding = UDim.new(0, 3),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+		})
+		local words: TextLabel = Create("TextLabel", {
+			Name = "Text",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			FontFace = Theme.fonts.bodyBold,
+			TextSize = LINE_SIZE - 1,
+			TextColor3 = Theme.modal.text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextWrapped = true,
+			Text = "",
+			LayoutOrder = 1,
+			Parent = frame,
+		})
+		local barRow: Frame = Create("Frame", {
+			Name = "Bar",
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, 16),
+			LayoutOrder = 2,
+			Parent = frame,
+		})
+		local track: Frame = Create("Frame", {
+			Name = "Track",
+			BackgroundColor3 = Theme.modal.cardStroke,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0, 0.5),
+			Size = UDim2.new(1, -(COUNT_W + 6), 0, BAR_H),
+			Parent = barRow,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		local fill: Frame = Create("Frame", {
+			Name = "Fill",
+			BackgroundColor3 = Theme.colors.good,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(0, 1),
+			Parent = track,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		local count: TextLabel = Create("TextLabel", {
+			Name = "Count",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.fromScale(1, 0),
+			Size = UDim2.new(0, COUNT_W, 1, 0),
+			FontFace = Theme.fonts.bodyBold,
+			TextSize = Theme.sizes.textTiny,
+			TextColor3 = Theme.modal.subtext,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = "",
+			Parent = barRow,
+		})
+		self._goals[index] =
+			{ frame = frame, text = words, bar = barRow, fill = fill, count = count }
+	end
+
+	self._resize = root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if self._onClosed ~= nil then
+			self:_layout()
+		end
+	end)
+	-- the lines' height settles once their text is laid out; the card follows it
+	self._grow = lines:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		self:_fitHeight()
+	end)
+	return self :: RecapCard
+end
+
+-- The card is CARD_W wide, or the screen less 16 px a side, and as tall as its lines.
+function RecapCard._layout(self: any)
+	local scale = math.max(self._uiScale.Scale, 0.01)
+	local width = math.min(CARD_W, math.max(260, self._card.Parent.AbsoluteSize.X / scale - 32))
+	self._card.Size = UDim2.fromOffset(width, self._card.Size.Y.Offset)
+	self:_fitHeight()
+end
+
+function RecapCard._fitHeight(self: any)
+	local scale = math.max(self._uiScale.Scale, 0.01)
+	local height = PAD + TITLE_H + 4 + self._lines.AbsoluteSize.Y / scale + PAD
+	local card: Frame = self._card
+	if math.abs(card.Size.Y.Offset - height) > 0.5 then
+		card.Size = UDim2.fromOffset(card.Size.X.Offset, height)
+	end
+end
+
+-- #2235 (Derek2: "make it obvious that cats earn offline also so people come back"): the offline line on a mint
+-- callout, the rest plain.
+local function callout(label: TextLabel, on: boolean)
+	local row = label.Parent :: Frame
+	row.BackgroundTransparency = if on then 0 else 1
+	label.TextColor3 = if on then Theme.colors.goodText else Theme.modal.text
+	local pad = row:FindFirstChild("Callout") :: UIPadding?
+	if pad then
+		local inset = UDim.new(0, if on then CALLOUT_PAD else 0)
+		pad.PaddingLeft = inset
+		pad.PaddingRight = inset
+		pad.PaddingTop = UDim.new(0, if on then CALLOUT_PAD - 2 else 0)
+		pad.PaddingBottom = UDim.new(0, if on then CALLOUT_PAD else 0)
+	end
+end
+
+function RecapCard.show(
+	self: any,
+	lines: { string },
+	onClosed: (secondsUp: number) -> (),
+	goals: { ReturnGoalWords.Row }?
+)
+	if self._onClosed ~= nil then
+		self:_close()
+	end
+	self._token += 1
+	local token = self._token
+	self._onClosed = onClosed
+	self._shownAt = os.clock()
+	for index, label in self._labels do
+		local line = lines[index]
+		label.Visible = line ~= nil
+		(label.Parent :: Frame).Visible = line ~= nil
+		label.Text = line or ""
+		callout(label, line ~= nil and RecapLogic.isOffline(line))
+	end
+	-- #2916: the goals under the Today line (first when there is none)
+	local goalList = goals or {}
+	self._goalsFrame.Visible = #goalList > 0
+	self._goalsFrame.LayoutOrder = if lines[1] ~= nil and RecapLogic.isToday(lines[1])
+		then 15
+		else 5
+	for index, view in self._goals do
+		local goal = goalList[index]
+		view.frame.Visible = goal ~= nil
+		if goal ~= nil then
+			view.text.Text = goal.text
+			local progress = goal.progress
+			view.bar.Visible = progress ~= nil
+			view.fill.Size = UDim2.fromScale(math.clamp(progress or 0, 0, 1), 1)
+			view.count.Text = goal.count or ""
+		end
+	end
+	self:_layout()
+	local card: Frame = self._card
+	card.Visible = true
+	local shown = UDim2.new(0.5, 0, 1, -BOTTOM)
+	if GuiService.ReducedMotionEnabled then
+		card.Position = shown
+	else
+		card.Position = UDim2.new(0.5, 0, 1, card.Size.Y.Offset + 20)
+		TweenService:Create(card, SLIDE, { Position = shown }):Play()
+	end
+	Sound.play("uiHint")
+	task.delay(RecapLogic.AUTO_HIDE, function()
+		if self._token == token then
+			self:_close()
+		end
+	end)
+	-- #4224 (console): B closes it as its X does, without taking the selection (the player keeps moving)
+	GamepadNav.pushBack("recapCard", card, function(): boolean?
+		self:_close()
+		return true
+	end)
+end
+
+function RecapCard._close(self: any)
+	local onClosed: ((secondsUp: number) -> ())? = self._onClosed
+	if onClosed == nil then
+		return
+	end
+	self._onClosed = nil
+	GamepadNav.popBack("recapCard")
+	self._token += 1
+	local token = self._token
+	local card: Frame = self._card
+	if GuiService.ReducedMotionEnabled then
+		card.Visible = false
+	else
+		local out = TweenService:Create(
+			card,
+			SLIDE_OUT,
+			{ Position = UDim2.new(0.5, 0, 1, card.Size.Y.Offset + 20) }
+		)
+		out.Completed:Once(function()
+			if self._token == token then
+				card.Visible = false
+			end
+		end)
+		out:Play()
+	end
+	onClosed(math.floor(os.clock() - self._shownAt + 0.5))
+end
+
+function RecapCard.hide(self: any)
+	self:_close()
+end
+
+function RecapCard.isShowing(self: any): boolean
+	return self._onClosed ~= nil
+end
+
+function RecapCard.destroy(self: any)
+	self._token += 1
+	self._onClosed = nil
+	self._resize:Disconnect()
+	self._grow:Disconnect()
+	self._closeButton:destroy()
+	Scale.unbind(self._uiScale)
+	self.screenGui:Destroy()
+end
+
+return RecapCard

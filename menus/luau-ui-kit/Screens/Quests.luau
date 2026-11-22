@@ -1,0 +1,1306 @@
+--!strict
+-- The Quests window (F73, quests.md sections 1 and 7; Derek 2026-10-27 21:59, approved 22:14). Opened from the Quests
+-- pill on the left menu (key J) or the HUD's quest line. Three tabs, each kept brief (Derek 2026-10-28 01:09):
+--   Daily         "3 of 5 done" and "New quests in 5 h", a strip with what finishing all five pays (✓ once paid),
+--                 then a row per quest: its text, a bar with "3/5" ("$320/$600" for a coins quest), what it pays as
+--                 little pictures (Components/PrizeChips) and Claim once done, ✓ once claimed, or Swap (the day's
+--                 one free reroll) while it is unfinished; once used, Swap stays greyed with its wait ("7h 12m",
+--                 #1166), the same as Weekly. Claimed rows drop to the bottom
+--                 (Derek 2026-10-29).
+--   Weekly        the same for the week's three. Its free swap comes back every UTC day with the dailies (#1166):
+--                 once used, Swap stays on the unfinished rows, greyed, counting down ("7h 12m") to
+--                 quests.dailyResetsAt. (#3081, Derek2 11-10: the tab's quiet "free swap" dot is gone.)
+--   Achievements  "12 of 44 claimed", then a card each: name, goal, bar, prize and Claim once met. Ready ones come
+--                 first, then the closest to done; claimed ones go last, faded.
+-- A tab with something to claim carries a red count. A Claim all button right of the tabs shows while anything in
+-- any tab is ready and claims all three tabs at once (#1073; shown once the server has ClaimAll,
+-- Config.QuestClaimAll). A claim shows at once (Derek 2026-10-29, "claim lag"): the row or card reads
+-- "✓ Claimed", moves down and plays giftClaim on the press, and goes
+-- back to Claim if the next sync still has it unclaimed (the server refused and toasted why) or none comes within
+-- CLAIM_HOLD. Swap reads "..." until a sync shows the new quest or PENDING_SECONDS pass. The server still decides
+-- every claim. Rules: Components/QuestLogic.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Button = require(script.Parent.Parent.Components.Button)
+local Create = require(script.Parent.Parent.Components.Create)
+local Format = require(script.Parent.Parent.Components.Format)
+local IconArt = require(script.Parent.Parent.Components.IconArt)
+local MenuFamily = require(script.Parent.Parent.Components.MenuFamily)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local Panel = require(script.Parent.Parent.Components.Panel)
+local PrizeChips = require(script.Parent.Parent.Components.PrizeChips)
+local QuestLogic = require(script.Parent.Parent.Components.QuestLogic)
+local Scale = require(script.Parent.Parent.Scale)
+local ShopIcons = require(script.Parent.Parent.Components.ShopIcons)
+local ShortNumber = require(script.Parent.Parent.Components.ShortNumber)
+local Sound = require(script.Parent.Parent.Components.Sound)
+local Theme = require(script.Parent.Parent.Theme)
+local TipJarLogic = require(script.Parent.Parent.Components.TipJarLogic)
+local Tween = require(script.Parent.Parent.Components.Tween)
+local Types = require(script.Parent.Parent.Types)
+
+-- the dark window palette (#1028 pilot), in place of Theme.modal
+local PAL = MenuFamily.pal
+local CREAM = MenuFamily.card -- #3558: what sits on a picture card (cream in the family look)
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")) :: any
+
+export type Tab = "Daily" | "Weekly" | "Achievements"
+
+export type Callbacks = {
+	claimQuest: (kind: string, slot: number) -> (),
+	rerollQuest: (kind: string, slot: number) -> (),
+	claimAchievement: (achievementId: string) -> (),
+	claimAll: ((what: string) -> ())?, -- "quests" (all three tabs, #1073); the server also takes the single kinds
+	close: () -> (),
+}
+
+export type Quests = {
+	frame: Frame,
+	setCatalog: (self: Quests, catalog: Types.Catalog) -> (),
+	render: (self: Quests, state: Types.PlayerState) -> (),
+	setNight: (self: Quests, night: boolean) -> (),
+	showTab: (self: Quests, tab: Tab) -> (),
+	result: (self: Quests, paid: { string }) -> (),
+	onOpen: (self: Quests) -> (),
+	onClose: (self: Quests) -> (),
+	destroy: (self: Quests) -> (),
+}
+
+type QuestRow = {
+	frame: Frame,
+	title: TextLabel,
+	fill: Frame,
+	count: TextLabel,
+	chips: PrizeChips.PrizeChips,
+	claim: Button.Button,
+	swap: Button.Button,
+	check: TextLabel,
+	claimed: boolean, -- shown as claimed, the server's or a claim on its way
+	picture: TextLabel?, -- #3961: the family look's picture of what the quest asks
+}
+
+type Page = {
+	kind: string, -- "daily" or "weekly"
+	scroll: ScrollingFrame,
+	done: TextLabel,
+	resets: TextLabel,
+	setCaption: TextLabel,
+	setChips: PrizeChips.PrizeChips,
+	setStatus: TextLabel,
+	rows: { QuestRow },
+	swapWait: boolean, -- the swap is used, so Swap shows the wait
+}
+
+type Card = {
+	frame: Frame,
+	name: TextLabel,
+	goal: TextLabel,
+	fill: Frame,
+	count: TextLabel,
+	chips: PrizeChips.PrizeChips,
+	claim: Button.Button,
+	check: TextLabel,
+	size: string,
+	claimed: boolean, -- shown as claimed
+}
+
+-- A press waiting for the server. `source` is the state's quests (or achievements) table at the press: every
+-- ProfileSync brings a new one, so a sync that still shows the old state means the server said no. The first new
+-- table within SYNC_GRACE of the press may have left the server before the press reached it (the 10 s sync, a
+-- catch), so it only moves `source` on (`moved`); the next one decides (review N293).
+type Pending = {
+	at: number,
+	id: string,
+	claimed: boolean,
+	source: any,
+	action: string,
+	moved: boolean?,
+}
+
+local TABS: { Tab } = { "Daily", "Weekly", "Achievements" }
+-- #3350 (Derek2: "add symbols to them so its easier"): a symbol beside each tab's name
+local TAB_ICONS: { [string]: string } =
+	{ Daily = "📅", Weekly = "🗓️", Achievements = "🏆" }
+local MAX_SIZE = Vector2.new(660, 560)
+local TAB_HEIGHT = Theme.sizes.touchMin
+local TAB_WIDTH = 150
+local HEAD = 26
+local STRIP = 54
+local ROW = 80
+local BAR = 14
+local CHIP = 30
+local ACTION_W = 112
+-- #3081 (Derek2 11-10: "the side ones make them much smaller"): Swap is a small ghost pill, drawn well under the Claim
+-- button; on a touch screen Button's invisible Hit pad still reaches out to a finger's 44 px, and with a mouse it
+-- keeps the 36 px pointer floor.
+local SWAP_W = 76
+local SWAP_H = if Scale.isTouch() then 28 else 36
+local CARD = Vector2.new(0, 142) -- two cards a row; the width follows the window
+local CARD_CLAIM_H = Theme.sizes.touchMin -- a 39 px face, over the 36 a mouse needs
+-- an achievement card's prize pictures (#3694 Review-QA 2026-11-13: 26 read as very small)
+local CARD_CHIP = 34
+local CLIP_INSET = 3 -- px between a clipping chip area's left edge and its first chip (the 2 px outline stays whole)
+local GAP = Theme.sizes.gap
+-- #3961: the family look (batch 2 mock): a picture for what each quest asks, upper case CLAIM and a sky SWAP
+local QUEST_PICTURE = 44
+local STAT_PICTURES: { [string]: string } = {
+	baitsTamed = "🥣",
+	catLevelUps = "⬆️",
+	catsCaught = "🐱",
+	cratesOpened = "📦",
+	dailyQuestsDone = "📜",
+	dailySetsDone = "📜",
+	distinctCats = "🐾",
+	fishEarned = "🐟",
+	goldCatches = "✨",
+	lifetimeCoins = "💰",
+	luresUsed = "🍣",
+	perfectCircles = "🎯",
+	rareCatches = "💎",
+	rescues = "🆘",
+	spins = "🎡",
+	-- #4046: 🫙 and 🪙 are newer than Roblox's emoji and drew blank (as #2015); these show while the pictures load
+	tipJarClaims = "🍯",
+	tipPilesCollected = "💰",
+}
+-- #4046: the stats drawn with a clean picture of ours over their emoji
+local STAT_IMAGES: { [string]: string } = {
+	tipJarClaims = "TipJar",
+	tipPilesCollected = "TipPile",
+}
+
+-- the quest's stat from the catalog, for its picture
+local function questStat(catalog: Types.Catalog?, id: string): string?
+	local quests = if catalog then catalog.quests else nil
+	if quests then
+		for _, group in { quests.daily, quests.weekly } do
+			for _, pool in group do
+				for _, def in pool do
+					if def.id == id then
+						return def.stat
+					end
+				end
+			end
+		end
+	end
+	return nil
+end
+local PENDING_SECONDS = 2 -- ClaimQuest and ClaimAchievement take 2 a second, RerollQuest 1
+-- #4600 (Derek 2026-11-15: "the annoying white highlight of quests when being finished is not needed"): a claimed card
+-- keeps the same card as the others (the light E6DAC6 of #4025 lit up under the dark look and washed its words out);
+-- the green "✓ Claimed", the gold bar and its place at the bottom say it is done
+local CLAIM_HOLD = 4 -- how long a claim shows as done with no sync before it goes back to Claim
+local SYNC_GRACE = 0.5 -- a sync this soon after a press may predate it (one round trip)
+local CLAIM_ALL_W = 150 -- fits right of the three tabs at the window's narrowest (636 px of tab row)
+local TICK_SECONDS = 1 -- the reset times, while the window is open
+local NIGHT_SHARE: number = Config.NightIncomeMultiplier or 0.6
+
+-- Review-QA's Studio pass on a 667 x 375 window (f7f52504): Roblox drew the prize chips a few px past their area's
+-- design-pixel edge there, so the "+1" still slid under CLAIM however much room the layout left. The area now takes
+-- its width from where the buttons really are: the left edge of the widest one, less `gap` design px. `unit` is the
+-- design width of `buttons[1]`, which gives the screen px per design px (the screen's scale and any pop-in).
+local function keepClear(area: Frame, buttons: { GuiObject }, unit: number, gap: number)
+	local function fit()
+		local per = buttons[1].AbsoluteSize.X / unit
+		if per <= 0 then
+			return
+		end
+		local left = math.huge
+		for _, button in buttons do
+			left = math.min(left, button.AbsolutePosition.X)
+		end
+		local width = math.max(0, math.floor((left - area.AbsolutePosition.X) / per - gap))
+		area.Size = UDim2.new(0, width, area.Size.Y.Scale, area.Size.Y.Offset)
+	end
+	-- Review-QA (19cb1e6a): the clip cut chips in half ("+150 pass", a sliver of "+1"). A chip that does not fit
+	-- whole inside the area is hidden instead (only ever hidden: a rebuilt row brings new chips, checked again)
+	local pending = false
+	local function hideCut()
+		pending = false
+		local right = area.AbsolutePosition.X + area.AbsoluteSize.X + 0.5
+		for _, row in area:GetChildren() do
+			if row:IsA("GuiObject") then
+				for _, child in row:GetChildren() do
+					if child:IsA("GuiObject") then
+						local chip = child :: GuiObject
+						if
+							chip.Visible
+							and chip.AbsolutePosition.X + chip.AbsoluteSize.X > right
+						then
+							chip.Visible = false
+						end
+					end
+				end
+			end
+		end
+	end
+	local function soon()
+		if not pending then
+			pending = true
+			task.defer(hideCut)
+		end
+	end
+	for _, button in buttons do
+		button:GetPropertyChangedSignal("AbsolutePosition"):Connect(fit)
+		button:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+	end
+	area:GetPropertyChangedSignal("AbsolutePosition"):Connect(fit)
+	area:GetPropertyChangedSignal("AbsoluteSize"):Connect(soon)
+	area.DescendantAdded:Connect(soon)
+	area.ChildAdded:Connect(function(row)
+		if row:IsA("GuiObject") then
+			row:GetPropertyChangedSignal("AbsoluteSize"):Connect(soon)
+		end
+	end)
+	for _, row in area:GetChildren() do
+		if row:IsA("GuiObject") then
+			row:GetPropertyChangedSignal("AbsoluteSize"):Connect(soon)
+		end
+	end
+	fit()
+	soon()
+end
+
+local Quests = {}
+Quests.__index = Quests
+
+local function text(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.body,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = CREAM.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	return Create("TextLabel", merged)
+end
+
+local function card(name: string, size: UDim2, parent: Instance, order: number?): Frame
+	return Create("Frame", {
+		Name = name,
+		BackgroundColor3 = CREAM.card,
+		BorderSizePixel = 0,
+		Size = size,
+		LayoutOrder = order or 0,
+		Parent = parent,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIStroke", { Color = CREAM.cardStroke, Thickness = Theme.sizes.stroke }),
+	})
+end
+
+-- A rounded bar and its fill.
+local function bar(parent: Instance, position: UDim2, size: UDim2): Frame
+	local track: Frame = Create("Frame", {
+		Name = "Bar",
+		BackgroundColor3 = CREAM.line,
+		BorderSizePixel = 0,
+		Position = position,
+		Size = size,
+		Parent = parent,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	return Create("Frame", {
+		Name = "Fill",
+		BackgroundColor3 = Theme.colors.good,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(0, 1),
+		Parent = track,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+end
+
+local function check(parent: Instance, position: UDim2, anchor: Vector2): TextLabel
+	return text({
+		Name = "Check",
+		AnchorPoint = anchor,
+		Position = position,
+		Size = UDim2.fromOffset(ACTION_W, 32),
+		FontFace = Theme.fonts.display,
+		TextColor3 = CREAM.good,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = "✓ Claimed",
+		Visible = false,
+		Parent = parent,
+	})
+end
+
+local function scroll(name: string, parent: Instance, top: number): ScrollingFrame
+	return Create("ScrollingFrame", {
+		Name = name,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, top),
+		Size = UDim2.new(1, 0, 1, -top),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = PAL.caramel,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		Visible = false,
+		Parent = parent,
+	}, {
+		Outline.listPadding(10, 8), -- #2294: room for the cards' outlines
+	})
+end
+
+-- The red count on a tab: how many things there are ready to claim.
+local function countDot(parent: Instance): (Frame, TextLabel)
+	local dot: Frame = Create("Frame", {
+		Name = "Dot",
+		BackgroundColor3 = Theme.colors.red,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -6, 0, 6),
+		Size = UDim2.fromOffset(24, 24),
+		Visible = false,
+		ZIndex = 6,
+		Parent = parent,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Outline.border(dot, 2)
+	local label = text({
+		Name = "Count",
+		Size = UDim2.fromScale(1, 1),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = Theme.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 7,
+		Parent = dot,
+	})
+	return dot, label
+end
+
+local function destroyCard(entry: Card)
+	entry.claim:destroy()
+	entry.chips:destroy()
+	entry.frame:Destroy()
+end
+
+function Quests.new(callbacks: Callbacks): Quests
+	local self = setmetatable({}, Quests) :: any
+	self._callbacks = callbacks
+	self._alive = true
+	self._catalog = nil :: Types.Catalog?
+	self._state = nil :: Types.PlayerState?
+	self._night = false
+	self._open = false
+	self._tab = "Daily" :: Tab
+	self._pending = {} :: { [string]: Pending } -- "daily:2", "weekly:1" or an achievement id
+	self._cards = {} :: { [string]: Card }
+	self._cardsBuilt = false
+	self._tick = nil :: RBXScriptConnection?
+
+	local panel = Panel.new({
+		name = "Quests",
+		title = "Quests",
+		subtitle = "Fresh quests every day and week",
+		color = Theme.colors.goldDark,
+		icon = Theme.icons.quests,
+		dark = true, -- #1028 pilot
+		size = UDim2.fromScale(1, 1),
+		onClose = callbacks.close,
+	})
+	Create("UISizeConstraint", { MaxSize = MAX_SIZE, Parent = panel.frame })
+	self._panel = panel
+	self.frame = panel.frame
+	local content = panel.content
+
+	local tabs: Frame = Create("Frame", {
+		Name = "Tabs",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, TAB_HEIGHT),
+		Parent = content,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	-- on a phone the row is tall enough for a 44 px finger (Scale.tapHeight), as the Spin and Decor windows
+	local tabHeight = Scale.tapHeight(TAB_HEIGHT, Theme.sizes.buttonDepth)
+	tabs.Size = UDim2.new(1, 0, 0, tabHeight)
+	self._tabs = {} :: { [string]: { button: Button.Button, dot: Frame, count: TextLabel } }
+	for index, tab in TABS do
+		local button = Button.new({
+			name = tab .. "Tab",
+			text = tab,
+			icon = TAB_ICONS[tab],
+			style = if tab == "Daily" then "gold" else "ghost",
+			size = UDim2.fromOffset(TAB_WIDTH, tabHeight),
+			textSize = Theme.sizes.textBody,
+			layoutOrder = index,
+			parent = tabs,
+			sound = "uiTab",
+			onClick = function()
+				self:showTab(tab)
+			end,
+		})
+		local dot, count = countDot(button.instance)
+		self._tabs[tab] = { button = button, dot = dot, count = count }
+	end
+	-- Claim all, right of the tabs: every ready daily, weekly and achievement reward in one go (#1073)
+	self._readyByTab = {} :: { [string]: number }
+	self._claimAll = Button.new({
+		name = "ClaimAll",
+		text = "Claim all",
+		style = "primary",
+		size = UDim2.fromOffset(CLAIM_ALL_W, tabHeight),
+		-- Review-QA's Studio pass 2026-11-13: cut to "Claim al" on a phone in the family look
+		textSize = Theme.sizes.textSmall + 1,
+		anchorPoint = Vector2.new(1, 0),
+		position = UDim2.fromScale(1, 0),
+		parent = content,
+		onClick = function()
+			self:_pressAll()
+		end,
+	})
+	self._claimAll.instance.Visible = false
+
+	local top = tabHeight + GAP
+	self._pages = {
+		Daily = self:_buildPage("daily", 5, content, top),
+		Weekly = self:_buildPage("weekly", 3, content, top),
+	} :: { [string]: Page }
+
+	-- Achievements: the count, then a grid of cards
+	local achievements: Frame = Create("Frame", {
+		Name = "Achievements",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(0, top),
+		Size = UDim2.new(1, 0, 1, -top),
+		Visible = false,
+		Parent = content,
+	})
+	self._achievements = achievements
+	self._claimedCount = text({
+		Name = "Claimed",
+		Size = UDim2.new(1, 0, 0, HEAD),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 2,
+		TextColor3 = PAL.text, -- on the window's body, not on a card
+		Parent = achievements,
+	})
+	local grid = scroll("Grid", achievements, HEAD + 4)
+	grid.Visible = true
+	-- on a phone the card's Claim is a finger tall, and the card grows by as much so it clears the count
+	self._cardClaimH = Scale.tapHeight(CARD_CLAIM_H, Theme.sizes.buttonDepth)
+	Create("UIGridLayout", {
+		CellSize = UDim2.new(0.5, -GAP / 2, 0, CARD.Y + self._cardClaimH - CARD_CLAIM_H),
+		CellPadding = UDim2.fromOffset(GAP, GAP),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = grid,
+	})
+	self._grid = grid
+
+	self:showTab("Daily")
+	return self :: Quests
+end
+
+-- One tab of quests: the done count and reset time, the set prize strip, and `slots` rows.
+function Quests._buildPage(
+	self: any,
+	kind: string,
+	slots: number,
+	parent: Instance,
+	top: number
+): Page
+	local page = scroll(if kind == "daily" then "Daily" else "Weekly", parent, top)
+	Create("UIListLayout", {
+		Padding = UDim.new(0, GAP),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = page,
+	})
+	local head: Frame = Create("Frame", {
+		Name = "Head",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, HEAD),
+		LayoutOrder = 1,
+		Parent = page,
+	})
+	local done = text({
+		Name = "Done",
+		Size = UDim2.new(0.5, 0, 1, 0),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 2,
+		TextColor3 = PAL.text,
+		Parent = head,
+	})
+	local resets = text({
+		Name = "Resets",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.fromScale(1, 0),
+		Size = UDim2.new(0.5, 0, 1, 0),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = PAL.subtext,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Parent = head,
+	})
+
+	-- what finishing all of them pays
+	local strip = card("Set", UDim2.new(1, 0, 0, STRIP), page, 2)
+	strip.BackgroundColor3 = CREAM.goldCard
+	local setCaption = text({
+		Name = "Caption",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 14, 0.5, 0),
+		Size = UDim2.fromOffset(120, 24),
+		FontFace = Theme.fonts.display,
+		Text = if kind == "daily" then "All 5 done:" else "All 3 done:",
+		Parent = strip,
+	})
+	local chipArea: Frame = Create("Frame", {
+		Name = "Prize",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(136, 0),
+		Size = UDim2.new(1, -(136 + ACTION_W + 8), 1, 0),
+		Parent = strip,
+	})
+	local setChips = PrizeChips.new({
+		parent = chipArea,
+		textColor = CREAM.text,
+		tile = CHIP,
+		textSize = Theme.sizes.textSmall,
+		anchorPoint = Vector2.new(0, 0.5),
+		position = UDim2.fromScale(0, 0.5),
+		fitTo = chipArea,
+		fitPad = 4,
+		maxPictures = 3, -- F94: a quest set is a big prize
+	})
+	local setStatus = text({
+		Name = "Status",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -8, 0.5, 0),
+		Size = UDim2.fromOffset(ACTION_W, 24),
+		FontFace = Theme.fonts.display,
+		TextColor3 = CREAM.good,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = strip,
+	})
+
+	local rows: { QuestRow } = {}
+	for slot = 1, slots do
+		local row: QuestRow = self:_buildRow(kind, slot, page)
+		table.insert(rows, row)
+	end
+	return {
+		kind = kind,
+		scroll = page,
+		done = done,
+		resets = resets,
+		setCaption = setCaption,
+		setChips = setChips,
+		setStatus = setStatus,
+		rows = rows,
+		swapWait = false,
+	}
+end
+
+function Quests._buildRow(self: any, kind: string, slot: number, parent: Instance): QuestRow
+	local frame = card("Quest" .. slot, UDim2.new(1, 0, 0, ROW), parent, 10 + slot)
+	local left = 14
+	local picture: TextLabel? = nil
+	local tile: TextLabel = text({
+		Name = "Picture",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 10, 0.5, 0),
+		Size = UDim2.fromOffset(QUEST_PICTURE, QUEST_PICTURE),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = CREAM.line,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextSize = 26,
+		Text = "📜",
+		Parent = frame,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = tile })
+	picture = tile
+	left = 10 + QUEST_PICTURE + 10
+	local title = text({
+		Name = "Title",
+		Position = UDim2.fromOffset(left, 10),
+		Size = UDim2.new(1, -(left + ACTION_W + 16), 0, 24),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 2,
+		Parent = frame,
+	})
+	-- the bar and count on the left half, what it pays on the right half of the second line
+	-- Review-QA's Studio pass 2026-11-13: CLAIM and SWAP covered the last prize chip ("+1") in the family look;
+	-- there the bar is shorter and the chips end a clear gap before the button
+	-- Studio again (5e74d9b4): Roblox draws the "+1" wider than the chips' fit allows at the 9 px floor, so on a 667 x 375
+	-- window it ran 4 px under CLAIM; the chips now stop 34 px short of CLAIM, the widest of the two buttons
+	local split = 0.34
+	local gap = 44
+	local fill = bar(frame, UDim2.fromOffset(left, 48), UDim2.new(split, -left, 0, BAR))
+	local count = text({
+		Name = "Count",
+		Position = UDim2.new(split, 6, 0, 44),
+		Size = UDim2.fromOffset(96, 22),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = CREAM.subtext,
+		Parent = frame,
+	})
+	local chipArea: Frame = Create("Frame", {
+		Name = "Prize",
+		BackgroundTransparency = 1,
+		-- UI gate strokeclip: the area starts CLIP_INSET px left of the chips so the clip keeps their outlines
+		Position = UDim2.new(split, 104 - CLIP_INSET, 0, 38),
+		Size = UDim2.new(1 - split, -(104 - CLIP_INSET + ACTION_W + gap), 0, CHIP + 4),
+		-- Review-QA (daa09e07): at the 9 px text floor the chip row stays wider than the area keepClear leaves, so the
+		-- area clips it: whatever does not fit is cut at the area's edge, never drawn under the button
+		ClipsDescendants = true,
+		Parent = frame,
+	})
+	local chips = PrizeChips.new({
+		parent = chipArea,
+		textColor = CREAM.text,
+		tile = CHIP,
+		textSize = Theme.sizes.textSmall,
+		anchorPoint = Vector2.new(0, 0.5),
+		position = UDim2.new(0, CLIP_INSET, 0.5, 0),
+		fitTo = chipArea,
+		fitPad = 2 + CLIP_INSET,
+		maxPictures = 2, -- F94: two pictures a quest
+	})
+	local actionPosition = UDim2.new(1, -10, 0.5, 0)
+	local actionHeight = Scale.tapHeight(Theme.sizes.touchMin, Theme.sizes.buttonDepth) -- 64 of the 80 on a phone
+	local claim = Button.new({
+		name = "Claim",
+		text = "CLAIM",
+		style = "primary",
+		size = UDim2.fromOffset(ACTION_W, actionHeight),
+		anchorPoint = Vector2.new(1, 0.5),
+		position = actionPosition,
+		parent = frame,
+		onClick = function()
+			self:_press(kind, slot, "claim")
+		end,
+	})
+	local swap = Button.new({
+		name = "Swap",
+		text = "SWAP",
+		icon = "🔄",
+		style = "sky",
+		textSize = Theme.sizes.textSmall,
+		size = UDim2.fromOffset(SWAP_W + 16, SWAP_H),
+		anchorPoint = Vector2.new(1, 0.5),
+		position = actionPosition,
+		parent = frame,
+		onClick = function()
+			self:_press(kind, slot, "swap")
+		end,
+	})
+	keepClear(chipArea, { claim.instance, swap.instance }, ACTION_W, gap)
+	return {
+		frame = frame,
+		title = title,
+		fill = fill,
+		count = count,
+		chips = chips,
+		claim = claim,
+		swap = swap,
+		check = check(frame, actionPosition, Vector2.new(1, 0.5)),
+		claimed = false,
+		picture = picture,
+	}
+end
+
+function Quests._buildCard(self: any, def: Types.AchievementDef): Card
+	local frame = card(def.id, UDim2.fromScale(1, 1), self._grid)
+	local name = text({
+		Name = "Name",
+		Position = UDim2.fromOffset(12, 8),
+		Size = UDim2.new(1, -24, 0, 22),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 1,
+		Parent = frame,
+	})
+	local goal = text({
+		Name = "Goal",
+		Position = UDim2.fromOffset(12, 30),
+		Size = UDim2.new(1, -24, 0, 18),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = CREAM.subtext,
+		Parent = frame,
+	})
+	-- the count has room for "120,000/360,000" (Play for 100 hours) beside the bar
+	local fill = bar(frame, UDim2.fromOffset(12, 58), UDim2.new(1, -150, 0, BAR - 2))
+	local count = text({
+		Name = "Count",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -12, 0, 53),
+		Size = UDim2.fromOffset(126, 20),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = CREAM.subtext,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Parent = frame,
+	})
+	local chipArea: Frame = Create("Frame", {
+		Name = "Prize",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(12 - CLIP_INSET, 82),
+		-- Studio (5e74d9b4): the chips ended only 2 px before Claim and ran up to 8 px under it on 667 x 375; they now
+		-- stop 18 px short of it
+		Size = UDim2.new(1, -(24 - CLIP_INSET + ACTION_W), 0, CARD_CHIP + 22),
+		-- Review-QA (daa09e07): at the 9 px text floor the chip row stays wider than the area keepClear leaves, so the
+		-- area clips it: whatever does not fit is cut at the area's edge, never drawn under the button
+		ClipsDescendants = true,
+		Parent = frame,
+	})
+	local chips = PrizeChips.new({
+		parent = chipArea,
+		textColor = CREAM.text,
+		tile = CARD_CHIP,
+		textSize = Theme.sizes.textSmall,
+		anchorPoint = Vector2.new(0, 0.5),
+		position = UDim2.new(0, CLIP_INSET, 0.5, 0),
+		fitTo = chipArea,
+		fitPad = 2 + CLIP_INSET,
+	})
+	local actionPosition = UDim2.new(1, -10, 1, -10)
+	local claim = Button.new({
+		name = "Claim",
+		text = "Claim",
+		style = "primary",
+		size = UDim2.fromOffset(ACTION_W - 16, self._cardClaimH),
+		anchorPoint = Vector2.new(1, 1),
+		position = actionPosition,
+		parent = frame,
+		onClick = function()
+			self:_pressAchievement(def.id)
+		end,
+	})
+	keepClear(chipArea, { claim.instance }, ACTION_W - 16, 18)
+	local done = check(frame, UDim2.new(1, -4, 1, -14), Vector2.new(1, 1))
+	return {
+		frame = frame,
+		name = name,
+		goal = goal,
+		fill = fill,
+		count = count,
+		chips = chips,
+		claim = claim,
+		check = done,
+		size = def.size,
+		claimed = false,
+	}
+end
+
+function Quests.setCatalog(self: any, catalog: Types.Catalog)
+	self._catalog = catalog
+	for _, page in self._pages do
+		page.setChips:setCatalog(catalog)
+		for _, row in page.rows do
+			row.chips:setCatalog(catalog)
+		end
+	end
+	if self._cardsBuilt then
+		self:_syncCards()
+	end
+	if self._state then
+		self:render(self._state)
+	end
+end
+
+-- One card per achievement, kept while the catalog has it. Built the first time the window opens, so a player who
+-- never opens it never pays for 44 cards.
+function Quests._syncCards(self: any)
+	self._cardsBuilt = true
+	local catalog: Types.Catalog? = self._catalog
+	if catalog == nil then
+		return
+	end
+	local wanted: { [string]: boolean } = {}
+	local defs: { Types.AchievementDef } = catalog.achievements or {}
+	for _, def in defs do
+		wanted[def.id] = true
+		local existing: Card? = self._cards[def.id]
+		local entry: Card = existing or self:_buildCard(def)
+		self._cards[def.id] = entry
+		entry.size = def.size
+		entry.name.Text = def.name
+		entry.goal.Text = def.text or ""
+		entry.chips:setCatalog(catalog)
+	end
+	for id, entry in self._cards do
+		if not wanted[id] then
+			destroyCard(entry)
+			self._cards[id] = nil
+		end
+	end
+end
+
+function Quests.setNight(self: any, night: boolean)
+	if self._night ~= night then
+		self._night = night
+		if self._state then
+			self:render(self._state)
+		end
+	end
+end
+
+function Quests._look(self: any): PrizeChips.Look
+	local state: Types.PlayerState? = self._state
+	if state == nil then
+		return {}
+	end
+	return {
+		dayRate = TipJarLogic.prizeRate(
+			state.prizeRate,
+			state.incomePerSecond,
+			self._night,
+			NIGHT_SHARE
+		),
+		tier = state.tier,
+	}
+end
+
+-- The press on `key` still waiting for the server, or nil once a sync shows `id` swapped or claimed, a newer sync
+-- (`source`) still shows it as it was (refused), or the wait ends.
+function Quests._waiting(
+	self: any,
+	key: string,
+	id: string,
+	claimed: boolean,
+	source: any
+): Pending?
+	local pending: Pending? = self._pending[key]
+	if pending == nil then
+		return nil
+	end
+	local hold = if pending.action == "claim" then CLAIM_HOLD else PENDING_SECONDS
+	local age = os.clock() - pending.at
+	if pending.id ~= id or pending.claimed ~= claimed or age >= hold then
+		self._pending[key] = nil
+		return nil
+	end
+	if pending.source ~= source then
+		if age < SYNC_GRACE and not pending.moved then
+			pending.source = source
+			pending.moved = true
+			return pending
+		end
+		self._pending[key] = nil
+		return nil
+	end
+	return pending
+end
+
+-- Config.QuestClaimAll: the server has ClaimAll (Gameplay-Engineer), so the button never shows before it works.
+local function claimAllReady(self: any): boolean
+	return (Config :: any).QuestClaimAll == true and self._callbacks.claimAll ~= nil
+end
+
+-- #1073 (Derek's live v184 check): Claim all stays while anything in any tab is ready, and one press claims daily,
+-- weekly and achievements together; it used to show only for two or more in the open tab and went after one claim.
+function Quests._syncClaimAll(self: any)
+	self._claimAll.instance.Visible = claimAllReady(self)
+		and QuestLogic.claimAllCount(self._readyByTab) > 0
+end
+
+function Quests.render(self: any, state: Types.PlayerState)
+	self._state = state
+	local catalog: Types.Catalog? = self._catalog
+	local quests = state.quests
+	local look = self:_look()
+	for tab, page in self._pages do
+		local kind = page.kind
+		local list: { Types.QuestView } = {}
+		local rerollUsed, setClaimed = true, false
+		if quests then
+			list = if kind == "daily" then quests.daily else quests.weekly
+			rerollUsed = if kind == "daily" then quests.dailyRerollUsed else quests.weeklyRerollUsed
+			setClaimed = if kind == "daily" then quests.dailySetClaimed else quests.weeklySetClaimed
+		end
+		page.done.Text = ("%d of %d done"):format(QuestLogic.doneCount(list), #list)
+		page.setChips:set(QuestLogic.setPrize(catalog, kind), look)
+		page.setStatus.Text = if setClaimed then "✓ Paid" else ""
+		local ready = 0
+		for slot, row in page.rows do
+			local quest = list[slot]
+			row.frame.Visible = quest ~= nil
+			if quest then
+				local pending = self:_waiting(kind .. ":" .. slot, quest.id, quest.claimed, quests)
+				local claiming = pending ~= nil and pending.action == "claim"
+				if not quest.claimed and not claiming and QuestLogic.done(quest) then
+					ready += 1
+				end
+				self:_renderRow(row, kind, slot, quest, look, pending)
+			end
+		end
+		self._readyByTab[tab] = ready
+		self:_setTabCount(tab, ready)
+		page.swapWait = quests ~= nil and rerollUsed
+	end
+	self:_renderAchievements(state, look)
+	self:_syncClaimAll()
+	self:_tickResets()
+end
+
+function Quests._renderRow(
+	self: any,
+	row: QuestRow,
+	kind: string,
+	slot: number,
+	quest: Types.QuestView,
+	look: PrizeChips.Look,
+	pending: Pending?
+)
+	local needs = math.max(1, quest.needs)
+	local progress = math.clamp(quest.progress, 0, needs)
+	local done = QuestLogic.done(quest)
+	row.title.Text = quest.text
+	local picture: TextLabel? = row.picture
+	if picture ~= nil then
+		local stat = questStat(self._catalog, quest.id) or ""
+		picture.Text = STAT_PICTURES[stat] or "📜"
+		-- #4046: the picture where the stat has one, and nil so a row that changed quest goes back to its emoji
+		local image = STAT_IMAGES[stat]
+		IconArt.setImage(picture, if image then ShopIcons.clean(image) else nil)
+	end
+	row.fill.Size = UDim2.fromScale(progress / needs, 1)
+	row.fill.BackgroundColor3 = if done then Theme.colors.gold else Theme.colors.good
+	row.count.Text = if QuestLogic.isCoins(self._catalog, quest.id)
+		then Format.money(progress) .. "/" .. Format.money(needs)
+		else ShortNumber.commas(progress) .. "/" .. ShortNumber.commas(needs)
+	row.chips:set(QuestLogic.prize(self._catalog, kind, slot, look.tier), look)
+
+	-- a claim on its way shows as claimed; a swap on its way reads "..."
+	local claimed = quest.claimed or (pending ~= nil and pending.action == "claim")
+	local swapping = pending ~= nil and pending.action == "swap"
+	row.claim.instance.Visible = done and not claimed
+	-- a used swap stays, greyed, with its wait: _tickResets sets that text (#1166)
+	row.swap.instance.Visible = not done and not claimed
+	if row.swap.instance:GetAttribute("Waiting") ~= true then
+		row.swap:setText(if swapping then "..." elseif row.picture ~= nil then "SWAP" else "Swap")
+		row.swap:setEnabled(not swapping)
+	end
+	row.check.Visible = claimed
+	if claimed and not row.claimed and self._open then
+		Tween.popIn(row.check, 0.6)
+	end
+	row.claimed = claimed
+	row.frame.BackgroundColor3 = CREAM.card
+	row.frame.LayoutOrder = QuestLogic.rowOrder(slot, claimed)
+end
+
+function Quests._renderAchievements(self: any, state: Types.PlayerState, look: PrizeChips.Look)
+	local catalog: Types.Catalog? = self._catalog
+	local prizes = if catalog then catalog.achievementPrizes else nil
+	local byId = if catalog then catalog.achievementPrizesById else nil -- #3694: the line's item
+	-- a claim on its way counts as claimed: the card fades and moves to the end at once
+	local source = state.achievements
+	local views: { [string]: Types.AchievementView } = source or {}
+	local shown = views
+	for id in self._pending do
+		local view = views[id]
+		if view ~= nil and self:_waiting(id, id, view.claimed == true, source) ~= nil then
+			if shown == views then
+				shown = table.clone(views)
+			end
+			shown[id] = { progress = view.progress, claimed = true }
+		end
+	end
+	local rows = QuestLogic.achievementRows(catalog, shown)
+	-- F94: two pictures an achievement, three on an XL one
+	local small: PrizeChips.Look = table.clone(look)
+	small.maxPictures = 2
+	local big: PrizeChips.Look = table.clone(look)
+	big.maxPictures = 3
+	local ready = 0
+	-- #3694 section 3: a card whose achievement is not in the rows (its feature switch is off) stays hidden
+	local listed: { [string]: boolean } = {}
+	for _, row in rows do
+		listed[row.def.id] = true
+	end
+	for id, entry in self._cards do
+		entry.frame.Visible = listed[id] == true
+	end
+	for order, row in rows do
+		local entry: Card? = self._cards[row.def.id]
+		if entry == nil then
+			continue
+		end
+		local needs = math.max(1, row.def.needs)
+		entry.frame.LayoutOrder = order
+		entry.fill.Size = UDim2.fromScale(row.progress / needs, 1)
+		entry.fill.BackgroundColor3 = if row.ready or row.claimed
+			then Theme.colors.gold
+			else Theme.colors.good
+		-- #2207: from a million up the count shortens ("33.3M/100M"), as "33,333,333/100,000,000" ran past its box
+		entry.count.Text = QuestLogic.hoursText(row.def, row.progress)
+			or if needs >= 1e6
+				then ShortNumber.format(row.progress) .. "/" .. ShortNumber.format(needs)
+				else ShortNumber.commas(row.progress) .. "/" .. ShortNumber.commas(needs)
+		entry.chips:set(
+			if byId and byId[row.def.id]
+				then byId[row.def.id]
+				elseif prizes then prizes[entry.size]
+				else nil,
+			if entry.size == "XL" then big else small
+		)
+		entry.claim.instance.Visible = row.ready
+		entry.check.Visible = row.claimed
+		if row.claimed and not entry.claimed and self._open then
+			Tween.popIn(entry.check, 0.6)
+		end
+		entry.claimed = row.claimed
+		entry.frame.BackgroundColor3 = if row.ready and not row.claimed
+			then CREAM.goldCard
+			else CREAM.card
+		if row.ready then
+			ready += 1
+		end
+	end
+	self._claimedCount.Text = ("%d of %d claimed"):format(
+		QuestLogic.claimedCount(catalog, shown),
+		#rows
+	)
+	self._readyByTab.Achievements = ready
+	self:_setTabCount("Achievements", ready)
+end
+
+function Quests._setTabCount(self: any, tab: Tab, count: number)
+	local entry = self._tabs[tab]
+	if count > 0 and not entry.dot.Visible then
+		Tween.popIn(entry.dot, 0.5)
+	end
+	entry.dot.Visible = count > 0
+	entry.count.Text = tostring(count)
+end
+
+-- The reset lines, once a second while the window is open.
+function Quests._tickResets(self: any)
+	local quests = if self._state then (self._state :: Types.PlayerState).quests else nil
+	local now = Workspace:GetServerTimeNow()
+	for _, page in self._pages do
+		local at = if quests
+			then (if page.kind == "daily" then quests.dailyResetsAt else quests.weeklyResetsAt)
+			else nil
+		page.resets.Text = if at then QuestLogic.resetText(at - now) else ""
+		-- a used swap (daily or weekly): Swap greyed with the wait until the daily reset brings it back (#1166)
+		local back = if quests then quests.dailyResetsAt else nil
+		local wait = if page.swapWait and back then QuestLogic.swapText(back - now) else nil
+		for _, row in page.rows do
+			local swap = row.swap
+			local was = swap.instance:GetAttribute("Waiting") == true
+			if wait then
+				swap.instance:SetAttribute("Waiting", true)
+				swap:setText(wait)
+				swap:setEnabled(false)
+			elseif was then
+				swap.instance:SetAttribute("Waiting", nil)
+				swap:setText(if row.picture ~= nil then "SWAP" else "Swap")
+				swap:setEnabled(true)
+			end
+		end
+	end
+end
+
+function Quests.showTab(self: any, tab: Tab)
+	self._tab = tab
+	for _, name in TABS do
+		self._tabs[name].button:setStyle(if name == tab then "gold" else "ghost")
+	end
+	self._pages.Daily.scroll.Visible = tab == "Daily"
+	self._pages.Weekly.scroll.Visible = tab == "Weekly"
+	self._achievements.Visible = tab == "Achievements"
+	self:_syncClaimAll()
+end
+
+function Quests._press(self: any, kind: string, slot: number, action: string)
+	local state: Types.PlayerState? = self._state
+	local quests = if state then state.quests else nil
+	local list = if quests then (if kind == "daily" then quests.daily else quests.weekly) else nil
+	local quest = if list then list[slot] else nil
+	if quest == nil or (action == "claim" and (quest.claimed or not QuestLogic.done(quest))) then
+		return
+	end
+	local key = kind .. ":" .. slot
+	if self:_waiting(key, quest.id, quest.claimed, quests) then
+		return
+	end
+	self._pending[key] = {
+		at = os.clock(),
+		id = quest.id,
+		claimed = quest.claimed,
+		source = quests,
+		action = action,
+	}
+	if action == "claim" then
+		self:_claimed()
+		self._callbacks.claimQuest(kind, slot)
+	else
+		self._callbacks.rerollQuest(kind, slot)
+	end
+	self:_refreshAfter(if action == "claim" then CLAIM_HOLD else PENDING_SECONDS)
+end
+
+function Quests._pressAchievement(self: any, id: string)
+	local state: Types.PlayerState? = self._state
+	local views = if state then state.achievements else nil
+	local view = if views then views[id] else nil
+	local claimed = view ~= nil and view.claimed
+	if claimed or self:_waiting(id, id, claimed, views) then
+		return
+	end
+	self._pending[id] =
+		{ at = os.clock(), id = id, claimed = claimed, source = views, action = "claim" }
+	self:_claimed()
+	self._callbacks.claimAchievement(id)
+	self:_refreshAfter(CLAIM_HOLD)
+end
+
+-- Marks every ready reward of one tab (every met achievement on Achievements) as on its way; how many it marked.
+function Quests._markTab(self: any, state: Types.PlayerState, tab: Tab, now: number): number
+	local marked = 0
+	if tab == "Achievements" then
+		local views = state.achievements
+		for _, row in QuestLogic.achievementRows(self._catalog, views) do
+			local id = row.def.id
+			if row.ready and self:_waiting(id, id, false, views) == nil then
+				self._pending[id] =
+					{ at = now, id = id, claimed = false, source = views, action = "claim" }
+				marked += 1
+			end
+		end
+		return marked
+	end
+	local page: Page = self._pages[tab]
+	local quests = state.quests
+	local list: { Types.QuestView } = if quests
+		then (if page.kind == "daily" then quests.daily else quests.weekly)
+		else {}
+	for slot, quest in list do
+		local key = page.kind .. ":" .. slot
+		if
+			not quest.claimed
+			and QuestLogic.done(quest)
+			and self:_waiting(key, quest.id, false, quests) == nil
+		then
+			self._pending[key] =
+				{ at = now, id = quest.id, claimed = false, source = quests, action = "claim" }
+			marked += 1
+		end
+	end
+	return marked
+end
+
+-- Claim all: every ready daily, weekly and achievement reward in one press (#1073): one ClaimAll("quests"), which the
+-- server (Gameplay-Engineer #1094) pays with one toast and one sync; it pays only what is really ready.
+function Quests._pressAll(self: any)
+	local state: Types.PlayerState? = self._state
+	if state == nil or not claimAllReady(self) then
+		return
+	end
+	local now = os.clock()
+	local marked = 0
+	for _, tab in TABS do
+		marked += self:_markTab(state, tab, now)
+	end
+	if marked == 0 then
+		return
+	end
+	self:_claimed()
+	self._callbacks.claimAll("quests")
+	self:_refreshAfter(CLAIM_HOLD)
+end
+
+-- The claim sound plays on the press; QuestResult right after it stays quiet.
+function Quests._claimed(self: any)
+	self._claimedAt = os.clock()
+	Sound.play("giftClaim")
+end
+
+-- Shows the press now and redraws once `seconds` pass, so a press the server never answered goes back.
+function Quests._refreshAfter(self: any, seconds: number)
+	if self._state then
+		self:render(self._state)
+	end
+	task.delay(seconds, function()
+		if self._alive and self._state then
+			self:render(self._state)
+		end
+	end)
+end
+
+-- QuestResult(paid): the server's toast already says what it paid. The press played the sound; a claim from
+-- anywhere else still gets one.
+function Quests.result(self: any, paid: { string })
+	local pressed: number? = self._claimedAt
+	if #paid > 0 and (pressed == nil or os.clock() - pressed > CLAIM_HOLD) then
+		Sound.play("giftClaim")
+	end
+end
+
+-- Opens on a tab with something to claim when the one last viewed has none.
+function Quests.onOpen(self: any)
+	self._open = true
+	if not self._cardsBuilt then
+		self:_syncCards()
+	end
+	local current = self._tabs[self._tab]
+	if not current.dot.Visible then
+		for _, tab in TABS do
+			if self._tabs[tab].dot.Visible then
+				self:showTab(tab)
+				break
+			end
+		end
+	end
+	if self._state then
+		self:render(self._state)
+	end
+	if self._tick == nil then
+		local elapsed = 0
+		self._tick = RunService.Heartbeat:Connect(function(dt: number)
+			elapsed += dt
+			if elapsed >= TICK_SECONDS then
+				elapsed = 0
+				self:_tickResets()
+			end
+		end)
+	end
+end
+
+function Quests.onClose(self: any)
+	self._open = false
+	local tick: RBXScriptConnection? = self._tick
+	if tick then
+		tick:Disconnect()
+		self._tick = nil
+	end
+end
+
+function Quests.destroy(self: any)
+	self._alive = false
+	self:onClose()
+	for _, entry in self._cards do
+		destroyCard(entry)
+	end
+	table.clear(self._cards)
+	for _, page in self._pages do
+		page.setChips:destroy()
+		for _, row in page.rows do
+			row.claim:destroy()
+			row.swap:destroy()
+			row.chips:destroy()
+		end
+	end
+	for _, entry in self._tabs do
+		entry.button:destroy()
+	end
+	self._claimAll:destroy()
+	self._panel:destroy()
+end
+
+return Quests

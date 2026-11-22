@@ -1,0 +1,358 @@
+--!strict
+-- One ScreenGui that hosts every modal screen (Upgrades, Decor, Collection). Only one is open at a time.
+-- Only a screen's own X (or its key) closes it: the dim backdrop takes taps without closing, so a tap on an empty
+-- part of a window or beside it never shuts it (Derek 2026-10-27). Screens register a frame plus optional
+-- onOpen/onClose callbacks.
+-- Opening plays uiOpen and closing uiClose, so the buttons that only open or close a screen stay silent.
+-- A window shrinks away for 0.16 s as it closes. If another one opens in that time (F, a HUD button or a window's
+-- own "open the next one"), the closing one goes at once, so two never stay up together and closing one never shuts
+-- both (Derek 2026-10-30: "ui pop ups get stuck on top of eachother").
+-- #2872 (console): on a gamepad a window selects its first useful button as it opens, and the last one to close gives
+-- back the selection from before the first opened (GamepadNav), so a controller never has to find the window.
+
+local Create = require(script.Parent.Create)
+local GamepadNav = require(script.Parent.GamepadNav)
+local Scale = require(script.Parent.Parent.Scale)
+local Signal = require(script.Parent.Signal)
+local Sound = require(script.Parent.Sound)
+local Theme = require(script.Parent.Parent.Theme)
+local Tween = require(script.Parent.Tween)
+
+export type Screen = {
+	frame: GuiObject,
+	onOpen: (() -> ())?,
+	onClose: (() -> ())?,
+}
+
+export type Modal = {
+	screenGui: ScreenGui,
+	container: Frame,
+	changed: Signal.Signal, -- fires (name: string?)
+	closed: Signal.Signal, -- #4835: fires (name: string, from: string?) as a window closes, with the window it opened from
+	register: (self: Modal, name: string, screen: Screen) -> (),
+	open: (self: Modal, name: string, force: boolean?) -> (),
+	close: (self: Modal, via: string?, force: boolean?) -> (),
+	hold: (self: Modal, name: string, held: (() -> boolean)?) -> (),
+	held: (self: Modal) -> boolean,
+	lastVia: (self: Modal) -> string,
+	back: (self: Modal) -> (),
+	toggle: (self: Modal, name: string) -> (),
+	current: (self: Modal) -> string?,
+	tuck: (self: Modal, name: string, away: boolean) -> (),
+	destroy: (self: Modal) -> (),
+}
+
+local SHORT_TOP = 20 -- #2339: on a short screen, above the window (its ears poke up about 17)
+local SHORT_BOTTOM = 8
+
+local Modal = {}
+Modal.__index = Modal
+
+function Modal.new(parent: Instance): Modal
+	local screenGui: ScreenGui = Create("ScreenGui", {
+		Name = "CatCafeModals",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = false,
+		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 20,
+		Enabled = false,
+	})
+
+	-- The dim behind the windows (#1236): its own layer just under them that ignores the top bar inset, so it covers
+	-- the whole screen (it stopped short of the top, with a hard line). One backdrop, one darkness, its tweens never
+	-- racing (_dim). Active, so a tap on it stops here instead of reaching the world under the window.
+	local dimGui: ScreenGui = Create("ScreenGui", {
+		Name = "CatCafeModalDim",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ScreenInsets = Enum.ScreenInsets.None,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 19,
+		Enabled = false,
+	})
+	local backdrop: Frame = Create("Frame", {
+		Name = "Backdrop",
+		Active = true,
+		BackgroundColor3 = Theme.modal.backdrop,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = dimGui,
+	})
+
+	-- Scaled root: screens are built in design pixels inside this.
+	local root: Frame = Create("Frame", {
+		Name = "Root",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Parent = screenGui,
+	})
+	local uiScale = Scale.bind(root)
+
+	-- Container keeps every screen inside 92% x 86% of the (scaled) viewport. #2339 (Laptop-Tester, iPhone SE: "windows
+	-- show only about 1.5 rows"): on a short screen (Scale.isShort) it takes the height down to SHORT_TOP, room for the
+	-- window's ears, and SHORT_BOTTOM
+	-- #2965 (console pass 2: the DPad walked out of Upgrades onto the HUD's Tutorial button behind it, and A pressed
+	-- the travel row's fold behind Cats): a selection group that stops at its edges, so a gamepad's selection never
+	-- leaves the open window (B still closes it)
+	local container: Frame = Create("Frame", {
+		Name = "Container",
+		BackgroundTransparency = 1,
+		SelectionGroup = true,
+		SelectionBehaviorUp = Enum.SelectionBehavior.Stop,
+		SelectionBehaviorDown = Enum.SelectionBehavior.Stop,
+		SelectionBehaviorLeft = Enum.SelectionBehavior.Stop,
+		SelectionBehaviorRight = Enum.SelectionBehavior.Stop,
+		Parent = root,
+	})
+	local function fit()
+		if Scale.isShort() then
+			container.AnchorPoint = Vector2.new(0.5, 0)
+			container.Position = UDim2.new(0.5, 0, 0, SHORT_TOP)
+			container.Size = UDim2.new(0.92, 0, 1, -(SHORT_TOP + SHORT_BOTTOM))
+		else
+			container.AnchorPoint = Vector2.new(0.5, 0.5)
+			container.Position = UDim2.fromScale(0.5, 0.5)
+			container.Size = UDim2.fromScale(0.92, 0.86)
+		end
+	end
+	fit()
+
+	local self = setmetatable({}, Modal) :: any
+	self.screenGui = screenGui
+	self._dimGui = dimGui
+	self._dimTween = nil :: Tween?
+	self.container = container
+	self.changed = Signal.new()
+	self.closed = Signal.new()
+	self._backdrop = backdrop
+	self._root = root
+	self._uiScale = uiScale
+	self._screens = {} :: { [string]: Screen }
+	self._current = nil :: string?
+	self._closing = nil :: GuiObject? -- the frame still shrinking away after close()
+	self._tucked = nil :: string? -- #3702: the open window's name while it is tucked away
+	self._selectedBefore = nil :: GuiObject? -- #2872: the gamepad selection before the first window opened
+	self._selecting = false -- #2872: a window took the gamepad selection, so closing hands it back
+	self._fitConnection = Scale.changed:Connect(fit)
+
+	if parent then
+		dimGui.Parent = parent
+		screenGui.Parent = parent
+	end
+	return self :: Modal
+end
+
+function Modal.register(self: any, name: string, screen: Screen)
+	self._screens[name] = screen
+	screen.frame.Visible = false
+	screen.frame.Parent = self.container
+end
+
+function Modal.current(self: any): string?
+	return self._current
+end
+
+function Modal.open(self: any, name: string, force: boolean?)
+	local screen: Screen? = self._screens[name]
+	if not screen then
+		warn(("[CatCafeUI] no modal screen named %q"):format(name))
+		return
+	end
+	assert(screen, "modal screen missing")
+	if self._current == name then
+		return
+	end
+	if not force and self:held() then
+		return -- the open window is held (Modal.hold): nothing opens over it
+	end
+	local fresh = self._current == nil
+	-- #4224: the window this one opened from (the Cannon picker's Open strip opening the Yard Sale), for B
+	self._from = self._current
+	if self._current then
+		local previous: Screen = self._screens[self._current]
+		-- #3702: a tucked window is no longer tucked once another opens, so its onClose (which may ask to bring it
+		-- back) cannot show it again under the new one
+		self._tucked = nil
+		previous.frame.Visible = false
+		if previous.onClose then
+			previous.onClose()
+		end
+		previous.frame.Visible = false
+	end
+	-- a window still shrinking away goes now, so it never stays up under this one
+	local closing: GuiObject? = self._closing
+	if closing and closing ~= screen.frame then
+		closing.Visible = false
+	end
+	self._closing = nil
+	self._tucked = nil
+	self._backdrop.Active = true -- #4016: a tuck left it off
+	self._current = name
+	self.screenGui.Enabled = true
+	self:_dim(Theme.modal.backdropTransparency)
+	screen.frame.Visible = true
+	-- the night dealer's stall has its own bell (sound list 5.8)
+	Sound.play(if name == "Dealer" then "uiDealerOpen" else "uiOpen")
+	Tween.popIn(screen.frame)
+	if screen.onOpen then
+		screen.onOpen()
+	end
+	self.changed:Fire(name)
+	-- #2872: a frame later, once the window has laid out its rows, the gamepad lands on its first button
+	task.defer(function()
+		if self._current ~= name then
+			return
+		end
+		local before, took = GamepadNav.focus(screen.frame)
+		if took and (fresh or not self._selecting) then
+			self._selectedBefore = before
+		end
+		self._selecting = self._selecting or took
+	end)
+end
+
+-- `via` says how the window was closed, for telemetry (#5031 Growth read): "x" (its X), "back" (B), else "other".
+function Modal.close(self: any, via: string?, force: boolean?)
+	local name = self._current
+	if not name then
+		return
+	end
+	if not force and self:held() then
+		return -- held open (Modal.hold): its X, B and the menu buttons do nothing until it lets go
+	end
+	self._lastVia = via or "other"
+	local screen: Screen = self._screens[name]
+	local frame = screen.frame
+	local from: string? = self._from
+	self._from = nil
+	self._closing = frame
+	self._tucked = nil
+	self._backdrop.Active = true -- #4016: a tuck left it off
+	self._current = nil
+	Sound.play("uiClose")
+	self:_dim(1)
+	Tween.popOut(frame, function()
+		-- reopened while it shrank: it stays (its pop in cancelled this)
+		if self._current == name then
+			return
+		end
+		frame.Visible = false
+		-- only the last window to close turns the layer off, and only when nothing has opened since
+		if self._closing == frame then
+			self._closing = nil
+			if self._current == nil then
+				self.screenGui.Enabled = false
+				self._dimGui.Enabled = false
+				self._backdrop.BackgroundTransparency = 1
+			end
+		end
+	end)
+	if screen.onClose then
+		screen.onClose()
+	end
+	self.changed:Fire(nil)
+	self.closed:Fire(name, from)
+	if self._selecting then
+		self._selecting = false
+		local before: GuiObject? = self._selectedBefore
+		self._selectedBefore = nil
+		GamepadNav.restore(before)
+	end
+end
+
+-- #4224 (console): B steps back to the window this one was opened from, else closes it
+function Modal.back(self: any)
+	local from: string? = self._from
+	if from ~= nil and self._current ~= nil and self._screens[from] ~= nil then
+		self._from = nil
+		self:open(from)
+		self._from = nil
+		return
+	end
+	self:close("back")
+end
+
+-- Derek 2026-11-17 (shared/RankUpRightAway.locked): `held` true keeps the window `name` open while it is the
+-- current one: close and opening another window do nothing, unless forced. nil lets go.
+function Modal.hold(self: any, name: string, held: (() -> boolean)?)
+	self._holds = self._holds or {}
+	self._holds[name] = held
+end
+
+-- Whether the open window is held open now.
+function Modal.held(self: any): boolean
+	local name = self._current
+	local holds = self._holds
+	if name == nil or holds == nil then
+		return false
+	end
+	local held = holds[name]
+	return held ~= nil and held() == true
+end
+
+-- How the last window closed (Modal.close's `via`), "other" before any close.
+function Modal.lastVia(self: any): string
+	return self._lastVia or "other"
+end
+
+-- #3702: tucks the open window and the dim away for a moment (the Mystic Pool's animation plays in the world behind
+-- it), and brings them back with the window's pop. The window stays the current one throughout, so its state, the
+-- backdrop's tap guard and the gamepad's group are untouched. Bringing back does nothing if that window has closed
+-- or another has opened since.
+function Modal.tuck(self: any, name: string, away: boolean)
+	if self._current ~= name then
+		return
+	end
+	local screen: Screen = self._screens[name]
+	if away then
+		if self._tucked == name then
+			return
+		end
+		self._tucked = name
+		screen.frame.Visible = false
+		-- #4016 (Derek: "move the screen with right click during trait normal animations"): the clear backdrop no
+		-- longer takes the input, so a right click drag or a touch drag turns the camera while the window is away
+		self._backdrop.Active = false
+		self:_dim(1)
+	elseif self._tucked == name then
+		self._tucked = nil
+		self._backdrop.Active = true
+		screen.frame.Visible = true
+		self:_dim(Theme.modal.backdropTransparency)
+		Tween.popIn(screen.frame)
+	end
+end
+
+-- The backdrop to one darkness (#1236): the tween before it stops first, so quick opens, closes and switches never
+-- leave two tweens fighting over it.
+function Modal._dim(self: any, transparency: number)
+	local running: Tween? = self._dimTween
+	if running then
+		running:Cancel()
+	end
+	if transparency < 1 then
+		self._dimGui.Enabled = true
+	end
+	self._dimTween = Tween.to(self._backdrop, Tween.FAST, { BackgroundTransparency = transparency })
+end
+
+function Modal.toggle(self: any, name: string)
+	if self._current == name then
+		self:close()
+	else
+		self:open(name)
+	end
+end
+
+function Modal.destroy(self: any)
+	self._fitConnection:Disconnect()
+	Scale.unbind(self._uiScale)
+	self.changed:DisconnectAll()
+	self.closed:DisconnectAll()
+	self.screenGui:Destroy()
+	self._dimGui:Destroy()
+end
+
+return Modal

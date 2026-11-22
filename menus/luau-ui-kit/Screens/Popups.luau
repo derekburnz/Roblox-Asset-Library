@@ -1,0 +1,924 @@
+--!strict
+-- Centre-screen popups that sit above the modals: "Cat found" celebration, "While you were away" and what a
+-- Mystery gift held (F64: the gift's prize as pictures and its name, with the giftOpen sound).
+-- Only one popup shows at a time; others queue. The cat found card is the Pet Simulator egg hatch reveal
+-- (F39 P1): rays in the rarity colour, the cat's own 3D model popping in, a NEW sticker, its charm stars
+-- filling one by one and the Purrfect charm bonus.
+-- The intro holds popups (setHeld): a popup that comes during it waits and shows after. The dimmed backdrop's
+-- ScreenGui is on only while a card shows, so nothing dims the screen between popups (Derek 2026-10-28: a grey smog
+-- over the screen from the intro's end until the first cat found card had come and gone). There is one "While you
+-- were away" card at a time: the server sends the earnings when the profile loads and again on the client's first
+-- RequestSync, and a second card made Claim look like it needed two clicks (Derek 2026-10-28).
+-- F96: a cat given rather than caught (the free Bellhop Cat) brings its own banner ("FREE RARE CAT!"), a gold line
+-- for the description ("The Bellhop Cat joined your cafe!") and its rate (CatFoundExtra's banner, line and rate).
+-- F87 (easy-start.md section 3, tip `offline`): the first return after a long time away puts a gold ribbon on the
+-- offline card's top edge, "Your cats earned while you were away!" (showOffline's headline).
+-- F95 (economy-ladder.md section 5): the offline card is the welcome back card, "Welcome back!", "Your cats earned
+-- this in 7h 40m", the amount, what time away pays ("Half pay while away, up to 8 hours", showOffline's note from
+-- Components/WelcomeBack) and Collect.
+
+local Button = require(script.Parent.Parent.Components.Button)
+local CatPortrait = require(script.Parent.Parent.Components.CatPortrait)
+local Create = require(script.Parent.Parent.Components.Create)
+local Format = require(script.Parent.Parent.Components.Format)
+local GamepadNav = require(script.Parent.Parent.Components.GamepadNav)
+local MenuFamily = require(script.Parent.Parent.Components.MenuFamily)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local PrizeChips = require(script.Parent.Parent.Components.PrizeChips)
+local Rainbow = require(script.Parent.Parent.Components.Rainbow)
+local Scale = require(script.Parent.Parent.Scale)
+local Sound = require(script.Parent.Parent.Components.Sound)
+local Theme = require(script.Parent.Parent.Theme)
+local TutorialGlow = require(script.Parent.Parent.Components.TutorialGlow)
+local Tween = require(script.Parent.Parent.Components.Tween)
+local Types = require(script.Parent.Parent.Types)
+local WelcomeBack = require(script.Parent.Parent.Components.WelcomeBack)
+
+local PerfectCatch = require(
+	game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("PerfectCatch")
+)
+
+-- the dark window palette (#1028), in place of Theme.modal: the popups match the dark windows
+local PAL = MenuFamily.pal
+
+export type Popups = {
+	screenGui: ScreenGui,
+	showCatFound: (
+		self: Popups,
+		def: Types.CatDef,
+		isNew: boolean?,
+		extra: Types.CatFoundExtra?
+	) -> (),
+	showOffline: (
+		self: Popups,
+		amount: number,
+		seconds: number,
+		onClaim: () -> (),
+		headline: string?,
+		note: string?,
+		hook: string?
+	) -> (),
+	showGift: (
+		self: Popups,
+		title: string,
+		prize: Types.IndexPrize,
+		heading: string?,
+		look: PrizeChips.Look?
+	) -> (),
+	dropOffline: (self: Popups) -> boolean,
+	setCatalog: (self: Popups, catalog: Types.Catalog) -> (),
+	dismiss: (self: Popups) -> (),
+	glowOkWhen: (self: Popups, when: () -> boolean) -> (),
+	dismissCat: (self: Popups) -> (),
+	setHeld: (self: Popups, held: boolean) -> (),
+	isShowing: (self: Popups) -> boolean,
+	destroy: (self: Popups) -> (),
+}
+
+local CAT_AUTO_CLOSE = 5
+local QUICK_CLOSE = 2.5 -- #4920: a Tier 1 player's card (CatFoundExtra.quick)
+local GIFT_AUTO_CLOSE = 4
+local OFFLINE_W = 380 -- the welcome back card
+local OFFLINE_H = 260
+local HOOK_H = 24 -- #2123: its hook line
+local GIFT_TILE = 76
+local SPARKLES = 10
+local RAY_BARS = 6 -- each bar crosses the centre, so 12 rays
+local RAY_SPIN = TweenInfo.new(8, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
+local CARD = Vector2.new(380, 372)
+local ART_Y = 116 -- centre of the portrait disc
+local STAR_COUNT = 5
+local STAR_DELAY = 0.14 -- seconds between stars filling, after the cat pops in
+local STAR_START = 0.35
+local CAT_POP = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+local Popups = {}
+Popups.__index = Popups
+
+local function text(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.body,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = PAL.text,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = true,
+		Text = "",
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	return Create("TextLabel", merged)
+end
+
+function Popups.new(parent: Instance): Popups
+	local self = setmetatable({}, Popups) :: any
+	self._queue = {} :: { () -> () }
+	self._busy = false
+	self._held = false -- the intro is playing: new popups queue, nothing shows
+	-- the latest earnings
+	self._offline = nil :: {
+		amount: number,
+		seconds: number,
+		onClaim: () -> (),
+		headline: string?,
+		note: string?,
+	}?
+	self._offlineWaiting = false -- an offline card is showing or queued
+	self._token = 0
+	self._buttons = {} :: { any }
+	self._current = nil :: Frame? -- the card showing
+
+	local screenGui: ScreenGui = Create("ScreenGui", {
+		Name = "CatCafePopups",
+		ResetOnSpawn = false,
+		ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 40,
+		Enabled = false,
+	})
+	self.screenGui = screenGui
+	-- #2137 (Derek2: "a thin black bar still stops near the top of the screen while a UI is open", on the Welcome back
+	-- card): the dim is its own layer just under the cards that ignores the top bar inset, as the windows' dim
+	-- (Modal, #1236), so it covers the whole screen; it is on exactly while the cards' layer is
+	local dimGui: ScreenGui = Create("ScreenGui", {
+		Name = "CatCafePopupsDim",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = true,
+		ScreenInsets = Enum.ScreenInsets.None,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		DisplayOrder = 39,
+		Enabled = false,
+	})
+	self._dimGui = dimGui
+	self._backdrop = Create("Frame", {
+		Name = "Backdrop",
+		BackgroundColor3 = Theme.modal.backdrop,
+		BackgroundTransparency = 0.5,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = dimGui,
+	})
+	self._dimFollow = screenGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+		dimGui.Enabled = screenGui.Enabled
+	end)
+	local root: Frame = Create("Frame", {
+		Name = "Root",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Parent = screenGui,
+	})
+	self._root = root
+	self._uiScale = Scale.bind(root)
+
+	-- Cat found card
+	local catCard: Frame = Create("Frame", {
+		Name = "CatFound",
+		BackgroundColor3 = PAL.panel,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(CARD.X, CARD.Y),
+		Visible = false,
+		Parent = root,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius + 6) }),
+		Create("UIStroke", { Color = Theme.colors.gold, Thickness = Theme.sizes.outline + 1 }),
+		Create("UISizeConstraint", { MaxSize = CARD }),
+	})
+	self._catCard = catCard
+	-- F99: a rainbow cat's card turns its edge through the rainbow
+	self._catRainbow = Rainbow.stroke(catCard:FindFirstChildOfClass("UIStroke") :: UIStroke)
+	self._catRainbow.Enabled = false
+	-- slow spinning light rays behind the portrait, the classic simulator reveal
+	local rays: Frame = Create("Frame", {
+		Name = "Rays",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, ART_Y),
+		Size = UDim2.fromOffset(230, 230),
+		ZIndex = 1,
+		Parent = catCard,
+	})
+	for index = 1, RAY_BARS do
+		Create("Frame", {
+			Name = "Ray",
+			BackgroundColor3 = Theme.colors.gold,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0, 22, 1, 0),
+			Rotation = (index - 1) * (180 / RAY_BARS),
+			ZIndex = 1,
+			Parent = rays,
+		}, {
+			Create("UIGradient", {
+				Rotation = 90,
+				Transparency = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, 1),
+					NumberSequenceKeypoint.new(0.5, 0.35),
+					NumberSequenceKeypoint.new(1, 1),
+				}),
+			}),
+		})
+	end
+	self._rays = rays
+	self._raySpin = nil :: Tween?
+	self._catBanner = text({
+		Name = "Banner",
+		BackgroundColor3 = Theme.rarity.Common.color,
+		BackgroundTransparency = 0,
+		Size = UDim2.new(1, 0, 0, 46),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textLarge,
+		TextColor3 = Theme.colors.white,
+		Text = "CAT FOUND",
+		ZIndex = 3,
+		Parent = catCard,
+	})
+	Create(
+		"UICorner",
+		{ CornerRadius = UDim.new(0, Theme.sizes.radius + 6), Parent = self._catBanner }
+	)
+	Outline.text(self._catBanner, Theme.sizes.textOutline + 0.5)
+	-- a rarity-coloured disc with the cat's own model standing in front of it, a little larger than the disc
+	self._catArt = Create("Frame", {
+		Name = "Art",
+		BackgroundColor3 = PAL.line,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, ART_Y),
+		Size = UDim2.fromOffset(112, 112),
+		ZIndex = 2,
+		Parent = catCard,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+		Create("UIStroke", { Color = Theme.colors.outline, Thickness = Theme.sizes.outline + 1 }),
+	})
+	Outline.shade(self._catArt, 0.28)
+	self._portrait = CatPortrait.new({
+		parent = catCard,
+		anchorPoint = Vector2.new(0.5, 0.5),
+		position = UDim2.new(0.5, 0, 0, ART_Y),
+		size = UDim2.fromOffset(150, 150),
+		zIndex = 3,
+	})
+	self._portraitScale = Create("UIScale", { Parent = self._portrait.frame })
+	-- the tilted red sticker the simulator hatch shows on a first find
+	self._newSticker = text({
+		Name = "New",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 62, 0, ART_Y - 46),
+		Size = UDim2.fromOffset(70, 30),
+		Rotation = 12,
+		BackgroundColor3 = Theme.colors.red,
+		BackgroundTransparency = 0,
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textLarge - 2,
+		TextColor3 = Theme.colors.white,
+		Text = "NEW!",
+		Visible = false,
+		ZIndex = 4,
+		Parent = catCard,
+	})
+	Create(
+		"UICorner",
+		{ CornerRadius = UDim.new(0, Theme.sizes.radiusSmall), Parent = self._newSticker }
+	)
+	Outline.border(self._newSticker, 2)
+	Outline.text(self._newSticker, 2)
+	-- the name takes the rarity colour with a dark outline
+	self._catName = text({
+		Name = "Name",
+		Position = UDim2.fromOffset(16, 176),
+		Size = UDim2.new(1, -32, 0, 36),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textTitle + 4,
+		TextColor3 = Theme.colors.white,
+		Text = "",
+		ZIndex = 2,
+		Parent = catCard,
+	})
+	Outline.text(self._catName, Theme.sizes.textOutline + 0.5)
+	-- charm stars: grey outlines that fill gold one by one
+	local starRow: Frame = Create("Frame", {
+		Name = "Stars",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 212),
+		Size = UDim2.fromOffset(STAR_COUNT * 30, 28),
+		Visible = false,
+		ZIndex = 2,
+		Parent = catCard,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	self._starRow = starRow
+	self._stars = {} :: { TextLabel }
+	for index = 1, STAR_COUNT do
+		local star = text({
+			Name = "Star" .. index,
+			LayoutOrder = index,
+			Size = UDim2.fromOffset(30, 28),
+			FontFace = Theme.fonts.display,
+			TextSize = 26,
+			TextColor3 = Theme.colors.disabled,
+			Text = "★",
+			ZIndex = 2,
+			Parent = starRow,
+		})
+		Outline.text(star, 2)
+		Create("UIScale", { Parent = star })
+		table.insert(self._stars, star)
+	end
+	self._catMeta = text({
+		Name = "Meta",
+		ZIndex = 2,
+		Position = UDim2.fromOffset(16, 242),
+		Size = UDim2.new(1, -32, 0, 22),
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = PAL.good,
+		FontFace = Theme.fonts.bodyBold,
+		RichText = true, -- the favourite role in ink
+		Text = "",
+		Parent = catCard,
+	})
+	self._catDesc = text({
+		Name = "Description",
+		ZIndex = 2,
+		Position = UDim2.fromOffset(16, 266),
+		Size = UDim2.new(1, -32, 0, 40),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = PAL.subtext,
+		Text = "",
+		Parent = catCard,
+	})
+	local catOk = Button.new({
+		name = "Ok",
+		text = "Nice!",
+		style = "primary",
+		size = UDim2.fromOffset(160, Theme.sizes.touchMin + 4),
+		anchorPoint = Vector2.new(0.5, 1),
+		position = UDim2.new(0.5, 0, 1, -14),
+		parent = catCard,
+		onClick = function()
+			self:dismiss()
+		end,
+	})
+	self._catOk = catOk
+	table.insert(self._buttons, catOk)
+	self._sparkles = {} :: { Frame }
+	for _ = 1, SPARKLES do
+		table.insert(
+			self._sparkles,
+			Create("Frame", {
+				Name = "Sparkle",
+				BackgroundColor3 = Theme.colors.gold,
+				BorderSizePixel = 0,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.new(0.5, 0, 0, ART_Y),
+				Size = UDim2.fromOffset(10, 10),
+				Rotation = 45,
+				Visible = false,
+				ZIndex = 3,
+				Parent = catCard,
+			})
+		)
+	end
+
+	-- Offline earnings card
+	local offlineCard: Frame = Create("Frame", {
+		Name = "Offline",
+		BackgroundColor3 = PAL.panel,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(OFFLINE_W, OFFLINE_H),
+		Visible = false,
+		Parent = root,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius + 6) }),
+		Create("UIStroke", { Color = Theme.colors.outline, Thickness = Theme.sizes.outline + 1 }),
+	})
+	self._offlineCard = offlineCard
+	-- F87: the offline tip's ribbon over the card's top edge, shown on the first long return only
+	local ribbon: Frame = Create("Frame", {
+		Name = "Ribbon",
+		BackgroundColor3 = Theme.colors.gold,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0),
+		Size = UDim2.fromOffset(0, 34),
+		AutomaticSize = Enum.AutomaticSize.X,
+		Visible = false,
+		ZIndex = 3,
+		Parent = offlineCard,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 16) }),
+	})
+	Outline.border(ribbon, 2.5)
+	self._ribbon = ribbon
+	self._ribbonText = text({
+		Name = "Line",
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = Theme.colors.white,
+		TextTruncate = Enum.TextTruncate.None,
+		Text = "",
+		ZIndex = 4,
+		Parent = ribbon,
+	})
+	Outline.text(self._ribbonText, 2)
+	text({
+		Name = "Title",
+		Position = UDim2.fromOffset(16, 18),
+		Size = UDim2.new(1, -32, 0, 30),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textTitle - 2,
+		Text = WelcomeBack.TITLE,
+		Parent = offlineCard,
+	})
+	self._offlineSub = text({
+		Name = "Sub",
+		Position = UDim2.fromOffset(16, 52),
+		Size = UDim2.new(1, -32, 0, 22),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = PAL.subtext,
+		Text = "",
+		Parent = offlineCard,
+	})
+	self._offlineAmount = text({
+		Name = "Amount",
+		Position = UDim2.fromOffset(16, 86),
+		Size = UDim2.new(1, -32, 0, 54),
+		FontFace = Theme.fonts.display,
+		TextSize = 48,
+		TextColor3 = PAL.good,
+		Text = "",
+		Parent = offlineCard,
+	})
+	Outline.text(self._offlineAmount, Theme.sizes.textOutline + 1)
+	-- #2123 (first-hour.md 6a): one line under the coins on the reason to play today, from Gameplay's ReturnHook pick
+	-- ("Your bait cat is ready!"); the card grows by HOOK_H while it shows, and it is gone with no pick
+	self._offlineHook = text({
+		Name = "Hook",
+		Position = UDim2.fromOffset(16, 142),
+		Size = UDim2.new(1, -32, 0, HOOK_H),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = PAL.text,
+		Text = "",
+		Visible = false,
+		Parent = offlineCard,
+	})
+	self._offlineNote = text({
+		Name = "Note",
+		Position = UDim2.fromOffset(16, 142),
+		Size = UDim2.new(1, -32, 0, 40),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = PAL.subtext,
+		Text = WelcomeBack.note(nil),
+		Parent = offlineCard,
+	})
+	self._claimButton = Button.new({
+		name = "Claim",
+		text = "Collect",
+		style = "gold",
+		-- a phone's finger needs 44 real px (the card's Note ends 78 px over its foot, room for the taller button)
+		size = UDim2.fromOffset(
+			180,
+			Scale.tapHeight(Theme.sizes.touchMin + 4, Theme.sizes.buttonDepth)
+		),
+		anchorPoint = Vector2.new(0.5, 1),
+		position = UDim2.new(0.5, 0, 1, -14),
+		textSize = Theme.sizes.textBody + 2,
+		parent = offlineCard,
+		onClick = function()
+			local onClaim: (() -> ())? = self._onClaim
+			self._onClaim = nil
+			if onClaim then
+				onClaim()
+			end
+			self:dismiss()
+		end,
+	})
+	table.insert(self._buttons, self._claimButton)
+
+	-- Mystery gift card (F64): what the gift held, big, then gone by itself
+	local giftCard: Frame = Create("Frame", {
+		Name = "Gift",
+		BackgroundColor3 = PAL.panel,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(340, 250),
+		Visible = false,
+		Parent = root,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius + 6) }),
+		Create("UIStroke", { Color = Theme.colors.berry, Thickness = Theme.sizes.outline + 1 }),
+	})
+	self._giftCard = giftCard
+	self._giftTitle = text({
+		Name = "Title",
+		Position = UDim2.fromOffset(16, 16),
+		Size = UDim2.new(1, -32, 0, 30),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textTitle - 2,
+		Text = Theme.icons.gifts .. " Mystery gift!",
+		Parent = giftCard,
+	})
+	self._giftChips = PrizeChips.new({
+		parent = giftCard,
+		tile = GIFT_TILE,
+		textSize = Theme.sizes.textBody + 2,
+		name = "Prize",
+		position = UDim2.new(0.5, 0, 0, 56),
+		anchorPoint = Vector2.new(0.5, 0),
+		fitTo = giftCard,
+		fitPad = 24,
+	})
+	self._giftName = text({
+		Name = "What",
+		Position = UDim2.fromOffset(16, 64 + GIFT_TILE + 8),
+		Size = UDim2.new(1, -32, 0, 28),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textLarge,
+		Text = "",
+		Parent = giftCard,
+	})
+	local giftOk = Button.new({
+		name = "Nice",
+		text = "Nice!",
+		style = "berry",
+		size = UDim2.fromOffset(150, Theme.sizes.touchMin),
+		anchorPoint = Vector2.new(0.5, 1),
+		position = UDim2.new(0.5, 0, 1, -12),
+		textSize = Theme.sizes.textBody + 2,
+		parent = giftCard,
+		onClick = function()
+			self:dismiss()
+		end,
+	})
+	table.insert(self._buttons, giftOk)
+
+	if parent then
+		dimGui.Parent = parent
+		screenGui.Parent = parent
+	end
+	return self :: Popups
+end
+
+function Popups._open(self: any, card: Frame)
+	self._busy = true
+	self._token += 1
+	self._current = card
+	self.screenGui.Enabled = true
+	card.Visible = true
+	Tween.popIn(card, 0.8)
+	-- #4224 (console): on a gamepad the card takes the selection on its button (OK, Claim, Nice), and B presses
+	-- that same button, so B never skips a claim
+	local navDone: (() -> ())? = self._navDone
+	if navDone ~= nil then
+		navDone()
+	end
+	self._navDone = GamepadNav.card("popup", card, function(): boolean?
+		Button.press(GamepadNav.first(card))
+		return nil
+	end)
+	return self._token
+end
+
+function Popups._next(self: any)
+	self._busy = false
+	-- while held the queue waits for setHeld(false)
+	local queue: { () -> () } = self._queue
+	local job: (() -> ())? = nil
+	if not self._held then
+		job = table.remove(queue, 1)
+	end
+	if job then
+		job()
+	else
+		self.screenGui.Enabled = false
+	end
+end
+
+-- Runs a popup now, or queues it behind the one showing or until the hold ends.
+function Popups._show(self: any, run: () -> ())
+	if self._busy or self._held then
+		table.insert(self._queue, run)
+	else
+		run()
+	end
+end
+
+-- Held while the intro plays: hidden, with new popups waiting. Let go, the card that was showing comes back, or the
+-- next waiting one opens, and with neither the ScreenGui and its backdrop stay off.
+function Popups.setHeld(self: any, held: boolean)
+	self._held = held
+	if held then
+		self.screenGui.Enabled = false
+	elseif self._busy then
+		self.screenGui.Enabled = true
+	else
+		self:_next()
+	end
+end
+
+-- A card is up (or the intro holds one back): a context tip waits for it (F87).
+function Popups.isShowing(self: any): boolean
+	return self._busy == true or (self._held == true and #self._queue > 0)
+end
+
+function Popups.dismiss(self: any)
+	if not self._busy then
+		return
+	end
+	self._token += 1
+	self._onClaim = nil
+	local navDone: (() -> ())? = self._navDone
+	self._navDone = nil
+	if navDone ~= nil then
+		navDone()
+	end
+	local card: Frame = self._current or self._offlineCard
+	self._current = nil
+	local spin: Tween? = self._raySpin
+	if spin then
+		spin:Cancel()
+		self._raySpin = nil
+	end
+	if card == self._offlineCard then
+		self._offlineWaiting = false
+	end
+	TutorialGlow.set(self._catOk.instance, false)
+	Tween.popOut(card, function()
+		card.Visible = false
+		if card == self._catCard then
+			self._portrait:set(nil) -- drops the model and stops its sway
+		end
+		self:_next()
+	end)
+end
+
+-- #4836: `when` says whether the new cat card's "Nice!" gets the tutorial's ring and arrow as the card opens.
+function Popups.glowOkWhen(self: any, when: () -> boolean)
+	self._okGlow = when
+end
+
+-- #3640: closes the new cat's card when it is the one up (the tutorial's move to the cannon does not wait for it).
+function Popups.dismissCat(self: any)
+	if self._busy and self._current == self._catCard then
+		self:dismiss()
+	end
+end
+
+function Popups.showCatFound(
+	self: any,
+	def: Types.CatDef,
+	isNew: boolean?,
+	extra: Types.CatFoundExtra?
+)
+	local function run()
+		local token = self:_open(self._catCard)
+		-- #4836 (Sync's pointer audit: on PC the first Epic's "Nice!" sat over a full dim with nothing pointing at it):
+		-- in the walk-through the card's button gets the tutorial's ring and arrow (glowOkWhen)
+		local okGlow: (() -> boolean)? = self._okGlow
+		-- #4909 (Sync's Studio run: the arrow stayed on the HUD's Cannon behind the card): the arrow leads here, no dim
+		TutorialGlow.set(self._catOk.instance, okGlow ~= nil and okGlow(), nil, true, true)
+		local rarity = def.rarity
+		local info: Types.CatFoundExtra = extra or {}
+		local rainbow = info.rainbow == true -- F99
+		local shiny = info.shiny == true and not rainbow
+		local rarityColor = Theme.rarityColor(rarity)
+		local label = (if rainbow then "RAINBOW " elseif shiny then "GOLD " else "")
+			.. rarity:upper()
+		self._catBanner.Text = info.banner
+			or if isNew then ("NEW %s CAT!"):format(label) else ("%s CAT CAUGHT"):format(label)
+		self._catBanner.BackgroundColor3 = rarityColor
+		self._catCard.UIStroke.Color = if rainbow
+			then Theme.colors.white
+			elseif shiny then Theme.colors.gold
+			else rarityColor
+		self._catRainbow.Enabled = rainbow
+		self._catName.TextColor3 = rarityColor
+		-- rays in the rarity colour, pure gold for a gold cat
+		for _, ray in self._rays:GetChildren() do
+			if ray:IsA("Frame") then
+				ray.BackgroundColor3 = if shiny
+					then Theme.colors.gold
+					else rarityColor:Lerp(Theme.colors.gold, 0.35)
+			end
+		end
+		self._rays.Rotation = 0
+		self._raySpin = Tween.to(self._rays, RAY_SPIN, { Rotation = 360 })
+		self._catArt.BackgroundColor3 = rarityColor
+		self._newSticker.Visible = isNew == true
+		if isNew then
+			Tween.popIn(self._newSticker, 0.4)
+		end
+
+		-- the cat pops in from nothing with a little overshoot
+		self._portrait:set(def, shiny)
+		self._portraitScale.Scale = 0
+		Tween.to(self._portraitScale, CAT_POP, { Scale = 1 })
+
+		self._catName.Text = def.name
+		local loves: string? = def.favoriteRole
+		self._catMeta.Text = Format.rate(info.rate or def.incomePerSecond)
+			.. (if loves then "  ·  " .. Format.lovesRole(loves, PAL.text) else "")
+		local charmGain = info.charmGain or 0
+		local line: string? = info.line
+		local perfectOn = PerfectCatch.on() -- #5300: the Perfect line in sky blue, no charm
+		if line ~= nil or charmGain > 0 then
+			self._catDesc.Text = line
+				or (
+					if perfectOn
+						then PerfectCatch.CATCH_LINE
+						else ("Purrfect catch!  Charm +%d"):format(charmGain)
+				)
+			self._catDesc.TextColor3 = if line == nil and perfectOn
+				then PerfectCatch.COLOR
+				else PAL.gold
+			self._catDesc.FontFace = Theme.fonts.display
+		else
+			self._catDesc.Text = def.description or ""
+			self._catDesc.TextColor3 = PAL.subtext
+			self._catDesc.FontFace = Theme.fonts.body
+		end
+		self._catDesc.TextSize = if line ~= nil then Theme.sizes.textBody else Theme.sizes.textSmall
+
+		-- F97 section 5 (Derek 2026-10-28): charm stars show nowhere now, so the row stays hidden and the text sits
+		-- up; the Purrfect line still names the charm a catch added
+		local stars: number? = nil
+		self._starRow.Visible = stars ~= nil
+		local textTop = if stars ~= nil then 242 else 214
+		self._catMeta.Position = UDim2.fromOffset(16, textTop)
+		self._catDesc.Position = UDim2.fromOffset(16, textTop + 24)
+		for index, star in self._stars do
+			star.TextColor3 = Theme.colors.disabled
+			if stars ~= nil and index <= stars then
+				task.delay(STAR_START + (index - 1) * STAR_DELAY, function()
+					if self._token ~= token then
+						return
+					end
+					star.TextColor3 = Theme.colors.gold
+					local scale = star:FindFirstChildOfClass("UIScale")
+					if scale then
+						scale.Scale = 1.6
+						Tween.to(scale, CAT_POP, { Scale = 1 })
+					end
+				end)
+			end
+		end
+
+		-- sparkles burst from the portrait
+		for index, sparkle in self._sparkles do
+			sparkle.Visible = true
+			sparkle.BackgroundColor3 = if index % 2 == 0 then Theme.colors.gold else rarityColor
+			sparkle.BackgroundTransparency = 0
+			sparkle.Position = UDim2.new(0.5, 0, 0, ART_Y)
+			local angle = (index / SPARKLES) * math.pi * 2
+			local distance = 90 + (index % 3) * 20
+			Tween.to(sparkle, TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Position = UDim2.new(
+					0.5,
+					math.cos(angle) * distance,
+					0,
+					ART_Y + math.sin(angle) * distance * 0.6
+				),
+				BackgroundTransparency = 1,
+				Rotation = 45 + 180,
+			})
+		end
+		task.delay(if info.quick == true then QUICK_CLOSE else CAT_AUTO_CLOSE, function()
+			if self._token == token then
+				self:dismiss()
+			end
+		end)
+	end
+	self:_show(run)
+end
+
+function Popups.showOffline(
+	self: any,
+	amount: number,
+	seconds: number,
+	onClaim: () -> (),
+	headline: string?,
+	note: string?,
+	hook: string?
+)
+	-- a ribbon line once given stays for this card, though the second send of the same earnings has none
+	local before = self._offline
+	local ribbon = headline or (if self._offlineWaiting and before then before.headline else nil)
+	self._offline = {
+		amount = amount,
+		seconds = seconds,
+		onClaim = onClaim,
+		headline = ribbon,
+		note = note,
+		hook = hook,
+	}
+	local function fill()
+		local latest = self._offline
+		if latest then
+			self._onClaim = latest.onClaim
+			self._offlineSub.Text = ("Your cats earned this in %s"):format(
+				Format.duration(latest.seconds)
+			)
+			self._offlineNote.Text = latest.note or WelcomeBack.note(nil)
+			-- #2123: the hook line under the coins pushes the note down and the card taller
+			local hookLine: string? = latest.hook
+			self._offlineHook.Text = hookLine or ""
+			self._offlineHook.Visible = hookLine ~= nil
+			local lift = if hookLine ~= nil then HOOK_H else 0
+			self._offlineNote.Position = UDim2.fromOffset(16, 142 + lift)
+			self._offlineCard.Size = UDim2.fromOffset(OFFLINE_W, OFFLINE_H + lift)
+			self._offlineAmount.Text = "+" .. Format.money(latest.amount)
+			self._ribbonText.Text = latest.headline or ""
+			self._ribbon.Visible = latest.headline ~= nil
+		end
+	end
+	if self._offlineWaiting then
+		-- the same earnings again: the card already showing or queued takes the latest numbers
+		if self._offlineCard.Visible then
+			fill()
+		end
+		return
+	end
+	self._offlineWaiting = true
+	self:_show(function()
+		if not self._offlineWaiting then
+			self:_next() -- #2157: dropped while it waited (dropOffline)
+			return
+		end
+		self:_open(self._offlineCard)
+		fill()
+	end)
+end
+
+-- #2157: takes the Welcome back card away without a tap, whether it is up or still waiting (an intro replay). True
+-- when there was one, so the caller can collect the earnings in its place.
+function Popups.dropOffline(self: any): boolean
+	if not self._offlineWaiting then
+		return false
+	end
+	self._offlineWaiting = false
+	self._offline = nil
+	if self._current == self._offlineCard then
+		self:dismiss()
+	end
+	return true
+end
+
+-- The food names on the gift card's pictures (PrizeChips)
+function Popups.setCatalog(self: any, catalog: Types.Catalog)
+	self._giftChips:setCatalog(catalog)
+end
+
+-- What a Mystery gift held (MysteryGiftResult, F64): its picture and name ("Money Potion", "2 Salmon"). It closes by
+-- itself after GIFT_AUTO_CLOSE seconds, and plays giftOpen when it shows (sound list 5.11).
+-- #2614: `heading` is the wrap's ("Rare gift!", "Super gift!"); nil keeps "Mystery gift!"
+function Popups.showGift(
+	self: any,
+	title: string,
+	prize: Types.IndexPrize,
+	heading: string?,
+	look: PrizeChips.Look?
+)
+	self:_show(function()
+		local token = self:_open(self._giftCard)
+		self._giftTitle.Text = Theme.icons.gifts .. " " .. (heading or "Mystery gift!")
+		self._giftChips:set(prize, look)
+		self._giftName.Text = title
+		Sound.play("giftOpen")
+		task.delay(GIFT_AUTO_CLOSE, function()
+			if self._token == token then
+				self:dismiss()
+			end
+		end)
+	end)
+end
+
+function Popups.destroy(self: any)
+	for _, button in self._buttons do
+		button:destroy()
+	end
+	self._giftChips:destroy()
+	self._portrait:destroy()
+	Scale.unbind(self._uiScale)
+	self._dimFollow:Disconnect()
+	self._dimGui:Destroy()
+	self.screenGui:Destroy()
+end
+
+return Popups

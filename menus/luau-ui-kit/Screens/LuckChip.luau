@@ -1,0 +1,657 @@
+--!strict
+-- The HUD's Luck chip and its card (F88, luck-and-rare-moments.md section 1d). The chip leads the potion timers' row
+-- over the money (Screens/BuffChips): a dark green circle with a thin dark edge and the clean clover (bright green,
+-- black outline in the art; #1258, Derek's drawing: no yellow, gold or white ring or glow round the circle) and
+-- "Luck x1.3" in outlined white, no panel behind it. It shows from the first Luck source (hidden before that) and on a
+-- Lucky Day its text turns gold. A tap opens the card over
+-- the counters, as the money's boosts card does: the Luck and what it does, each source with its share and time
+-- left (Components/LuckLogic.rows), and one line of how much more likely Luck makes each rare rarity (#1776,
+-- three rarity pills, LuckLogic.boostPills; they replaced the next cat's and next crate's odds blocks). The card opens next to its chip,
+-- over the row when the row sits low (over the counters on a computer) and under it when it sits high (level with
+-- the menu on a phone), so the chip stays in view. A tap on the card closes it, and so does any window opening
+-- (HUD.screenOpened).
+-- #4224 (audit gap 4): on a controller the open card takes the selection (its whole-card Close), says "Press B to
+-- close", and B closes it (GamepadNav.card); the selection goes back to the chip.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Create = require(script.Parent.Parent.Components.Create)
+local GamepadNav = require(script.Parent.Parent.Components.GamepadNav)
+local IconArt = require(script.Parent.Parent.Components.IconArt)
+local LuckLogic = require(script.Parent.Parent.Components.LuckLogic)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local PityLogic = require(script.Parent.Parent.Components.PityLogic)
+local Scale = require(script.Parent.Parent.Scale)
+local Sound = require(script.Parent.Parent.Components.Sound)
+local Theme = require(script.Parent.Parent.Theme)
+local TutorialArrow = require(script.Parent.Parent.Components.TutorialArrow)
+local Tween = require(script.Parent.Parent.Components.Tween)
+local Types = require(script.Parent.Parent.Types)
+
+export type LuckChip = {
+	chip: TextButton,
+	card: TextButton,
+	setCatalog: (self: LuckChip, catalog: Types.Catalog) -> (),
+	render: (self: LuckChip, state: Types.PlayerState) -> (),
+	toggle: (self: LuckChip) -> (),
+	hide: (self: LuckChip) -> (),
+	isShown: (self: LuckChip) -> boolean,
+	isOpen: (self: LuckChip) -> boolean,
+	setDay: (self: LuckChip, view: LuckLogic.DayView?) -> (), -- #4990: today's day kinds, listed on the card
+	destroy: (self: LuckChip) -> (),
+}
+
+local TILE = 28 -- the potion chips' tile
+local CARD_W = 330
+local ROW_H = 24
+local GAP = 6 -- between the chip and its card
+local EDGE = 8 -- the card keeps this far from the screen's right edge
+local CLOVER = 0.82 -- the clover picture's share of the circle
+local TITLE_ICON = 22 -- the card title's circle
+local TITLE_GAP = 6
+local PILL_H = 22 -- #1776: a rarity pill
+local PILL_GAP = 4
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local LuckChip = {}
+
+-- #2539: a Cafe Event's luck row reads the running event's title ("Cafe Party"), from the attribute the server sets
+local function eventTitle(): string?
+	local title = ReplicatedStorage:GetAttribute("EventTitle")
+	return if type(title) == "string" and title ~= "" then title else nil
+end
+LuckChip.__index = LuckChip
+
+-- outlined HUD text, as the HUD's own label (wrapped text skips the outline, which muddies small lines)
+local function label(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = Theme.hud.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
+		ZIndex = 6,
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	local text: TextLabel = Create("TextLabel", merged)
+	if not text.TextWrapped then
+		Outline.text(text)
+	end
+	return text
+end
+
+-- The chip's circle at `size` px: dark green, a thin dark edge, the clean clover in the middle (#1258). The luck card's
+-- title and the HUD's Lucky Day line show the same one. `props` are the label's own (Name, LayoutOrder, Parent...).
+function LuckChip.circle(size: number, props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		Name = "Clover",
+		BackgroundColor3 = Theme.luck.circle,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(size, size),
+		FontFace = Theme.fonts.body,
+		TextSize = math.max(Theme.sizes.textTiny, math.floor(size * 0.6)), -- the emoji until the picture loads; 9 px+ on a phone
+		Text = LuckLogic.ICON,
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	local tile: TextLabel =
+		Create("TextLabel", merged, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Outline.border(tile, Theme.luck.edgeThickness, Theme.luck.edge) -- the thin dark edge, the only line round the circle
+	IconArt.set(tile, LuckLogic.ICON, CLOVER) -- the clean clover over the emoji, which stays the fallback
+	return tile
+end
+
+-- `row`: the potion timers' row (BuffChips.frame), which the chip leads; `root`: the HUD's scaled root, for the
+-- card; `cardPosition`: where the card's bottom left corner sits before the chip has a place on screen.
+-- `onShown` hears when the chip shows or hides, `onOpen` when its card opens (the HUD closes the boosts card).
+function LuckChip.new(
+	row: Frame,
+	root: Frame,
+	cardPosition: UDim2,
+	onShown: (shown: boolean) -> (),
+	onOpen: () -> (),
+	onCard: (() -> ())? -- #4998: the card has opened or closed (the HUD has the toasts make room)
+): LuckChip
+	local self = setmetatable({}, LuckChip) :: any
+	self._onOpen = onOpen
+	self._onCard = onCard
+	self._root = root
+	self._cardPosition = cardPosition
+	self._catalog = nil :: Types.Catalog?
+	self._state = nil :: Types.PlayerState?
+	self._shown = false
+	self._boosted = false
+	self._look = "plain"
+	self._onShown = onShown
+	self._said = nil :: string?
+	self._day = nil :: LuckLogic.DayView? -- #4990
+	self._loop = nil :: RBXScriptConnection?
+	self._clock = 0
+
+	-- the chip: the whole of it takes the tap, as tall as a potion chip's tap area
+	local chip: TextButton = Create("TextButton", {
+		Name = "Luck",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(0, Scale.tapHeight(36)),
+		AutomaticSize = Enum.AutomaticSize.X,
+		LayoutOrder = 0, -- before every potion chip
+		Visible = false,
+		Parent = row,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 4),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	LuckChip.circle(TILE, { Name = "Tile", LayoutOrder = 1, Parent = chip })
+	self._text = label({
+		Name = "Amount",
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 30),
+		TextSize = 18,
+		TextColor3 = Theme.hud.subtext, -- a plain 1x (_setLook)
+		TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 1,
+		LayoutOrder = 2,
+		Parent = chip,
+	})
+	Outline.text(self._text, 2)
+	self.chip = chip
+
+	-- the card over the counters
+	-- #3990 (Review-QA on a PC): a button, so a tap on its padding never opens the menu tile drawn under it (a Frame
+	-- lets taps through, even with Active)
+	local card: TextButton = Create("TextButton", {
+		Name = "LuckCard",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundColor3 = Theme.hud.panel,
+		BackgroundTransparency = Theme.hud.panelTransparency,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 1),
+		Position = cardPosition,
+		Size = UDim2.fromOffset(CARD_W, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Visible = false,
+		ZIndex = 6,
+		Parent = root,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 14),
+			PaddingRight = UDim.new(0, 14),
+			PaddingTop = UDim.new(0, 10),
+			PaddingBottom = UDim.new(0, 10),
+		}),
+	})
+	Outline.border(card, Theme.sizes.outline, Theme.hud.stroke)
+	local list: Frame = Create("Frame", {
+		Name = "List",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		ZIndex = 6,
+		Parent = card,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			Padding = UDim.new(0, 2),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	-- the title: the chip's circle and clover, then "Luck x1.9" (#1258: the clover picture, not the emoji)
+	local titleRow: Frame = Create("Frame", {
+		Name = "TitleRow",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 26),
+		LayoutOrder = 1,
+		ZIndex = 6,
+		Parent = list,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, TITLE_GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	LuckChip.circle(TITLE_ICON, { LayoutOrder = 1, ZIndex = 6, Parent = titleRow })
+	self._title = label({
+		Name = "Title",
+		Size = UDim2.new(1, -(TITLE_ICON + TITLE_GAP), 1, 0),
+		TextSize = Theme.sizes.textBody + 2,
+		TextColor3 = Theme.colors.gold,
+		LayoutOrder = 2,
+		Parent = titleRow,
+	})
+	self._subtitle = label({
+		Name = "Subtitle",
+		Size = UDim2.new(1, 0, 0, 18),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = Theme.hud.subtext,
+		Text = LuckLogic.SUBTITLE,
+		LayoutOrder = 2,
+		Parent = list,
+	})
+	self._rows = Create("Frame", {
+		Name = "Sources",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 3,
+		ZIndex = 6,
+		Parent = list,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Vertical,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		Create("UIPadding", { PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4) }),
+	})
+	local function heading(name: string, order: number): TextLabel
+		return label({
+			Name = name,
+			Size = UDim2.new(1, 0, 0, 22),
+			TextSize = Theme.sizes.textSmall + 1,
+			LayoutOrder = order,
+			Parent = list,
+		})
+	end
+	-- #1776: one heading and one line of what Luck does to each rarity
+	self._boostTitle = heading("BoostTitle", 4)
+	self._boostTitle.Text = LuckLogic.BOOST_TITLE
+	-- the three pills in a row, each in its rarity's colour (luck-and-rare-moments.md section 1d)
+	self._boost = Create("Frame", {
+		Name = "Boost",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, PILL_H + 4),
+		LayoutOrder = 5,
+		ZIndex = 6,
+		Parent = list,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, PILL_GAP),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+		}),
+	})
+	self._pills = {} :: { TextLabel }
+	for index, rarity in LuckLogic.BOOST_RARITIES do
+		local pill = label({
+			Name = rarity,
+			BackgroundTransparency = 0,
+			BackgroundColor3 = Theme.rarityColor(rarity),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.fromOffset(0, PILL_H),
+			TextSize = Theme.sizes.textTiny + 1, -- three fit the 330 px card at Luck's top (+200%)
+			TextXAlignment = Enum.TextXAlignment.Center,
+			-- #4998: a pill sizes to its words, and truncating while that size settles cut "Epic +50%" to "Epic..."
+			TextTruncate = Enum.TextTruncate.None,
+			LayoutOrder = index,
+			Parent = self._boost,
+		})
+		Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = pill })
+		Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 6),
+			Parent = pill,
+		})
+		self._pills[index] = pill
+	end
+	-- The Town Square pity sign's lines ("Legendary cat in 12:30", "Mythical cat in 1:42:10", "Now in the Woods!"),
+	-- ticking while the card is open. Their old way in on a plain day, the day line under the clock, is gone (#4990).
+	self._pity = label({
+		Name = "Pity",
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = Theme.colors.gold,
+		TextWrapped = true,
+		TextTruncate = Enum.TextTruncate.None,
+		LayoutOrder = 6,
+		Parent = list,
+	})
+	self._pityLoop = nil :: RBXScriptConnection?
+	self._sized = nil :: RBXScriptConnection? -- #4998: places the open card again as its height settles or changes
+	self._hint = label({
+		Name = "Hint",
+		Size = UDim2.new(1, 0, 0, 18),
+		TextSize = Theme.sizes.textTiny,
+		TextColor3 = Theme.hud.subtext,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = "Tap to close",
+		LayoutOrder = 8,
+		Parent = list,
+	})
+	-- the card's whole content takes the closing tap; sized by scale alone, so the card's AutomaticSize stays put
+	local close: TextButton = Create("TextButton", {
+		Name = "Close",
+		Text = "",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 8,
+		Parent = card,
+	})
+	self.card = card
+	TutorialArrow.yieldTo(card) -- #5009: the goal card's rank up arrow hides while this card is open
+	self._closeButton = close
+	self._connections = {
+		chip.Activated:Connect(function()
+			self:toggle()
+		end),
+		close.Activated:Connect(function()
+			self:hide()
+		end),
+	}
+	return self :: LuckChip
+end
+
+function LuckChip.setCatalog(self: any, catalog: Types.Catalog)
+	self._catalog = catalog
+	self._said = nil
+	if self.card.Visible then
+		self:_renderCard()
+	end
+end
+
+function LuckChip.isShown(self: any): boolean
+	return self._shown
+end
+
+-- Luck is above 1x (the chip always shows, so the luck tip waits for this, #1150).
+function LuckChip.isBoosted(self: any): boolean
+	return self._boosted
+end
+
+function LuckChip.isOpen(self: any): boolean
+	return self.card.Visible
+end
+
+function LuckChip.render(self: any, state: Types.PlayerState)
+	self._state = state
+	self:_draw()
+end
+
+-- The chip's text, its glow and whether it shows; the open card's rows; the once-a-second tick while a timed source
+-- runs, so a potion's time counts down and the chip drops it when it ends.
+function LuckChip._draw(self: any)
+	local state: Types.PlayerState? = self._state
+	local now = Workspace:GetServerTimeNow()
+	local shown = state ~= nil and LuckLogic.shown(state, now)
+	if state ~= nil and shown then
+		self._text.Text = LuckLogic.text(LuckLogic.current(state, now))
+		self:_setLook(LuckLogic.lucky(state, now), LuckLogic.boosted(state, now))
+	else
+		self:_setLook(false, false)
+	end
+	self.chip.Visible = shown
+	self._boosted = state ~= nil and LuckLogic.boosted(state, now)
+	if shown ~= self._shown then
+		self._shown = shown
+		if not shown then
+			self:hide()
+		end
+		self._onShown(shown)
+	end
+	if self.card.Visible then
+		self:_renderCard()
+	end
+	local timed = false
+	if state ~= nil and shown then
+		for _, row in LuckLogic.rows(state, now, eventTitle()) do
+			if row.time ~= nil then
+				timed = true
+			end
+		end
+	end
+	local loop: RBXScriptConnection? = self._loop
+	if timed and loop == nil then
+		self._loop = RunService.Heartbeat:Connect(function(dt: number)
+			self._clock += dt
+			if self._clock >= 1 then
+				self._clock = 0
+				self:_draw()
+			end
+		end)
+	elseif not timed and loop then
+		loop:Disconnect()
+		self._loop = nil
+	end
+end
+
+-- A Lucky Day: gold text (no ring round the circle, #1258). Boosted: white. A plain 1x: the quieter subtext colour
+-- (#1150). The circle and clover never change.
+function LuckChip._setLook(self: any, lucky: boolean, boosted: boolean)
+	local look = if lucky then "lucky" elseif boosted then "boosted" else "plain"
+	if look == self._look then
+		return
+	end
+	self._look = look
+	self._text.TextColor3 = if lucky
+		then Theme.colors.gold
+		elseif boosted then Theme.colors.white
+		else Theme.hud.subtext
+end
+
+function LuckChip.toggle(self: any)
+	if self.card.Visible then
+		self:hide()
+		return
+	end
+	if self._state == nil or not self._shown then
+		return
+	end
+	self._said = nil
+	self._onOpen()
+	self:_renderCard()
+	self:_paintPity() -- before the card is placed, so its height counts the lines
+	self:_place()
+	self._hint.Text = if GamepadNav.on() and GamepadNav.isGamepad()
+		then "Press B to close"
+		else "Tap to close"
+	self.card.Visible = true
+	Tween.popIn(self.card, 0.9)
+	Sound.play("uiClick")
+	self:_stopPity()
+	-- #4998 (Review-QA): the card's automatic height settles a frame after its words are set, and grows when a pity
+	-- status line comes; _place only moves it, so this never loops
+	self._sized = self.card:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		if self.card.Visible then
+			self:_place()
+		end
+	end)
+	local pityClock = 0
+	self._pityLoop = RunService.Heartbeat:Connect(function(dt: number)
+		pityClock += dt
+		if pityClock >= 1 then
+			pityClock = 0
+			self:_paintPity()
+		end
+	end)
+	-- #4224: a controller lands on the card and B closes it
+	self._padDone = GamepadNav.card("luckCard", self.card, function()
+		self:hide()
+		return true
+	end, self._closeButton)
+	local onCard: (() -> ())? = self._onCard
+	if onCard ~= nil then
+		onCard()
+	end
+end
+
+-- Beside the chip, in the root's design px (the root is scaled, so screen px divide by Scale.get(), as
+-- HUD._showExact does): its left edge on the chip's, above the chip when the chip is in the lower half of the screen,
+-- else below it.
+function LuckChip._place(self: any)
+	local card: TextButton = self.card
+	local root: Frame = self._root
+	local chip: TextButton = self.chip
+	local scale = Scale.get()
+	if scale <= 0 or root.AbsoluteSize.Y <= 0 or chip.AbsoluteSize.Y <= 0 then
+		card.AnchorPoint = Vector2.new(0, 1)
+		card.Position = self._cardPosition
+		return
+	end
+	local width = root.AbsoluteSize.X / scale
+	local height = root.AbsoluteSize.Y / scale
+	local x = (chip.AbsolutePosition.X - root.AbsolutePosition.X) / scale
+	local top = (chip.AbsolutePosition.Y - root.AbsolutePosition.Y) / scale
+	local bottom = top + chip.AbsoluteSize.Y / scale
+	x = math.max(0, math.min(x, width - CARD_W - EDGE))
+	local cardH = card.AbsoluteSize.Y / scale
+	if cardH <= 0 then
+		-- no size yet: the lower half opens it above the chip, the upper half below
+		if top + bottom > height then
+			card.AnchorPoint = Vector2.new(0, 1)
+			card.Position = UDim2.fromOffset(x, top - GAP)
+		else
+			card.AnchorPoint = Vector2.new(0, 0)
+			card.Position = UDim2.fromOffset(x, bottom + GAP)
+		end
+		return
+	end
+	-- above the chip in the lower half of the screen, below it in the upper half, then kept inside the screen: a card
+	-- taller than the room on its side (a small phone) slides over the chip rather than past the edge
+	local y = if top + bottom > height then top - GAP - cardH else bottom + GAP
+	y = math.max(0, math.min(y, height - cardH))
+	card.AnchorPoint = Vector2.new(0, 0)
+	card.Position = UDim2.fromOffset(x, y)
+end
+
+function LuckChip.hide(self: any)
+	local was = self.card.Visible
+	self.card.Visible = false
+	self:_stopPity()
+	local onCard: (() -> ())? = self._onCard
+	if was and onCard ~= nil then
+		onCard()
+	end
+	local done: (() -> ())? = self._padDone
+	self._padDone = nil
+	if done ~= nil then
+		done()
+	end
+end
+
+function LuckChip._paintPity(self: any)
+	local t = Workspace:GetServerTimeNow() - Config.ClockEpoch
+	self._pity.Text = table.concat(PityLogic.lines(PityLogic.view(t, PityLogic.current())), "\n")
+end
+
+function LuckChip._stopPity(self: any)
+	local loop: RBXScriptConnection? = self._pityLoop
+	if loop then
+		loop:Disconnect()
+		self._pityLoop = nil
+	end
+	local sized: RBXScriptConnection? = self._sized
+	if sized then
+		sized:Disconnect()
+		self._sized = nil
+	end
+end
+
+function LuckChip._renderCard(self: any)
+	local state: Types.PlayerState? = self._state
+	if state == nil then
+		return
+	end
+	local now = Workspace:GetServerTimeNow()
+	local luck = LuckLogic.current(state, now)
+	local rows = LuckLogic.rows(state, now, eventTitle())
+	-- #4990: the day kinds running today (Golden Day, Rainbow Day; a Lucky Day is a Luck source above) under them
+	for _, row in LuckLogic.dayRows(self._day, rows) do
+		table.insert(rows, row)
+	end
+	-- the card's words, so it is drawn again only when they change (the money ticks render the HUD five times a
+	-- second)
+	local parts: { string } = { tostring(luck) }
+	for _, row in rows do
+		table.insert(parts, ("%s=%s=%s"):format(row.name, row.value, row.time or ""))
+	end
+	local said = table.concat(parts, ";")
+	if said == self._said then
+		return
+	end
+	self._said = said
+	self._title.Text = LuckLogic.text(luck)
+	self._subtitle.Text = LuckLogic.SUBTITLE
+	-- #1776: how much more likely each rare rarity is, shown while Luck lifts anything
+	local pills = LuckLogic.boostPills(luck)
+	for index, pill in self._pills do
+		local entry = pills[index]
+		pill.Text = if entry then entry.text else ""
+	end
+	self._boost.Visible = #pills > 0
+	self._boostTitle.Visible = #pills > 0
+	local holder: Frame = self._rows
+	for _, child in holder:GetChildren() do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+	for order, row in rows do
+		local frame: Frame = Create("Frame", {
+			Name = row.id,
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 0, ROW_H),
+			LayoutOrder = order,
+			ZIndex = 6,
+			Parent = holder,
+		})
+		label({
+			Name = "Name",
+			Size = UDim2.new(0.75, 0, 1, 0),
+			TextSize = Theme.sizes.textSmall + 1,
+			Text = if row.time then ("%s  %s"):format(row.name, row.time) else row.name,
+			Parent = frame,
+		})
+		label({
+			Name = "Value",
+			AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.fromScale(1, 0),
+			Size = UDim2.new(0.25, 0, 1, 0),
+			TextColor3 = Theme.hud.income,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			Text = row.value,
+			Parent = frame,
+		})
+	end
+end
+
+-- #4990: the HUD's day view (its phase is the clock's own); the open card is drawn again with it
+function LuckChip.setDay(self: any, view: LuckLogic.DayView?)
+	self._day = view
+	if self.card.Visible then
+		self:_renderCard()
+	end
+end
+
+function LuckChip.destroy(self: any)
+	self:_stopPity()
+	local loop: RBXScriptConnection? = self._loop
+	if loop then
+		loop:Disconnect()
+		self._loop = nil
+	end
+	for _, connection in self._connections do
+		connection:Disconnect()
+	end
+	self.card:Destroy()
+	self.chip:Destroy()
+end
+
+return LuckChip

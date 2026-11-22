@@ -1,0 +1,1088 @@
+--!strict
+-- The Cat Cannon picker (F84, hometown-cannon.md 3a and 3c; mockup approved by Derek 2026-10-28 13:55 and 14:04):
+-- opened by holding "Hop in" at a cannon. One card per place the cannon can fire to, each with a picture of its
+-- landmark, its name, how many of its cats the player has ("7/10 cats", no coin line: Derek 13:55) and Launch.
+-- The Town Square cannon lists every area the player's tier has opened, the Alleyway from Tier 1; a camp's cannon
+-- lists Town Square first, then the other opened areas. In the last DuskWarningSeconds of the day the area cards
+-- read "Night soon" and at night a moon covers them, with the sunrise countdown under the title; Town Square
+-- stays open. Every Launch greys while carrying. Rules and words in Components/CannonLogic.
+-- F92 (playing-together.md section 5): while a joiner's pal marker is up, the pal's area card wears a gold "Sam is
+-- here" tag on its picture (setPal).
+-- F100 (camp-extras.md section 3): an area with a camp extra open gets a strip under "7/10 cats" with the extra's
+-- icon, name and what waits ("1 ready", "14 fish", "Next in 2 h 10 m"), and a red "!" dot when something is ready to
+-- claim (Components/CampExtrasLogic; never on the Yard Sale). The cards grow to fit it only while one shows, and the
+-- strip stays clear of the night cover, so players plan their morning (setExtras). #3082: the strip has a button for
+-- every opened station, so nobody has to fly there: Collect while a Picnic Basket, Fish Pond or Lost and Found holds
+-- something (in place of the dot), Open for the Yard Sale, the Oasis Spa and the Relic Museum, which have a card of
+-- their own (Components/CampExtrasLogic.remoteAction). Until then only a Golden Pond owner's pond had Collect (#1463).
+-- #3691: the cards no longer wear the red "Rally: rescues x3" tag at night (Derek, 2026-11-12). The Rally banner and
+-- the Town Square board still say it.
+-- #3884 (Derek 2026-11-13: "a quick 3 second unlock cutscene in the cannon menu of the locks breaking off"): the
+-- first time the picker opens after a rank up, each card that rank opened (Tier 2's Park first) keeps its lock a
+-- moment, the padlock wiggles, pops open and floats off with "Unlocked!", sparkles burst round the card to the gate
+-- sound, the cover fades and the card bounces, about 3 s in all (_breakLock, CannonLogic.unlocked). Once per rank up,
+-- this session; Reduce Motion keeps the sound and drops the moves.
+-- #2915: setRing(areaId) puts the tutorial's pulsing gold ring and arrow (Components/StepTarget) on that card's Launch
+-- while it can launch: "Fly to the Park" on the rank-up card opens the picker with the Park's ringed.
+
+local GuiService = game:GetService("GuiService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Button = require(script.Parent.Parent.Components.Button)
+local CampExtrasLogic = require(script.Parent.Parent.Components.CampExtrasLogic)
+local CannonLogic = require(script.Parent.Parent.Components.CannonLogic)
+local Create = require(script.Parent.Parent.Components.Create)
+local DragonKeepLogic = require(script.Parent.Parent.Components.DragonKeepLogic)
+local FusionLogic = require(script.Parent.Parent.Components.FusionLogic)
+local IconArt = require(script.Parent.Parent.Components.IconArt)
+local IndexRewards = require(script.Parent.Parent.Components.IndexRewards)
+local LateBuild = require(script.Parent.Parent.Components.LateBuild)
+local LateStationsLogic = require(script.Parent.Parent.Components.LateStationsLogic)
+local MenuFamily = require(script.Parent.Parent.Components.MenuFamily)
+local MysticPoolLogic = require(script.Parent.Parent.Components.MysticPoolLogic)
+local NightClock = require(script.Parent.Parent.Components.NightClock)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local Panel = require(script.Parent.Parent.Components.Panel)
+local RareBubbleLogic = require(script.Parent.Parent.Components.RareBubbleLogic)
+local RareBubbles = require(script.Parent.Parent.Components.RareBubbles)
+local Scale = require(script.Parent.Parent.Scale)
+local ShopIcons = require(script.Parent.Parent.Components.ShopIcons)
+local Sound = require(script.Parent.Parent.Components.Sound)
+local SpotlightGuide = require(script.Parent.Parent.Components.SpotlightGuide)
+local StepTarget = require(script.Parent.Parent.Components.StepTarget)
+local Theme = require(script.Parent.Parent.Theme)
+local TicketBoothLogic = require(script.Parent.Parent.Components.TicketBoothLogic)
+local Tween = require(script.Parent.Parent.Components.Tween)
+local Types = require(script.Parent.Parent.Types)
+
+-- shared/RummageBin.NEXT_AT_ATTRIBUTE on the player, and the `alleyBin` switch's attribute (on by default)
+local BIN_NEXT_AT = "BinNextAt"
+local BIN_FLAG = "LiveFlag_alleyBin"
+
+-- the dark window palette (#1028), in place of Theme.modal
+local PAL = MenuFamily.pal
+local CREAM = MenuFamily.card -- #3558: what sits on a picture card (cream in the family look)
+-- #3347 (Derek2: "make the spa symbol better and not some simple symbols"): a station's drawn picture on its picker
+-- line, in place of its emoji (which shows until the picture loads)
+local LINE_IMAGES: { [string]: string? } = { spa = ShopIcons.clean("Spa") }
+
+export type Callbacks = {
+	launch: (cannonId: string, destination: string) -> (),
+	close: () -> (),
+	-- #3082: Collect on a card's strip (CollectCampExtra from anywhere; #1463 had it for a Golden Pond owner's pond)
+	collect: ((extraId: string) -> ())?,
+	-- #3082: Open on a card's strip: the Yard Sale's, the Oasis Spa's or the Relic Museum's own card
+	open: ((stationId: string) -> ())?,
+	-- #4961: Rummage on the Alleyway card's Rummage Bin line, and whether it may show now (not in the walk-through)
+	rummage: (() -> ())?,
+	rummageOn: (() -> boolean)?,
+}
+
+export type Cannon = {
+	frame: Frame,
+	setCatalog: (self: Cannon, catalog: Types.Catalog) -> (),
+	-- "town" or a camp's area id: the cannon the player hopped into
+	setCannon: (self: Cannon, cannonId: string) -> (),
+	setAreasOpen: (self: Cannon, open: boolean) -> (),
+	setClock: (self: Cannon, phase: Types.ClockPhase?, phaseEndsAt: number?) -> (),
+	-- F92: the area a joiner's pal is in and the pal's name, or nil to take the tag away
+	setPal: (self: Cannon, areaId: string?, name: string?) -> (),
+	setRing: (self: Cannon, areaId: string?) -> (), -- #2915
+	setFirst: (self: Cannon, areaId: string?) -> (), -- #5517
+	-- F100: the last CampExtrasState, or nil before the first
+	setExtras: (self: Cannon, extras: Types.CampExtrasState?) -> (),
+	setTraits: (self: Cannon, traits: any) -> (), -- #3196: PlayerState.traits, for the Mystic Pool's strip
+	setBooth: (self: Cannon, booth: any) -> (), -- #4061: PlayerState.ticketBooth, for the Water Park card's strip
+	setKeep: (self: Cannon, keep: any) -> (), -- #4062: PlayerState.dragon, for the Castle card's strip
+	setFusion: (self: Cannon, fusion: any) -> (), -- #4104: PlayerState.fusion, for the Snowy Mountain card's strip
+	setLate: (self: Cannon, late: any) -> (), -- #2651 part 4: LateStationsState, for the Desert and Ruins strips
+	render: (self: Cannon, state: Types.PlayerState, carrying: boolean) -> (),
+	opened: (self: Cannon) -> (),
+	closed: (self: Cannon) -> (),
+	-- the server's answer: a refusal lifts the wait and wobbles the card's Launch
+	result: (self: Cannon, ok: boolean, destination: string?) -> (),
+	destroy: (self: Cannon) -> (),
+}
+
+local CARD = Vector2.new(226, 214)
+local ART_H = 100
+-- #2771 (Laptop-Tester, Galaxy A06: the second row cut off): on a phone held sideways (Scale.isPhone) the picture
+-- band is a slim strip and the words and Launch sit closer, so both rows of cards fit the panel
+local PHONE_ART_H, PHONE_CARD_H = 24, 128
+local NAME_GAP = 14 -- the card's name sits this far under the picture (8 on a phone)
+local LAUNCH_INSET = 10 -- Launch's gap to the card's bottom (6 on a phone)
+local EXTRA_H = 40 -- F100: the camp extra's strip, added to the cards while one shows
+local EXTRA_ROOM = 8 -- #3961: more room under the strip in the family look (4 px to LAUNCH read as touching)
+-- #3082: the strip's button, as wide as its word needs, so the station's name and what waits keep their room on a
+-- phone's slim cards (#1463: the Golden Pond's Collect was 84)
+local BUTTON_W = { collect = 66, open = 52, rummage = 84 } :: { [string]: number }
+local COLLECT_REST = 2 -- seconds Collect hides after a press, while the server answers
+local PENDING_SECONDS = 1 -- Launch greys this long after a press, so a double tap is one launch
+local DUSK_SECONDS: number = 15
+do
+	local Config =
+		require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"))
+	DUSK_SECONDS = (Config :: any).DuskWarningSeconds or DUSK_SECONDS
+end
+-- #2692: a new player before the first check-in holds the night pass (the server's NightPass player attribute), so
+-- the cards stay open through dusk and the night for them, as the server flies them then
+local NightPass =
+	require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("NightPass"))
+
+local function hasNightPass(): boolean
+	local player = Players.LocalPlayer
+	return player ~= nil and player:GetAttribute(NightPass.ATTRIBUTE) == true
+end
+
+local Cannon = {}
+Cannon.__index = Cannon
+
+local function text(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.body,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = CREAM.text,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	return Create("TextLabel", merged)
+end
+
+function Cannon.new(callbacks: Callbacks): Cannon
+	local self = setmetatable({}, Cannon) :: any
+	self._callbacks = callbacks
+	if Scale.isPhone() then
+		ART_H = PHONE_ART_H
+		NAME_GAP = 8
+		LAUNCH_INSET = 6
+		CARD = Vector2.new(CARD.X, PHONE_CARD_H)
+	end
+	self._cards = {} :: { [string]: any }
+	self._catalog = nil :: Types.Catalog?
+	self._cannonId = CannonLogic.TOWN
+	self._areasOpen = true
+	self._passConnection = nil :: RBXScriptConnection?
+	if Players.LocalPlayer then
+		self._passConnection = Players.LocalPlayer
+			:GetAttributeChangedSignal(NightPass.ATTRIBUTE)
+			:Connect(function()
+				self:_rerender() -- #2692: the first check-in ends the pass
+			end)
+	end
+	self._phase = nil :: Types.ClockPhase?
+	self._phaseEndsAt = nil :: number?
+	self._state = nil :: Types.PlayerState?
+	self._carrying = false
+	self._pendingUntil = 0
+	self._open = false
+	self._tick = 0
+	self._seenTier = nil :: number? -- #3884: the tier the picker last knew, from the first synced state
+	self._toBreak = {} :: { [string]: boolean } -- #3884: cards whose lock breaks the next time the picker opens
+	self._pal = nil :: { areaId: string, name: string }?
+	self._extras = nil :: Types.CampExtrasState?
+	self._traits = nil :: any -- #3196: PlayerState.traits, for the Mystic Pool's strip
+	self._booth = nil :: any -- #4061: PlayerState.ticketBooth, for the Water Park card's strip
+	self._keep = nil :: any -- #4062: PlayerState.dragon, for the Castle card's strip
+	self._fusion = nil :: any -- #4104: PlayerState.fusion, for the Snowy Mountain card's strip
+	self._late = nil :: any -- #2651 part 4: the last LateStationsState
+	self._tall = false -- the cards have room for a camp extra's strip
+	self._ring = nil :: string? -- #2915: the area whose Launch wears the ring
+	self._first = nil :: string? -- #5517: the area card listed first (hoodTrail's walk to the Neighbourhood)
+	self._spot = nil :: { id: string, close: () -> () }? -- #5245 / #5248: the dim and arrow on the ringed Launch
+
+	local panel = Panel.new({
+		dark = true, -- #1028
+		name = "Cannon",
+		color = Theme.colors.mintDark,
+		icon = Theme.icons.cannon,
+		title = "Cat Cannon",
+		subtitle = "Pick where to fly",
+		size = UDim2.fromScale(1, 1),
+		onClose = callbacks.close,
+	})
+	Create("UISizeConstraint", { MaxSize = Vector2.new(760, 540), Parent = panel.frame })
+	self._panel = panel
+	self.frame = panel.frame
+
+	local layout: UIGridLayout = Create("UIGridLayout", {
+		CellSize = UDim2.fromOffset(CARD.X, CARD.Y),
+		CellPadding = UDim2.fromOffset(Theme.sizes.gap + 4, Theme.sizes.gap + 4),
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	})
+	self._layout = layout
+	self._grid = Create("ScrollingFrame", {
+		Name = "Grid",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = PAL.caramel,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		Parent = panel.content,
+	}, {
+		layout :: Instance,
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 8),
+			PaddingRight = UDim.new(0, 6),
+		}),
+	})
+
+	return self :: Cannon
+end
+
+-- One card per place: Town Square and every catalog area. render shows the ones this cannon lists.
+function Cannon._buildCards(self: any)
+	for _, card in self._cards do
+		card.launch:destroy()
+		card.collect:destroy()
+		card.frame:Destroy()
+	end
+	table.clear(self._cards)
+	local catalog: Types.Catalog? = self._catalog
+	if not catalog then
+		return
+	end
+	local places: { { id: string, name: string, tier: number } } =
+		{ { id = CannonLogic.TOWN, name = CannonLogic.TOWN_NAME, tier = 0 } }
+	local areaList: { Types.AreaDef } = catalog.areas or {}
+	for _, area in areaList do
+		table.insert(places, { id = area.id, name = area.name, tier = area.tier })
+	end
+	for _, place in places do
+		local id = place.id
+		local frame: Frame = Create("Frame", {
+			Name = id,
+			BackgroundColor3 = CREAM.card,
+			BorderSizePixel = 0,
+			Visible = false,
+			Parent = self._grid,
+		}, {
+			Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+			Create("UIStroke", { Color = CREAM.cardStroke, Thickness = Theme.sizes.stroke }),
+		})
+		local art: Frame = Create("Frame", {
+			Name = "Art",
+			BackgroundColor3 = Theme.areaColors[id] or Theme.colors.caramel,
+			BorderSizePixel = 0,
+			ClipsDescendants = true,
+			Position = UDim2.fromOffset(10, 10),
+			Size = UDim2.new(1, -20, 0, ART_H),
+			Parent = frame,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radiusSmall) }) })
+		-- the emoji under the picture shows until the picture loads, and for good where there is none
+		local icon = text({
+			Name = "Icon",
+			Size = UDim2.fromScale(1, 1),
+			FontFace = Theme.fonts.display,
+			TextScaled = true,
+			Text = (Theme.icons :: any)[id] or Theme.icons.travel,
+			Parent = art,
+		})
+		-- #2771: the phone's slim band (ART_H under 60) keeps its emoji, moon and lock in it, and drops the covers'
+		-- lines, which the header and the button already say
+		local slim = ART_H < 60
+		local mark = if slim then ART_H - 4 else 48
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, if slim then 2 else 16),
+			PaddingBottom = UDim.new(0, if slim then 2 else 16),
+			Parent = icon,
+		})
+		local picture = Theme.areaPictures[id]
+		if picture then
+			Create("ImageLabel", {
+				Name = "Picture",
+				BackgroundTransparency = 1,
+				Size = UDim2.fromScale(1, 1),
+				Image = picture,
+				ScaleType = Enum.ScaleType.Crop,
+				Parent = art,
+			}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radiusSmall) }) })
+		end
+		-- the night cover: a moon and "Closed until sunrise" over the picture
+		local night: Frame = Create("Frame", {
+			Name = "Night",
+			BackgroundColor3 = Theme.colors.skyText,
+			BackgroundTransparency = 0.3,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Visible = false,
+			ZIndex = 3,
+			Parent = art,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radiusSmall) }) })
+		text({
+			Name = "Moon",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, if slim then 2 else 10),
+			Size = UDim2.fromOffset(mark, mark),
+			FontFace = Theme.fonts.display,
+			TextScaled = true,
+			Text = Theme.icons.moon,
+			ZIndex = 4,
+			Parent = night,
+		})
+		local nightLine = text({
+			Name = "Line",
+			Position = UDim2.new(0, 6, 0, 62),
+			Size = UDim2.new(1, -12, 0, 22),
+			FontFace = Theme.fonts.display,
+			TextSize = Theme.sizes.textBody,
+			TextColor3 = Theme.colors.white,
+			Text = "Closed until sunrise",
+			Visible = not slim,
+			ZIndex = 4,
+			Parent = night,
+		})
+		Outline.text(nightLine, 2)
+		-- #2682: the lock cover, shading an area the player's tier has not opened yet, with a lock and its tier
+		local lock: Frame = Create("Frame", {
+			Name = "Lock",
+			BackgroundColor3 = Theme.colors.skyText,
+			BackgroundTransparency = 0.25,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Visible = false,
+			ZIndex = 3,
+			Parent = art,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radiusSmall) }) })
+		text({
+			Name = "Padlock",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, if slim then 2 else 10),
+			Size = UDim2.fromOffset(mark, mark),
+			FontFace = Theme.fonts.display,
+			TextScaled = true,
+			Text = Theme.icons.lock,
+			ZIndex = 4,
+			Parent = lock,
+		})
+		local lockLine = text({
+			Name = "Line",
+			Position = UDim2.new(0, 6, 0, 62),
+			Size = UDim2.new(1, -12, 0, 22),
+			FontFace = Theme.fonts.display,
+			TextSize = Theme.sizes.textBody,
+			TextColor3 = Theme.colors.white,
+			Text = ("Opens at Tier %d"):format(place.tier),
+			Visible = not slim,
+			ZIndex = 4,
+			Parent = lock,
+		})
+		Outline.text(lockLine, 2)
+		Outline.border(art, 2)
+		Outline.shade(art, 0.2)
+		-- F92: the joiner's pal is here
+		local pal = text({
+			Name = "Pal",
+			AutomaticSize = Enum.AutomaticSize.X,
+			Position = UDim2.fromOffset(6, 6),
+			Size = UDim2.fromOffset(0, 26),
+			BackgroundColor3 = Theme.colors.gold,
+			BackgroundTransparency = 0,
+			FontFace = Theme.fonts.display,
+			TextSize = Theme.sizes.textSmall + 1,
+			TextColor3 = Theme.colors.goldText,
+			TextTruncate = Enum.TextTruncate.None,
+			Visible = false,
+			ZIndex = 5,
+			Parent = art,
+		})
+		Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = pal })
+		Create(
+			"UIPadding",
+			{ PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = pal }
+		)
+		Outline.border(pal, 2)
+		text({
+			Name = "Name",
+			Position = UDim2.fromOffset(10, ART_H + NAME_GAP),
+			Size = UDim2.new(1, -20, 0, 26),
+			FontFace = Theme.fonts.display,
+			TextSize = Theme.sizes.textLarge - 2,
+			Text = place.name,
+			Parent = frame,
+		})
+		local count = text({
+			Name = "Count",
+			Position = UDim2.fromOffset(10, ART_H + NAME_GAP + 26),
+			Size = UDim2.new(1, -20, 0, 18),
+			TextSize = Theme.sizes.textSmall,
+			TextColor3 = CREAM.subtext,
+			Text = if id == CannonLogic.TOWN then "Cafes and markets" else "",
+			Parent = frame,
+		})
+		if id ~= CannonLogic.TOWN then
+			-- #3961: the "5/10 cats" chip of the batch 3 mock (render shows its fill on open areas only)
+			count.AnchorPoint = Vector2.new(0.5, 0)
+			count.Position = UDim2.new(0.5, 0, 0, ART_H + NAME_GAP + 27)
+			count.Size = UDim2.fromOffset(96, 18)
+			count.BackgroundColor3 = CREAM.line
+			count.FontFace = Theme.fonts.bodyBold
+			count.TextColor3 = CREAM.text
+			Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = count })
+		end
+		-- F100: the camp extra's strip, shown by render when the area's extra is open
+		local extra: Frame = Create("Frame", {
+			Name = "Extra",
+			BackgroundColor3 = CREAM.line,
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(10, ART_H + NAME_GAP + 46),
+			Size = UDim2.new(1, -20, 0, EXTRA_H - 4),
+			Visible = false,
+			Parent = frame,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radiusSmall) }) })
+		local extraIcon = text({
+			Name = "Icon",
+			Position = UDim2.fromOffset(4, 0),
+			Size = UDim2.fromOffset(28, EXTRA_H - 4),
+			FontFace = Theme.fonts.display,
+			TextSize = 20,
+			TextTruncate = Enum.TextTruncate.None,
+			Parent = extra,
+		})
+		local extraName = text({
+			Name = "Name",
+			Position = UDim2.fromOffset(36, 2),
+			Size = UDim2.new(1, -66, 0, 17),
+			FontFace = Theme.fonts.bodyBold,
+			TextSize = Theme.sizes.textSmall,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = extra,
+		})
+		local extraState = text({
+			Name = "State",
+			Position = UDim2.fromOffset(36, 19),
+			Size = UDim2.new(1, -66, 0, 15),
+			TextSize = Theme.sizes.textTiny,
+			TextColor3 = CREAM.subtext,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = extra,
+		})
+		local extraDot: Frame = Create("Frame", {
+			Name = "Ready",
+			BackgroundColor3 = Theme.colors.red,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -6, 0.5, 0),
+			Size = UDim2.fromOffset(24, 24),
+			Visible = false,
+			Parent = extra,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		Outline.border(extraDot, 2)
+		text({
+			Name = "Mark",
+			Size = UDim2.fromScale(1, 1),
+			FontFace = Theme.fonts.display,
+			TextSize = Theme.sizes.textBody,
+			TextColor3 = Theme.colors.white,
+			TextTruncate = Enum.TextTruncate.None,
+			Text = "!",
+			Parent = extraDot,
+		})
+		-- #3082: Collect (in place of the red dot) or Open for the area's station; render sets the word
+		local collect = Button.new({
+			name = "Collect",
+			text = "Collect",
+			style = "secondary",
+			size = UDim2.fromOffset(BUTTON_W.collect, EXTRA_H - 4), -- the strip's full height: a 36 px tap with a mouse
+			anchorPoint = Vector2.new(1, 0.5),
+			position = UDim2.new(1, -3, 0.5, 0),
+			textSize = Theme.sizes.textSmall,
+			parent = extra,
+			onClick = function()
+				self:_collect(id)
+			end,
+		})
+		collect.instance.Visible = false
+		local launch = Button.new({
+			name = "Launch",
+			text = "Launch",
+			icon = Theme.icons.cannon,
+			style = "primary",
+			size = UDim2.new(1, -20, 0, 44),
+			anchorPoint = Vector2.new(0.5, 1),
+			position = UDim2.new(0.5, 0, 1, -LAUNCH_INSET),
+			textSize = Theme.sizes.textBody + 1,
+			parent = frame,
+			onClick = function()
+				self:_press(id)
+			end,
+		})
+		-- #4227: the Mythical and Secret cats out in the area now, over the picture's top right corner
+		local rare = if id ~= CannonLogic.TOWN
+			then RareBubbles.new(frame, UDim2.new(1, -6, 0, 6), 8)
+			else nil
+		self._cards[id] = {
+			frame = frame,
+			rare = rare,
+			pal = pal,
+			night = night,
+			nightLine = nightLine,
+			lock = lock,
+			tier = place.tier,
+			count = count,
+			extra = extra,
+			extraIcon = extraIcon,
+			extraName = extraName,
+			extraState = extraState,
+			extraDot = extraDot,
+			collect = collect,
+			collectWord = "collect",
+			collectedAt = -math.huge,
+			launch = launch,
+			buttonState = nil :: CannonLogic.ButtonState?,
+			pending = false,
+			breaking = false, -- #3884: its lock is breaking now
+		}
+	end
+end
+
+-- The strip's line for area `id`: its camp extra's, else its late station's (the Desert and the Ruins).
+function Cannon._line(self: any, id: string): CampExtrasLogic.Line?
+	local now = Workspace:GetServerTimeNow()
+	local station: CampExtrasLogic.Line? = MysticPoolLogic.pickerLine(self._traits, id)
+		or CampExtrasLogic.pickerLine(self._extras, id, now)
+		or LateStationsLogic.pickerLine(self._late, id)
+		or TicketBoothLogic.pickerLine(self._booth, id) -- #4061: the Water Park card's Ticket Booth
+		or DragonKeepLogic.pickerLine(self._keep, id) -- #4062: the Castle card's Dragon Keep
+		or FusionLogic.cannonLine(self._fusion, id, now) -- #4104: the Snowy Mountain card's Observatory
+	-- the Rummage Bin on its area's card (Derek 2026-11-12): the player's BinNextAt and the `alleyBin` switch
+	local bin = CampExtrasLogic.binLine(
+		id,
+		Players.LocalPlayer:GetAttribute(BIN_NEXT_AT),
+		now,
+		ReplicatedStorage:GetAttribute(BIN_FLAG) ~= false
+	)
+	return CampExtrasLogic.withBin(station, bin)
+end
+
+-- #4061: PlayerState.ticketBooth (nil or false while the booth is shut), for the Water Park card's strip.
+function Cannon.setBooth(self: any, booth: any)
+	self._booth = if type(booth) == "table" then booth else nil
+end
+
+-- #4104: PlayerState.fusion (nil or false while the Observatory is shut), for the Snowy Mountain card's strip.
+function Cannon.setFusion(self: any, fusion: any)
+	self._fusion = if type(fusion) == "table" then fusion else nil
+end
+
+-- #4062: PlayerState.dragon (nil or false while the Keep is shut), for the Castle card's strip.
+function Cannon.setKeep(self: any, keep: any)
+	self._keep = if type(keep) == "table" then keep else nil
+end
+
+-- #3196: PlayerState.traits (nil while the Mystic Pool is shut), for the Park card's strip.
+function Cannon.setTraits(self: any, traits: any)
+	self._traits = if type(traits) == "table" then traits else nil
+end
+
+-- #3082: the strip's button. Collect sends CollectCampExtra and rests while the server answers; Open brings up the
+-- station's own card in place of the picker.
+function Cannon._collect(self: any, id: string)
+	local card = self._cards[id]
+	local line: CampExtrasLogic.Line? = self:_line(id)
+	local action = CampExtrasLogic.remoteAction(line)
+	if card == nil or line == nil or action == nil then
+		return
+	end
+	if action == "open" then
+		local open: ((string) -> ())? = self._callbacks.open
+		if open ~= nil then
+			open(line.extraId)
+		end
+		return
+	end
+	if action == "rummage" then
+		local rummage: (() -> ())? = self._callbacks.rummage
+		if rummage ~= nil and os.clock() - card.collectedAt >= COLLECT_REST then
+			card.collectedAt = os.clock()
+			card.collect.instance.Visible = false
+			rummage()
+		end
+		return
+	end
+	local collect: ((string) -> ())? = self._callbacks.collect
+	if collect == nil or os.clock() - card.collectedAt < COLLECT_REST then
+		return
+	end
+	card.collectedAt = os.clock()
+	card.collect.instance.Visible = false
+	collect(line.extraId)
+end
+
+-- #5245 (Derek 2026-11-18: after the tame card's Nice "point towards cannon button so people click cannon button then
+-- jump into it", switch tameCannonPoint, Tier 1) and #5248 (Derek 2026-11-18: after the Tier 2 rank up "dim screen
+-- with an arrow at park. as soon as they click park drop the dim screen and arrow", switch parkLead, Tier 2 and up):
+-- the ringed Launch gets the dim and the arrow too, and they go the moment any Launch is pressed or the window shuts.
+function Cannon.spotOn(state: Types.PlayerState?): boolean
+	local tier = if state ~= nil and type(state.tier) == "number" then state.tier else 1
+	local key = if tier <= 1 then "tameCannonPoint" else "parkLead"
+	return ReplicatedStorage:GetAttribute("LiveFlag_" .. key) == true
+end
+
+function Cannon._dropSpot(self: any)
+	local spot = self._spot
+	if spot ~= nil then
+		self._spot = nil
+		spot.close()
+	end
+end
+
+-- #2915: the ring on `areaId`'s Launch, or none.
+function Cannon.setRing(self: any, areaId: string?)
+	if self._ring == areaId then
+		return
+	end
+	self._ring = areaId
+	self:_rerender()
+end
+
+-- #5517: the area card listed first, or none (the usual order)
+function Cannon.setFirst(self: any, areaId: string?)
+	if self._first == areaId then
+		return
+	end
+	self._first = areaId
+	self:_rerender()
+end
+
+-- F92: the gold "Sam is here" tag on the pal's area card, or none.
+function Cannon.setPal(self: any, areaId: string?, name: string?)
+	self._pal = if areaId ~= nil then { areaId = areaId, name = name or "Your pal" } else nil
+	self:_paintPal()
+end
+
+function Cannon._paintPal(self: any)
+	local pal: { areaId: string, name: string }? = self._pal
+	for id, card in self._cards do
+		local here = pal ~= nil and pal.areaId == id
+		card.pal.Visible = here
+		if pal ~= nil and here then
+			card.pal.Text = ("👋 %s is here"):format(pal.name)
+		end
+	end
+end
+
+-- F100: CampExtrasState, kept for the strips; render redraws them (once a second while the picker is open).
+function Cannon.setExtras(self: any, extras: Types.CampExtrasState?)
+	self._extras = extras
+	self:_rerender()
+end
+
+-- #2651 part 4: LateStationsState, kept for the Oasis Spa's and Relic Museum's strips.
+function Cannon.setLate(self: any, late: any)
+	self._late = late
+	self:_rerender()
+end
+
+Cannon.BUILD_AFTER = 9 -- #3722: seconds after the catalog arrives
+
+function Cannon.setCatalog(self: any, catalog: Types.Catalog)
+	self._catalog = catalog
+	-- #3722: the area cards are built after start-up, or at once when the window opens first
+	self._lateBuild = self._lateBuild
+		or LateBuild.new(Cannon.BUILD_AFTER, function()
+			self:_buildCards()
+			self:_paintPal()
+		end, function()
+			self:_rerender()
+		end)
+	self._lateBuild:queue()
+	self:_rerender()
+end
+
+function Cannon.setCannon(self: any, cannonId: string)
+	self._cannonId = cannonId
+	self:_rerender()
+end
+
+-- F66: false from dusk to sunrise.
+function Cannon.setAreasOpen(self: any, open: boolean)
+	self._areasOpen = open
+	self:_rerender()
+end
+
+function Cannon.setClock(self: any, phase: Types.ClockPhase?, phaseEndsAt: number?)
+	self._phase, self._phaseEndsAt = phase, phaseEndsAt
+	self:_rerender()
+end
+
+function Cannon._remaining(self: any): number?
+	local endsAt: number? = self._phaseEndsAt
+	if endsAt == nil then
+		return nil
+	end
+	return endsAt - Workspace:GetServerTimeNow()
+end
+
+function Cannon._press(self: any, destination: string)
+	if os.clock() < self._pendingUntil then
+		return
+	end
+	local card = self._cards[destination]
+	if card == nil or card.buttonState ~= "launch" then
+		return
+	end
+	self._pendingUntil = os.clock() + PENDING_SECONDS
+	self:_dropSpot() -- #5248: the press ends the dim and the arrow at once, before the flight
+	self:_rerender()
+	task.delay(PENDING_SECONDS, function()
+		if os.clock() >= self._pendingUntil then
+			self:_rerender()
+		end
+	end)
+	self._callbacks.launch(self._cannonId, destination)
+end
+
+function Cannon._rerender(self: any)
+	local state: Types.PlayerState? = self._state
+	if state then
+		self:render(state, self._carrying)
+	end
+end
+
+function Cannon.render(self: any, state: Types.PlayerState, carrying: boolean)
+	if self.frame.Visible and self._lateBuild ~= nil then
+		self._lateBuild:ensure()
+	end
+	self._state = state
+	self._carrying = carrying
+	local catalog: Types.Catalog? = self._catalog
+	if not catalog then
+		return
+	end
+	local areas: { Types.AreaDef } = catalog.areas or {}
+	local tier = state.tier or 1
+	-- #3884: a rank up since the picker last knew the tier queues each card it opened for the lock breaking. The
+	-- first synced state (it carries tutorialStep; the UI's placeholder does not) only sets where it starts.
+	if state.tutorialStep ~= nil then
+		local seen: number? = self._seenTier
+		if seen == nil then
+			self._seenTier = tier
+		elseif tier > seen then
+			for _, id in CannonLogic.unlocked(areas :: any, seen, tier) do
+				self._toBreak[id] = true
+			end
+			self._seenTier = tier
+		end
+	end
+	local pass = hasNightPass()
+	local closed = not NightPass.open(NightClock.areasOpen(self._areasOpen), pass)
+	local remaining = self:_remaining()
+	local dusk = not pass
+		and self._phase ~= nil
+		and remaining ~= nil
+		and NightClock.isDusk(self._phase :: NightClock.Phase, remaining, DUSK_SECONDS)
+	local pending = os.clock() < self._pendingUntil
+	local list = CannonLogic.cards(areas :: any, tier, self._cannonId)
+	local shown: { [string]: number } = {}
+	local lockedIds: { [string]: boolean } = {}
+	for index, destination in list do
+		shown[destination.id] = index
+		lockedIds[destination.id] = destination.locked == true
+	end
+	local tall = false
+	-- #4227: the wild Mythical and Secret cats out in each area now (the server's AreaRares)
+	local rares = RareBubbleLogic.decode(ReplicatedStorage:GetAttribute(RareBubbleLogic.ATTRIBUTE))
+	for id, card in self._cards do
+		local order = shown[id]
+		card.frame.Visible = order ~= nil
+		if order == nil then
+			StepTarget.ui(card.launch.instance, false)
+			continue
+		end
+		card.frame.LayoutOrder = if id == self._first then 0 else order
+		local locked = lockedIds[id]
+		local buttonState: CannonLogic.ButtonState =
+			CannonLogic.button(id, closed, dusk, carrying, locked)
+		card.night.Visible = buttonState == "night"
+		card.lock.Visible = locked or card.breaking == true or self._toBreak[id] == true -- #3884: until it breaks
+		if card.rare ~= nil then
+			card.rare:set(if locked then { m = 0, s = 0 } else RareBubbleLogic.counts(rares, id))
+		end
+		card.nightLine.Visible = ART_H >= 60 -- #2771: not in the phone's slim band
+		if id ~= CannonLogic.TOWN then
+			local counts = IndexRewards.counts(catalog, state, id)
+			-- #3961 (batch 3 mock): in the family look an open area's count is a chip, and a shut one says what waits
+			if locked then
+				card.count.Text = "New cats wait here"
+				card.count.BackgroundTransparency = 1
+				card.count.Size = UDim2.new(1, -20, 0, 18)
+			else
+				card.count.Text = ("%d/%d cats"):format(counts.found, counts.total)
+				card.count.BackgroundTransparency = 0
+				card.count.Size = UDim2.fromOffset(96, 18)
+			end
+		end
+		local line: CampExtrasLogic.Line? = if locked then nil else self:_line(id)
+		card.extra.Visible = line ~= nil
+		if line ~= nil then
+			tall = true
+			card.extraIcon.Text = line.icon
+			IconArt.setImage(card.extraIcon, LINE_IMAGES[line.extraId], 0.95) -- #3347: drawn, not the emoji
+			card.extraName.Text = line.name
+			card.extraState.Text = line.state
+			card.extraState.TextColor3 = if line.ready then CREAM.good else CREAM.subtext
+			card.extraState.FontFace = if line.ready then Theme.fonts.bodyBold else Theme.fonts.body
+			-- #3082: Collect in place of the dot (it rests a moment after a press, until the server's answer
+			-- refreshes the strip), or Open for a station with its own card (green words say when something waits)
+			local action = CampExtrasLogic.remoteAction(line)
+			local rummageOn: (() -> boolean)? = self._callbacks.rummageOn
+			if
+				(action == "collect" and self._callbacks.collect == nil)
+				or (action == "open" and self._callbacks.open == nil)
+				or (
+					action == "rummage"
+					and (self._callbacks.rummage == nil or rummageOn == nil or not rummageOn())
+				)
+			then
+				action = nil
+			end
+			local resting = (action == "collect" or action == "rummage")
+				and os.clock() - card.collectedAt < COLLECT_REST
+			local button = action ~= nil
+			local width = BUTTON_W[action or "collect"]
+			if action ~= nil and card.collectWord ~= action then
+				card.collectWord = action
+				card.collect:setText(CampExtrasLogic.REMOTE_WORDS[action])
+				card.collect.instance.Size = UDim2.fromOffset(width, EXTRA_H - 4)
+			end
+			card.collect.instance.Visible = button and not resting
+			card.extraDot.Visible = line.ready and not (button and not resting)
+			card.extraName.Size = UDim2.new(1, if button then -(width + 42) else -66, 0, 17)
+			card.extraState.Size = UDim2.new(1, if button then -(width + 42) else -66, 0, 15)
+		end
+		local enabled = buttonState == "launch" and not pending
+		if card.buttonState ~= buttonState then
+			card.buttonState = buttonState
+			card.launch:setText(
+				if buttonState == "locked"
+					then ("Opens at Tier %d"):format(card.tier :: number)
+					elseif buttonState == "night" then Theme.icons.moon .. " Sunrise"
+					elseif buttonState == "dusk" then "Night soon"
+					else "LAUNCH"
+			)
+			if buttonState == "locked" then
+				-- #3961 (Studio look): a shut card shows only the lock, not the launch burst beside it
+				card.launch.label.Text = ("%s Opens at Tier %d"):format(
+					Theme.icons.lock :: string,
+					card.tier :: number
+				)
+			end
+		end
+		if card.enabled ~= enabled then
+			card.enabled = enabled
+			card.launch:setEnabled(enabled)
+		end
+		local ringed = enabled and id == self._ring
+		-- #5599 (rankPicker, Derek 2026-11-20: "point at the park after unlock so they know"): the ringed Park Launch
+		-- is pointed at on the new start too (shared/FreeStart.LOUD_ATTR)
+		local loud = ringed
+			and id == "park"
+			and ReplicatedStorage:GetAttribute("LiveFlag_rankPicker") == true
+		card.launch.instance:SetAttribute("PointEvenQuiet", if loud then true else nil)
+		local dimmed = ringed
+			and self._open == true
+			and os.clock() >= self._pendingUntil -- not again in the beat after a press
+			and Cannon.spotOn(self._state)
+		-- #2915; Sync on v947: a dimmed Launch keeps the spotlight's own glow, as this render's StepTarget off cleared
+		-- it a frame after it showed
+		if not dimmed then
+			StepTarget.ui(card.launch.instance, ringed)
+		end
+		if dimmed and (self._spot == nil or self._spot.id ~= id) then
+			self:_dropSpot()
+			self._spot = {
+				id = id,
+				close = SpotlightGuide.show(card.launch.instance, "", nil, false, false),
+			}
+		elseif not ringed and self._spot ~= nil and self._spot.id == id then
+			self:_dropSpot()
+		end
+	end
+	if tall ~= self._tall then
+		self._tall = tall
+		-- #3961 (Studio look, #3990): in the family look the strip keeps 8 px or more clear of LAUNCH
+		local roomy = if tall then EXTRA_ROOM else 0
+		self._layout.CellSize =
+			UDim2.fromOffset(CARD.X, CARD.Y + (if tall then EXTRA_H else 0) + roomy)
+	end
+	local notice = CannonLogic.notice(closed, dusk, carrying, if closed then remaining else nil)
+	local plain = if self._cannonId == CannonLogic.TOWN
+		then "Pick where to fly"
+		else "Fly home to " .. CannonLogic.TOWN_NAME .. " or on to another area"
+	self._panel:setTitle("Cat Cannon", notice or plain)
+end
+
+-- #3884: the lock breaking on card `id`, starting `wait` seconds in: the padlock wiggles (0.9 s), pops open and
+-- floats off with "Unlocked!", a sparkle burst and the gate sound; the cover fades (0.8 s) and the card bounces. The
+-- cover is put back as it was for the card, hidden now its area is open. Closed before it starts, it just opens.
+-- Review-QA's Studio look: the first wiggle read small, so it swings wider and the padlock punches in bigger.
+local WIGGLE = TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 2, true)
+local WIGGLE_DEGREES = 22
+local PUNCH = 1.6 -- the padlock's size as the wiggle starts, settling back to its own
+local BOUNCE = 0.8 -- the card's size as its cover goes, popping back to its own
+function Cannon._breakLock(self: any, id: string, wait: number)
+	local card = self._cards[id]
+	if card == nil then
+		return
+	end
+	card.breaking = true
+	local lock: Frame = card.lock
+	local padlockInstance = lock:FindFirstChild("Padlock")
+	local lineInstance = lock:FindFirstChild("Line")
+	local padlock: TextLabel? = nil
+	if padlockInstance ~= nil and padlockInstance:IsA("TextLabel") then
+		padlock = padlockInstance :: TextLabel
+	end
+	local line: TextLabel? = nil
+	if lineInstance ~= nil and lineInstance:IsA("TextLabel") then
+		line = lineInstance :: TextLabel
+	end
+	local home = if padlock ~= nil then padlock.Position else UDim2.new()
+	local function finish()
+		card.breaking = false
+		lock.BackgroundTransparency = 0.25
+		if padlock ~= nil then
+			padlock.Rotation = 0
+			padlock.Position = home
+			padlock.TextTransparency = 0
+			padlock.Text = Theme.icons.lock
+		end
+		if line ~= nil then
+			line.TextTransparency = 0
+			line.Text = ("Opens at Tier %d"):format(card.tier)
+		end
+		self:_rerender()
+	end
+	task.delay(wait, function()
+		if not self._open or not card.frame.Visible then
+			finish()
+			return
+		end
+		if GuiService.ReducedMotionEnabled then
+			Sound.play("gateOpen")
+			finish()
+			return
+		end
+		if padlock ~= nil then
+			padlock.Rotation = -WIGGLE_DEGREES
+			Tween.to(padlock, WIGGLE, { Rotation = WIGGLE_DEGREES })
+			Tween.popIn(padlock, PUNCH)
+		end
+		task.wait(0.9)
+		Sound.play("gateOpen")
+		pcall(function()
+			local burst: any = require(script.Parent.Parent.Parent.Effects.StoreBurst)
+			burst.play(card.frame, "pass")
+		end)
+		if padlock ~= nil then
+			padlock.Rotation = 0
+			padlock.Text = Theme.icons.unlock
+			Tween.to(
+				padlock,
+				TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ Position = home - UDim2.fromOffset(0, 24), TextTransparency = 1 }
+			)
+		end
+		if line ~= nil then
+			line.Text = "Unlocked!"
+		end
+		task.wait(0.4)
+		local fade = TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		Tween.to(lock, fade, { BackgroundTransparency = 1 })
+		if line ~= nil then
+			Tween.to(
+				line,
+				TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 0.5),
+				{
+					TextTransparency = 1,
+				}
+			)
+		end
+		task.wait(1.3)
+		lock.Visible = false
+		Tween.popIn(card.frame, BOUNCE)
+		task.wait(0.4)
+		finish()
+	end)
+end
+
+-- While the picker is open the sunrise countdown and the dusk warning move on their own, once a second.
+function Cannon.opened(self: any)
+	self._open = true
+	self._tick += 1
+	local tick = self._tick
+	self:_rerender()
+	-- #3884: the cards a rank up opened break their locks, one after another
+	local queued: { string } = {}
+	for _, destination in
+		CannonLogic.cards((self._catalog and self._catalog.areas or {}) :: any, 99, self._cannonId)
+	do
+		if self._toBreak[destination.id] then
+			table.insert(queued, destination.id)
+		end
+	end
+	for index, id in queued do
+		self._toBreak[id] = nil
+		self:_breakLock(id, 0.3 + (index - 1) * 0.5)
+	end
+	task.spawn(function()
+		while self._open and self._tick == tick do
+			task.wait(1)
+			if self._open and self._tick == tick then
+				self:_rerender()
+			end
+		end
+	end)
+end
+
+function Cannon.closed(self: any)
+	self._open = false
+	self:_dropSpot()
+	self._tick += 1
+end
+
+function Cannon.result(self: any, ok: boolean, destination: string?)
+	if ok then
+		return
+	end
+	self._pendingUntil = 0
+	self:_rerender()
+	local card = if destination then self._cards[destination] else nil
+	if card then
+		local button: Frame = card.launch.instance
+		button.Rotation = -8
+		Tween.to(
+			button,
+			TweenInfo.new(0.45, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out),
+			{ Rotation = 0 }
+		)
+	end
+end
+
+function Cannon.destroy(self: any)
+	local passConnection: RBXScriptConnection? = self._passConnection
+	if passConnection then
+		passConnection:Disconnect()
+	end
+	self._open = false
+	self._tick += 1
+	for _, card in self._cards do
+		card.launch:destroy()
+		card.collect:destroy()
+	end
+	self._panel:destroy()
+end
+
+return Cannon
