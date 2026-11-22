@@ -1,0 +1,1293 @@
+"""Build every Cat Cafe asset: mesh, FBX + GLB export, preview PNGs, manifest.
+
+Run with the bpy module:      python build_all.py [--render] [--scenes] [--only Tabby,Counter]
+Run inside Blender headless:  blender -b -P build_all.py -- [--render] [--scenes]
+Run inside the Blender GUI:   Scripting tab, open this file, Run Script (add --no-reset
+                               to keep your current scene; objects appear at the origin).
+
+Outputs (relative to the repo root, override with --out and --docs):
+  assets/cat-cafe/exports/<Name>.fbx and .glb, CatCafe_Palette.png, CatCafe_VFX_ShinySparkle.png,
+  CatCafe_Tex_LeafLitter.png, manifest.json, gates.md
+  assets/cat-cafe/rbx/<Name>.model.json (the same model as Roblox Parts, Rojo synced into ReplicatedStorage.Assets)
+  docs/concepts/cat-cafe/previews/<Name>.png, views/<Name>.png (five-view sheet), contact sheets, vignettes
+
+Every asset runs through gates.check (budget, transforms, material, UVs, naming as FAIL; pivot
+and centering as WARN). The build exits 1 on any FAIL; read exports/gates.md for the reasons.
+"""
+
+import argparse
+import json
+import math
+import os
+import tempfile
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+import bpy  # noqa: E402
+from mathutils import Euler, Matrix, Vector  # noqa: E402
+
+import accessories  # noqa: E402
+import alley  # noqa: E402
+import alleyway  # noqa: E402
+import alleyblockers  # noqa: E402
+import backdrop  # noqa: E402
+import wildbackdrop  # noqa: E402
+import luckycat  # noqa: E402
+import welcomearch  # noqa: E402
+import campextras  # noqa: E402
+import campgrowth  # noqa: E402
+import nooks  # noqa: E402
+import campstations  # noqa: E402
+import arcadecabinet  # noqa: E402
+import townsfolk  # noqa: E402
+import leaderboards  # noqa: E402
+import rally  # noqa: E402
+import menu  # noqa: E402
+import rallycrate  # noqa: E402
+import eventdecor  # noqa: E402
+import camps  # noqa: E402
+import cannon  # noqa: E402
+import areakit  # noqa: E402
+import areas  # noqa: E402
+import bellhop  # noqa: E402
+import feedbackstand  # noqa: E402
+import shopcats  # noqa: E402
+import signstyles  # noqa: E402
+import boards  # noqa: E402
+import cats  # noqa: E402
+import coins  # noqa: E402
+import common  # noqa: E402
+import crate_decor  # noqa: E402
+import crates  # noqa: E402
+import customers  # noqa: E402
+import potions  # noqa: E402
+import mystery  # noqa: E402
+import collector  # noqa: E402
+import townbuildings  # noqa: E402
+import decor  # noqa: E402
+import furniture  # noqa: E402
+import gold  # noqa: E402
+import goldtone  # noqa: E402
+import gates  # noqa: E402
+import items  # noqa: E402
+import lawn  # noqa: E402
+import style_icons  # noqa: E402
+import neighbourhood  # noqa: E402
+import night  # noqa: E402
+import doors  # noqa: E402
+import dragon  # noqa: E402
+import doorsets  # noqa: E402
+import market  # noqa: E402
+import daycart  # noqa: E402
+import mysterymarket  # noqa: E402
+import mysteryitems  # noqa: E402
+import desertset  # noqa: E402
+import ruinsset  # noqa: E402
+import snowyset  # noqa: E402
+import waterparkset  # noqa: E402
+import castleset  # noqa: E402
+import gardendecor  # noqa: E402
+import grandopening  # noqa: E402
+import gardennursery  # noqa: E402
+import mysticpool  # noqa: E402
+import moneybag  # noqa: E402
+import thanksboard  # noqa: E402
+import npc  # noqa: E402
+import palette  # noqa: E402
+import park  # noqa: E402
+import parkset  # noqa: E402
+import parkf85  # noqa: E402
+import neighbourhoodf85  # noqa: E402
+import woodsf85  # noqa: E402
+import sewerf85  # noqa: E402
+import woodsset  # noqa: E402
+import yardfence  # noqa: E402
+import plotsizes  # noqa: E402
+import sewerset  # noqa: E402
+import neighbourhoodset  # noqa: E402
+import pitysign  # noqa: E402
+import updateposter  # noqa: E402
+import decorstand  # noqa: E402
+import mysterysign  # noqa: E402
+import ringicons  # noqa: E402
+import plot  # noqa: E402
+import poses  # noqa: E402
+import props  # noqa: E402
+import riftrun  # noqa: E402
+import rbx_export  # noqa: E402
+import spot_clear  # noqa: E402
+import storepacks  # noqa: E402
+import harvestoutfits  # noqa: E402
+import harvestdecor  # noqa: E402
+import harvestset  # noqa: E402
+import d1props  # noqa: E402
+import advent  # noqa: E402
+import picnicprops  # noqa: E402
+import snowglobeset  # noqa: E402
+import cherryset  # noqa: E402
+import cherryitems  # noqa: E402
+import christmasitems  # noqa: E402
+import waterparkshelf  # noqa: E402
+import wallperch  # noqa: E402
+import seasondecor  # noqa: E402
+import sewer  # noqa: E402
+import themes  # noqa: E402
+import spinwheel  # noqa: E402
+import square  # noqa: E402
+import stations  # noqa: E402
+import street  # noqa: E402
+import vfx  # noqa: E402
+import floortex  # noqa: E402
+import woods  # noqa: E402
+
+ROOT = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+MODULES = [cats, gold, npc, furniture, decor, alley, park, items, accessories, street, areas, plot, alleyway, alleyblockers,
+           boards, night, stations, coins, market, thanksboard, crate_decor, neighbourhood, woods, sewer, spinwheel, square, parkset,
+           parkf85, woodsset, sewerset, neighbourhoodset, neighbourhoodf85, woodsf85, sewerf85, doors, doorsets, crates, potions, mystery, collector,
+           townbuildings, customers, cannon, camps, lawn, backdrop, wildbackdrop, luckycat, welcomearch, campextras,
+           leaderboards, rally, rallycrate, menu, style_icons, yardfence, bellhop, shopcats, signstyles,
+           gardennursery, campstations, daycart, pitysign, seasondecor, themes, gardendecor, grandopening, ringicons, eventdecor,
+           mysterymarket, mysteryitems, desertset, ruinsset, snowyset, waterparkset, castleset, campgrowth, townsfolk, nooks, feedbackstand,
+           arcadecabinet, mysticpool, moneybag, riftrun, storepacks, harvestoutfits, harvestdecor, harvestset, snowglobeset, christmasitems, cherryset, cherryitems, dragon,
+           updateposter, decorstand, mysterysign,
+           waterparkshelf, wallperch, plotsizes, d1props, advent, picnicprops]
+
+PIVOT_NOTES = {
+    **{n: "at its feet on the floor, front -Z" for n in townsfolk.ASSETS},
+    **{n: "the middle of the nook's floor, front -Z (its gate and stepping stones); its back to a hedge or the set's edge"
+       for n in nooks.ASSETS},
+    **{n: "the area's camp extra spot on the camp's ground (Layout.campExtras; the Desert's and Ruins' at (20, 3.5 in "
+          "from the gate line)), front -Z, no turn: placed exactly like the station" for n in campgrowth.ASSETS},
+    **{"CatCafe_Menu_" + n: "the plate's base centre, front -Z; the plate is the child Model <name>_Plate (hide it and "
+                            "pivot CatCafe_Menu_GoldPlate here for the rich customer)" for n in menu.ITEMS},
+    "CatCafe_Menu_GoldPlate": "the base centre, the same as an item's _Plate",
+    "CatCafe_Menu_Tray": "the underside centre on a cat's Carry Attachment (it rests on the ear tips); a dish's or the "
+                         "coin bag's pivot goes on its Item Attachment",
+    "CatCafe_Menu_CoinBag": "the base centre, on the tray's Item Attachment like a dish (a round bag cannot rest on the "
+                            "ear tips by itself)",
+    menu.OVEN: "the base centre behind the counter (Layout.cafe), front -Z; _Door pivots on its bottom hinge",
+    "CatCafe_Square_RallyBoard": "the base centre between its posts on the square's floor (world y 0.1), front -Z; "
+                                 "rally.SPOT (15, 0.1, 12) turned 30, facing the player spawn",
+    **{n: "On the ground under the middle of the span, as the edge bunting it stands in for during the Rally: the "
+          "same placements" for n in ("CatCafe_Square_RallyBunting", "CatCafe_Square_RallyBuntingShort")},
+    "CatCafe_Town_LeaderboardRow": "the plinth's base centre on the paving (world y 0.1), front -Z toward the Cat "
+                                   "Cannon; Layout.leaderboards (40, 0.1, 0) turned 90, at the lane's east end",
+    "CatCafe_Town_WelcomeArch": "the opening's base centre on the street top (world y 0.1), front -Z toward the "
+                                "Town Square; Layout.townEnds at (0, -123) turned 180 and (0, 123) unturned",
+    **{f"CatCafe_Plot_LuckyCat_{n}": "the plinth's base centre on the plot floor, front -Z to the street; plot space "
+                                      "(-5.1, 0, -16.1), left of the door (luckycat.SPOT)" for n in range(6)},
+    "CatCafe_Square_Paving": "The square's centre on its floor top (0, 0.1, 0): the grout slab runs 0.4 below the "
+                             "pivot, the stones 0.02 above it. Square space is world space; place with no turn.",
+    "CatCafe_Square_Bunting": "On the ground under the middle of the span; its ends sit inside two lamps 22.5 "
+                              "apart.",
+    "CatCafe_Square_BuntingShort": "On the ground under the middle of the span; its ends sit inside two lamps 17 "
+                                   "apart (across each end of the lane).",
+    "CatCafe_Square_Cannon": "The plinth's base centre on the square's floor (0, 0.1, 0), placed with no turn, front "
+                             "-Z (south). The _Turret pivot is the turntable's top centre, the barrel at rest "
+                             "along +Z.",
+    "CatCafe_Square_LandingPad": "The pad's centre on the floor top: (0, 0.1, -16.5) with no turn, toes toward the "
+                                 "cannon (+Z).",
+    **{n: "The area's centre on its floor, -Z toward the camp: place it with the area's set CFrame."
+       for n in camps.ASSETS},
+    **{n: "The base centre on the camp's floor; -Z toward the camp's back wall, the barrel at rest along +Z over the "
+          "area. The _Turret pivot is the turntable's top centre." for n in cannon.ASSETS if "_Camp_" in n},
+    "CatCafe_Furniture_WallShelf": "wall: back-bottom center",
+    "CatCafe_Decor_WindowPlants": "wall: back-bottom center",
+    "CatCafe_Decor_NeonSign": "wall: back-bottom center",
+    "CatCafe_Decor_MenuBoard": "wall: back-bottom center",
+    "CatCafe_Decor_MuralPrint": "wall: back-bottom center",
+    "CatCafe_Decor_HangingLamp": "ceiling hook (geometry hangs below the pivot)",
+    "CatCafe_Decor_DoorSign": "hook (geometry hangs below the pivot)",
+    "CatCafe_Decor_StringLights": "left end of the strand seen from the front; it runs to the right (Roblox -X) and sags below the pivot",
+    "CatCafe_Alley_ShopWindow": "wall: back-bottom center",
+    **{f"CatCafe_Item_Net_L{n}": "grip end of the pole; the pole runs forward (Roblox -Z)" for n in (1, 2, 3, 4, 5, 6)},
+    "CatCafe_Accessory_Glasses": "attachment point (see attach)",
+    "CatCafe_Accessory_BowTie": "attachment point (see attach)",
+    "CatCafe_Accessory_Apron": "attachment point (see attach)",
+    "CatCafe_Accessory_Hat": "attachment point (see attach)",
+    "CatCafe_Accessory_LeafBeret": "attachment point: the walking head's Hat slot (see attach)",
+    "CatCafe_Accessory_AcornHairClip": "attachment point: the walking head's Hat slot; the clip sits by the right ear",
+    "CatCafe_Accessory_MushroomCap": "attachment point: the walking head's Hat slot (see attach)",
+    "CatCafe_Accessory_LeafCrown": "attachment point: the head top's middle (Outfit_LeafCrown, the Hat slot's spot); "
+                                   "the ring sits 0.03 back of it with gaps at the sides for the ears",
+    "CatCafe_Accessory_ReadingGlasses": "attachment point: the walking head's Glasses slot (see attach)",
+    **{f"CatCafe_Accessory_TailBow{c}": f"#2109: the middle of the band, on the tail's axis at Outfit_TailBow (in the Tail "
+                                        f"part, near the tip); the tail runs along the bow's +Y (Roblox -Z), the knot "
+                                        f"faces +Z (Roblox +Y). {w} cut. Weld or follow the Tail, not the Body"
+       for c, w in (("", "Sitting and working"), ("_Walk", "Walking"))},
+    "CatCafe_Accessory_TinyLantern": "the walking cat's back slot (TinyLantern in accessories.walk_slots); "
+                                     "+Z runs back along the spine",
+    "CatCafe_Accessory_TinyLantern_Sit": "the sitting and working cats' Outfit_TinyLantern on the upper back "
+                                         "(accessories.LANTERN_SIT_AT); +Z runs back from the coat",
+    "CatCafe_Accessory_Sash": "attachment point (see attach_upright)",
+    "CatCafe_Accessory_PartyHat": "attachment point (see attach_upright)",
+    **{f"CatCafe_Accessory_{n}_Walk": "the walking cat's Outfit_<Piece> slot on the back's middle line under the back "
+                                       "of the head; +Z runs back along the spine. CatDress uses this version on a "
+                                       "walking model (no _Sit)" for n in ("Vest", "Sash", "Apron")},
+    "CatCafe_Neighbourhood_Set": "area centre on the floor, gate side -Z: turn it so -Z faces the gate (areakit)",
+    "CatCafe_Woods_Set": "area centre on the floor, gate side -Z: turn it so -Z faces the gate (areakit)",
+    "CatCafe_Sewer_Set": "area centre on the floor, gate side -Z: turn it so -Z faces the gate (areakit)",
+    "CatCafe_Park_Set": "area centre on the floor, gate side -Z: turn it so -Z faces the gate (areakit)",
+    "CatCafe_Park_SetF85": "the wild part's centre on the floor, gate side -Z toward the camp (areakit, F85)",
+    "CatCafe_Neighbourhood_SetF85": "the wild part's centre on the floor, gate side -Z toward the camp (areakit, F85)",
+    "CatCafe_Woods_SetF85": "the wild part's centre on the floor, gate side -Z toward the camp (areakit, F85)",
+    "CatCafe_Sewer_SetF85": "the wild part's centre on the floor, gate side -Z toward the camp (areakit, F85)",
+    "CatCafe_Desert_Set": "the wild part's centre on the floor, camp side -Z (areakit; Tier 6)",
+    "CatCafe_Snowy_Set": "the wild part's centre on the floor, camp side -Z (areakit; Tier 8)",
+    "CatCafe_WaterPark_Set": "the wild part's centre on the floor, camp side -Z (areakit; Tier 9)",
+    "CatCafe_Castle_Set": "the wild part's centre on the floor, camp side -Z (areakit; Tier 10)",
+    "CatCafe_Ruins_Set": "the wild part's centre on the floor, camp side -Z (areakit; Tier 7)",
+    "CatCafe_Woods_SetV32": "area centre on the floor, gate side -Z: turn it so -Z faces the gate (areakit)",
+    "CatCafe_Sewer_SetV32": "area centre on the floor, gate side -Z: turn it so -Z faces the gate (areakit)",
+    "CatCafe_Neighbourhood_SetV32": "area centre on the floor, gate side -Z: turn it so -Z faces the gate (areakit)",
+    "CatCafe_Park_RescueTree": "base center; the Branch pivots at its root on the trunk (part_pivots_roblox)",
+    **{f"CatCafe_Plot_Cafe_{c}": "Plot.cframe: floor top centre of the cafe, front -Z to the street" for c in plot.COLOURS},
+    "CatCafe_Plot_Interior": "Plot.cframe: floor top centre of the cafe",
+    "CatCafe_Plot_ForRent": "Plot.cframe: floor top centre of the cafe",
+    **{f"CatCafe_Plot_Tier{n}": "Plot.cframe: floor top centre of the cafe" for n in range(1, 6)},
+    **{n: "wall: back plane at the bottom centre; -Z faces into the alley" for n in
+       ("CatCafe_Alley_WallWindows", "CatCafe_Alley_WallDoor", "CatCafe_Alley_FireEscape", "CatCafe_Alley_Mural")},
+    "CatCafe_Alley_ArchStreet": "base centre of the 36 stud opening; -Z faces the street",
+    "CatCafe_Alley_Arch": "base centre of the 26 stud opening; -Z faces the back alley",
+    **{f"CatCafe_{a}_Gate": "base centre of the opening; -Z faces the side players come from" for a in
+       ("Park", "Neighbourhood", "Woods", "Sewer")},
+    "CatCafe_Park_GateF85": "base centre of the 24 stud opening; -Z faces the camp (F85)",
+    "CatCafe_Neighbourhood_GateF85": "base centre of the 24 stud opening; -Z faces the camp (F85)",
+    **{n: f"the pivot of {h}: place it there with no offset" for n, h in night.HOSTS.items()},
+    "CatCafe_Alley_NightFenceSegment": "base centre of the 8 stud piece; -Z faces the cafe side",
+    "CatCafe_Plot_BackDoorClosed": "Plot.cframe: floor top centre of the cafe",
+    "CatCafe_Plot_BackDoor": "Plot.cframe: floor top centre of the cafe; the _Leaf pivot is the hinge",
+    "CatCafe_Street_CodesCat": "base centre; the desk front (-Z) faces the players",
+    "CatCafe_Street_FishMarket": "base centre; the counter front (-Z) faces the players",
+    daycart.NAME: "base centre; the display front (-Z) faces the players",
+    mysterymarket.NAME: "base centre; the counter (-Z) faces the players",
+    mysteryitems.BACKPACK: "the middle of the pack's back (wall: the strap side at +Z, the front -Z); the _Flap's "
+                           "pivot is its hinge",
+    mysteryitems.LONG_NET: "the middle of its bounding box's bottom; the net faces -Z",
+    mysteryitems.SPEED_SHOES: "the middle of the display mat's underside, toes at -Z; each child Model (_Left, _Right) "
+                              "pivots at the middle of its foot's underside",
+    pitysign.NAME: "the base centre between its posts on the square's floor (world y 0.1), front -Z; "
+                   "pitysign.SPOT, facing the player spawn",
+    updateposter.NAME: "the base centre between its posts on the square's floor (world y 0.1), front -Z; "
+                       "updateposter.SPOT, facing the player spawn",
+    decorstand.NAME: "the base centre on the square's floor (world y 0.1), front -Z; decorstand.SPOT, beside the "
+                     "Golden Fish Market, facing the player spawn",
+    mysterysign.NAME: "the base centre between its posts on the square's floor (world y 0.1), front -Z; "
+                      "mysterysign.SPOT, beside the Mystery Market wagon, facing the player spawn",
+    campstations.PIC: "the base centre on the camp's ground, front -Z, no turn; the Picnic Basket's spot "
+                      "(Layout.campExtras.park, Park set space)",
+    campstations.YARD: "the base centre on the camp's ground, front -Z, no turn; the Yard Sale's spot "
+                       "(Layout.campExtras.neighbourhood, Neighbourhood set space)",
+    **{n: "the base centre on the camp's ground, front -Z, no turn; the Fish Pond's spot (Layout.campExtras.woods, "
+          "Woods set space)" for n in (campstations.HUT, campstations.HUT + "_Gold")},
+    campstations.SPA: "the base centre on the camp's ground, front -Z, no turn; the Desert camp's station spot "
+                      "(Layout.campExtras.desert, Desert set space)",
+    campstations.SPA_TOWEL: "the middle of its underside, on top of a soaking cat's head",
+    campstations.MUSEUM: "the base centre on the camp's ground, front -Z, no turn; the Ruins camp's station spot "
+                         "(Layout.campExtras.ruins, Ruins set space)",
+    feedbackstand.NAME: "the base centre on the Town Square's paving, the post box's slot and the board's words (-Z) "
+                        "toward the players; placed by Gameplay (#3066)",
+    campstations.BIN: "the base centre on the ground, front -Z (the paw print), no turn; at the Alleyway camp "
+                      "within 15 studs of its pad (#3050)",
+    arcadecabinet.NAME: "the base centre on the Town Square's paving, the screen and the control panel (-Z) toward "
+                        "the players; placed by Gameplay (#3062)",
+    campstations.LOST: "the base centre on the camp's ground, front -Z, no turn; the Lost and Found's spot "
+                       "(Layout.campExtras.sewer, Sewer set space), its back wall toward the gate line",
+    moneybag.NAME: "the base centre on the table top (or the floor), front -Z: the coin faces the walk-up side",
+    mysticpool.NAME: "the base centre on the camp's ground, front -Z, no turn; the Picnic station's spot "
+                     "(Layout.campExtras.park), so Gameplay swaps the asset name when the traits flag goes on",
+    gardennursery.NAME: "the base centre on the camp's ground, the bench front (-Z) toward the players; Park set space "
+                        "(Layout.campExtras' space) at gardennursery.SPOT (34, 0, -166) turned 90, facing the pad",
+    "CatCafe_Street_ThanksBoard": "base centre; the Screen's Front (-Z) face looks at the players",
+    "CatCafe_Prop_FishCoin": "base centre: the coin stands on its rim, the cat face toward -Z; spin it about Y",
+    "CatCafe_Plot_GrandOpeningRibbon": "the Plot pivot like a sign style (floor top centre, -Z the street); children "
+                                       "_RibbonL (x > 0) and _RibbonR (x < 0, with the pennant) pivot on their "
+                                       "rosettes (x -+8, y 10.3): swing each about its Z axis to drop it",
+    "CatCafe_Plot_GrandOpeningBunting": "the Plot pivot like a sign style; children _LeftBalloons and _RightBalloons "
+                                        "pivot on their ties beside the door (x +-4.8, y 6.4): wobble them there",
+}
+STUDIO_NOTES = {
+    **{n: "#2687 townsfolk cat (an NPC, not in the collection): sit it on a camp growth model's Townsfolk_<n> "
+          "Attachment, feet on the floor. Its pieces are child Models pivoted at their joints (part_pivots_roblox), "
+          "the eyes, ears and hat (_Prop) inside the Head, for the idle and greet loops. Nothing collides."
+       for n in townsfolk.ASSETS},
+    **{n: "#2687 camp growth: show it (client side) once the player's tier opens the area, at Layout.campExtraAt with "
+          "the camp's turn, like the station. _Bulbs are the lanterns (lit at night), _Decor the table's jars and the "
+          "lantern wire; the rest collides. Attachments Townsfolk_1..3: where a townsfolk cat sits, facing the camp."
+       for n in campgrowth.ASSETS},
+    **{n: "#2687 hidden nook: show it (client side) once the player's tier opens the area's station, its back to the "
+          "set's edge, its stones toward a path. _Decor (the floor patch, stepping stones and flowers) doesn't collide; the "
+          "rest does. The gate's leaves are the child Models _GateL and _GateR, closed, pivoted on their hinges: open "
+          "them by turning -100 and +100 degrees about Y. Attachments RescueSpot (the trap's place, 3 x 3 kept clear) "
+          "and PathEnd (the last stone)."
+       for n in nooks.ASSETS},
+    "CatCafe_Decor_NeonSign": "Tube: Material Neon, add PointLight (neon_pink). Board stays SmoothPlastic.",
+    "CatCafe_Decor_FishTank": "Glass: Transparency 0.5. Water: Transparency 0.3, Material Glass.",
+    "CatCafe_Decor_HangingLamp": "Bulb: Material Neon + PointLight 255,214,170 range 14.",
+    "CatCafe_Alley_StreetLamp": "Bulb: Material Neon + SpotLight pointing down, warm.",
+    "CatCafe_Park_Fountain": "Water: Transparency 0.3. Optional ParticleEmitter at the top ball.",
+    **{f"CatCafe_{a}_Gate": "Area gate. Bars (ForceField, directly under the gate) fills the opening up to 12 studs: "
+                            "keep it solid and Transparency 0.35 below the tier, CanCollide false and fade it once open. "
+                            "Requirement SurfaceGui on the -Z face of the part named SignBoard (10 x 2.5). "
+                            "Turn the Park, Woods and Sewer gates 180 degrees so -Z faces the street or back alley."
+       for a in ("Park", "Neighbourhood", "Woods", "Sewer")},
+    "CatCafe_Alley_ArchStreet": "Over the one-lane Alleyway's way out of the camp, at x 0 on the camp line turned 180. "
+                                "Posts collide; THE ALLEYWAY reads from both faces.",
+    "CatCafe_Alley_Arch": "Over each back alley's way out of the F84 camp. Posts collide; THE ALLEYWAY reads from both "
+                          "faces.",
+    **{n: "Against the inner face of an alley wall, -Z into the alley; 30 wide, taller than the wall. _Pane parts glow "
+          "at night." for n in ("CatCafe_Alley_WallWindows", "CatCafe_Alley_WallDoor", "CatCafe_Alley_Mural")},
+    "CatCafe_Alley_FireEscape": "As the other wall pieces. Landings and the ladder rungs collide: landing_1 (top 9.35) "
+                                "is reachable from CatCafe_Alley_CrateStack (top 7.7) placed just past its open left end "
+                                "(local x -8) with the tall column toward it, or up the ladder at x 5.5; stairs lead to "
+                                "landing_2 (17.35). See ledges_roblox.",
+    "CatCafe_Alley_CrateStack": "Solid crates in steps of 2.6 (tops 0.5, 2.5, 5.1, 7.7 from -X to +X).",
+    "CatCafe_Alley_LaundryLine": "Poles collide, the line and clothes (_Decor) do not. Lines at 9.5 to 10.5 studs.",
+    "CatCafe_Alley_StringLightsLong": "Poles 28 apart, so it spans a 30 stud back alley; _Bulbs glow at night.",
+    "CatCafe_Alley_StringLightsWide": ("Poles 88 apart at the building fronts, so it spans the one-lane Alleyway (90 "
+                                       "wide); place it at x 0 on a gap between buildings; _Bulbs glow at night."),
+    "CatCafe_Sewer_Manhole": "Slide or hide the child Model _Cover to open it; the requirement SurfaceGui goes on the "
+                             "-Z face of the part named SignBoard on the post.",
+    "CatCafe_Furniture_Counter": "CollisionFidelity Hull. Sit pad on the left end is the counter spot.",
+    "CatCafe_Furniture_CatTree": "CollisionFidelity Hull. F79 bedtime: Attachments Sleep_Top (the top cushion, the "
+                                 "entertainer's sit point) and Sleep_Shelf (the lower shelf) take a sleeping cat's "
+                                 "pivot, facing their LookVector; Foot is the floor spot it hops up from.",
+    "CatCafe_Furniture_CatBed": "F79 bedtime: Tier 3 to 5 dressing, standing on the floor at the plot's bed spots. "
+                                "Attachment Sleep (the cushion) takes a sleeping cat's pivot, facing the bed's front "
+                                "dip (-Z); Foot is the floor 1.5 in front. 2.6 across.",
+    "CatCafe_Alley_Dumpster": "CollisionFidelity Hull.",
+    "CatCafe_Alley_TrashBin": "Rescue trap trash_bin. Put the stuck cat at stuck_pose. The Lid turns about its "
+                              "part_pivots_roblox point (the hinge) to rattle on a hit. CollisionFidelity Box on the Bin.",
+    "CatCafe_Alley_GarbageBags": "Rescue trap garbage_bag. Put the stuck cat at stuck_pose; the front bag hides its body. "
+                                 "CollisionFidelity Hull.",
+    "CatCafe_Park_RescueTree": "Rescue trap tree (shake_catch). To wobble, rotate the Branch about its part_pivots_roblox point "
+                               "(set Branch.PivotOffset there if the import centres it). Put the cat at stuck_pose, then "
+                               "weld its Body to the Branch so it moves with it. CollisionFidelity Hull on the Trunk.",
+    "CatCafe_Park_TrashCan": "Rescue trap trashcan. Put the stuck cat at stuck_pose. The Lid turns about its "
+                             "part_pivots_roblox point (the back of the rim). CollisionFidelity Hull on the Can.",
+    "CatCafe_Alley_ShopWindow": "Pane: day = Color glass, Material Glass, Transparency 0.5; night = Material Neon, Color lamp_warm, Transparency 0.3, plus a PointLight (Brightness 0.8, Range 10).",
+    "CatCafe_Decor_DoorSign": ("#1140 (door-sign.md): the cafe's one Open/Closed sign. Pivot at its hook: place it on the "
+                               "cafe shell's SignHook attachment, unturned. OPEN (root parts) faces the street; at "
+                               "nightfall turn the whole sign 180 about Y so the CLOSED face (_Closed Model, with its "
+                               "_Moon_Bulb) does. _Hanger (hook, twine, board) always shows."),
+    "CatCafe_Decor_StringLights": "Bulbs: Neon lamp_warm at night with one soft PointLight per strand (Brightness 0.8, Range 10); SmoothPlastic by day.",
+    **{f"CatCafe_Item_Net_L{n}": f"The {items.NET_NAMES[n - 1]} Net (F93), held all the time by Effects' NetHold: the "
+                                 "Attachment Grip (mid wrap, on the Handle, the net's axes) goes in the hand. Child "
+                                 "Models _Hoop (the rim, its far edge the point farthest from the Grip) and _Bag (open "
+                                 "diamond-mesh netting, no see-through lining since 2026-11-03)."
+       for n in (1, 2, 3, 4, 5, 6)},
+    **{f"CatCafe_Plot_Cafe_{c}": "Replaces the code-built walls, door header, windows and sign. Walls and glass collide. "
+                                 "The child Model <name>_Roof (roof, ridge, chimney) fades for the owner inside. Put the "
+                                 "owner sign's SurfaceGui on the -Z face of the part named SignBoard (16 x 3.2 studs). "
+                                 "Doors: front 7 wide at x 0, back 6 wide at x -8, both 7.5 high. Front garden z -20..-15. "
+                                 "F53: the walls' pastel outer layer is the child Model <name>_Paint (every part tagged "
+                                 "Paint) and their cream inner layer <name>_Wallpaper (tagged Wallpaper). F89: the "
+                                 "chunky trims (window and door frames, sills, keystones, pilasters, cornices, the attic vent, "
+                                 "the awnings' head rails, the sign frame) are "
+                                 "the child Model <name>_Trim and the roof's barge boards and fascias <name>_Roof_Trim "
+                                 "inside <name>_Roof, every part tagged PaintTrim (the Gold Leaf glint)."
+       for c in plot.COLOURS},
+    "CatCafe_Plot_Interior": "Every plot. Big parts collide. HangingLamp bulbs are Neon all day; StringLights Bulbs glow at night.",
+    "CatCafe_Plot_ForRent": "Only while OwnerUserId is 0: half-down shutters, FOR RENT sign, the counter half built, a "
+                            "painters' corner with a step ladder and tins, "
+                            "boxes and a broom, a sleeping Tabby on the door mat (decor, not catchable).",
+    **{f"CatCafe_Plot_Tier{n}": "Cumulative: place every tier up to the cafe's tier." for n in range(1, 6)},
+    **{n: f"F66: only while the areas are closed (Clock AreasOpen false), at the pivot of {h}. The fence collides "
+          "(8 studs to the rail tops, above a jump) and stands just behind the gate's Bars, so the Bars and the "
+          "requirement sign stay as they are; the child Model _Moon_Bulb (moon, stars, CLOSED and OPENS AT SUNRISE) "
+          "glows at night and does not collide. Tag NightFence." for n, h in night.HOSTS.items()},
+    "CatCafe_Alley_NightFenceSegment": "F66: only while the areas are closed. Tile it end to end every 8 studs along the "
+                                       "back alleys' inner edges (the SAFE ZONE stripes) and across the side passages, -Z "
+                                       "toward the cafes; each piece has a post at both ends. Collides, 8 studs to the rail "
+                                       "tops; _Moon_Bulb glows. Tag NightFence.",
+    "CatCafe_Plot_BackDoorClosed": "F66: owned cafes while the areas are closed, at the Plot pivot. A door shut in the "
+                                   "6 x 7.5 back door (x -11..-5), so it collides; the CLOSED UNTIL SUNRISE sign faces "
+                                   "the back alley (+Z) and its child Model _Sign_Bulb glows. Tag NightFence.",
+    "CatCafe_Plot_BackDoor": "Every cafe, at the Plot pivot: a wooden door hung in the back doorway with a cat flap. "
+                             "Turn the child Model _Leaf about its pivot's Y to swing it (-90 degrees is wide open, out "
+                             "into the yard); _Flap rides the leaf and turns about its own X as a cat goes through. "
+                             "The leaf's CatFlap "
+                             "Attachment is where an F80 flap goes (hide _Flap then). Nothing collides: keep the code "
+                             "panel as the collider.",
+    "CatCafe_Street_CodesCat": "F65: the Codes Cat in the street plaza, tag CodesCat. Walking into the part named "
+                               "CodesCircle (a flat Neon disc 16 studs across, centre 10 studs in front of the pivot, "
+                               "CanCollide off, CanTouch on, inside the child Model _CodesCircle) opens the code box; "
+                               "_Glow (its rim and ticket) is Neon all day. The Attachment PromptAnchor (desk front, 3 "
+                               "studs up) stays for a prompt if one is wanted. The kiosk collides; the cat is decor "
+                               "with the usual hinged pieces (child Models <name>_Cat_Head with its eyes and ears, "
+                               "_Cat_Tail, _Cat_LegF1, _Cat_LegF2) and its cap (_Cat_Prop) rides inside the Head Model. "
+                               "_Bulb (the sign lamp) glows at night.",
+    **{f"CatCafe_Cat_{n}_Sit": f"Body B, sitting up: clone this instead of CatCafe_Cat_{n} for a cat resting in the "
+                                "cafe or working at a station. Put the role's outfit pieces on its Outfit_<Piece> "
+                                "Attachments. Parts with their own joint (Head with the eyes and ears, Tail, LegF1, "
+                                "LegF2) are Models pivoted at the joint, for poses (manifest cat_poses). The Head's "
+                                "Attachment Carry (above the ears) takes a carried tray or coin bag's pivot (F90)."
+       for n in cats.ROSTER},
+    **{f"CatCafe_Cat_{n}_Work": f"Body S, standing at work (Derek 2026-11-02): clone this instead of CatCafe_Cat_{n}_Sit "
+                                 "for a cat working at a station, in the sitting role outfit on its Outfit_<Piece> "
+                                 "Attachments. Its front legs are arms (LegF1 the cat's left, LegF2 its right) and "
+                                 "LegB1 and LegB2 its legs, each a Model pivoted at its joint, with the Head (eyes and "
+                                 "ears inside, Attachment Carry above the ears) and Tail. Each role's held thing is a "
+                                 "Model inside an arm, pivoted at the paw: Held_Barista (a cup) and Held_Entertainer "
+                                 "(a microphone) in LegF2, Held_Waiter (a tray with a cake) in LegF1; keep the one for "
+                                 "the cat's role and remove the others (the greeter holds nothing). Turn the arms "
+                                 "with the role's pose (manifest cat_poses work_<role>), which holds the thing upright."
+       for n in cats.ROSTER},
+    "CatCafe_Street_FishMarket": "F53: the Golden Fish Market in the street plaza (x -8.5, z 64, rotY -90); WorldBuilder "
+                                 "tags it FishMarket and hangs the Shop prompt on the Attachment PromptAnchor (counter "
+                                 "front, 3 up). The shopkeeper cat's sou'wester rides its Head Model; the sign Bulb is "
+                                 "lit at night.",
+    daycart.NAME: "#1577 (day-cart.md section 1): the Corner Shop's stock on a cart in the Town Square, opposite the "
+                  "Golden Fish Market; WorldBuilder places it (suggested spot daycart.SPOT, turned to face the cannon), "
+                  "tags it CornerShop and hangs the shop prompt on the Attachment PromptAnchor (cart front, 3 up). "
+                  "The shop cat's visor rides its Head Model, the lantern Bulb is lit at night. It replaced "
+                  "the Corner Shop stall (#1698).",
+    mysteryitems.BACKPACK: "#2565 (mystery-market.md section 3d): the Backpack, for Juniper's window picture "
+                           "(ItemIcon draws its -Z face, the front pocket) and the wagon's FeaturedItem pedestal; #2849 "
+                           "redrew it with cat ears and a cat tail, #2888 made it a cuter lilac and pink. Worn: "
+                           "weld it behind the torso like HeldCat.wearPack, turned 180 degrees about Y so the "
+                           "front looks backward, massless and CanCollide off. Open it while a cat rides in it by "
+                           "turning the child Model _Flap about its own X by mysteryitems.FLAP_OPEN (125) degrees.",
+    mysteryitems.LONG_NET: "#2565 (mystery-market.md section 4): the Long Net's picture for Juniper's window and the "
+                           "pedestal: a net with a long telescoping handle and a gold arrow out to the hoop. A "
+                           "picture only; the player's own net (CatCafe_Item_Net_L*) is unchanged.",
+    mysteryitems.SPEED_SHOES: "#3538 (update-2026-11-13.md): the Speed Shoes, for Juniper's window picture and the "
+                              "pedestal (the pair on a round mat). Worn: clone the child Models _Left and _Right "
+                              "alone, scale each by the foot's width (built for a 1 x 1 stud foot), pivot it to the "
+                              "middle of the R15 LeftFoot or RightFoot's underside facing the way the foot faces, "
+                              "and weld it there, massless and CanCollide off. On R6 the same spot under each leg.",
+    mysterymarket.NAME: "#2565 (mystery-market.md section 4, look A): Juniper's covered wagon in the Town Square's "
+                        "south-west quarter (Layout.mysteryCart, turned to face the cannon). WorldBuilder names it "
+                        "MysteryMarket, tags it MysteryMarket and hangs the MysteryPrompt on the Attachment "
+                        "PromptAnchor (before the counter, 3 up). The Attachment FeaturedItem is the pedestal's top "
+                        "centre, where the week's featured item can sit and turn. Juniper's hood rides its Head Model; "
+                        "the lanterns (_Bulb) are lit at night; the rug and the lantern cord (_Decor) never collide. "
+                        "Everything, rug included, fits mysterymarket.FOOT so the walk-up ring lands as planned.",
+    updateposter.NAME: "#4362: the update poster in the Town Square (suggested spot updateposter.SPOT, the pity "
+                       "sign's mirror, facing the spawn). Streams Atomic. The UI's SurfaceGui (Adornee = the part "
+                       "named Screen, 8.0 x 4.5, night blue) draws the next update's picture, name, countdown and "
+                       "the Notify Me tap on its Front (-Z) face.",
+    decorstand.NAME: "#4516: the decor stand beside the Golden Fish Market (suggested spot decorstand.SPOT): a "
+                     "two-step table with a Cafe Crate, the Mushroom Lamp and the Lantern Stump under a DECOR CRATES "
+                     "board, a gold arrow on top pointing at the market (+X). The pieces are the game's own models, "
+                     "scaled; none collide.",
+    mysterysign.NAME: "#4508: the Mystery Market's signboard beside Juniper's wagon (suggested spot "
+                      "mysterysign.SPOT): NEW ITEMS, the Backpack on a peg and the Speed Shoes on a shelf with "
+                      "their names, and a gold arrow on top pointing at the wagon (+X). The item parts (_Decor) "
+                      "never collide. A picture of the shelf, not a live list: rebuild when the shelf changes.",
+    pitysign.NAME: "#1572 (luck-and-rare-moments.md section 1h): the rare cat sign in the Town Square (suggested "
+                   "spot pitysign.SPOT, across the street from the Day Cart, facing the spawn). Streams Atomic. The "
+                   "UI's SurfaceGui (Adornee = the part named Screen, 5.6 x 2.8, night blue) draws the Legendary and "
+                   "Mythical countdowns on its Front (-Z) face.",
+    campstations.PIC: "#1133 (camp-stations.md section 2): the Picnic station, replacing CatCafe_Camp_Park_PicnicBasket "
+                      "at Layout.campExtras.park. Attachments PromptAnchor (table front, 1.5 up), BangAnchor (2 over the "
+                      "A-frame sign, for ReadyBang), GlowAnchor (under the parasol, the ready glow's PointLight, #1328) "
+                      "and Steam (the thermos). Everything collides and can be climbed.",
+    campstations.YARD: "#1154 (camp-stations.md section 3): the Yard Sale stall, replacing "
+                       "CatCafe_Camp_Neighbourhood_YardSale at Layout.campExtras.neighbourhood. Attachments PromptAnchor "
+                       "(table front, 1.5 up), BangAnchor (2 over the YARD SALE sign's arm, for ReadyBang) and GlowAnchor "
+                       "(under the awning). _Sign_Swing (#1800) is the hanging board and its chains, pivoted at the ring "
+                       "under the arm; Effects/Motion swings it about its pivot's Z, so leave it where it was modelled. "
+                       "Everything collides and can be climbed.",
+    **{n: "#1232 (camp-stations.md section 4): the Fishing Hut, replacing CatCafe_Camp_Woods_FishPond at "
+          "Layout.campExtras.woods (_Gold for a Golden Pond pass owner). _Water is see-through, _Rod pivots at its butt "
+          "(the cast turns it), _Fish swims under the water; Attachments FishJump, PromptAnchor (the jetty's foot), "
+          "BangAnchor (2 over the FISH POND sign) and GlowAnchor (the doorway). Everything else collides and can be "
+          "climbed." for n in (campstations.HUT, campstations.HUT + "_Gold")},
+    campstations.SPA: "late-stations.md section 1: the Oasis Spa, the Desert camp's station. _Water is see-through and "
+                      "walk-through. Attachments PromptAnchor (the pool's front, 1.5 up), BangAnchor (2 over the "
+                      "OASIS SPA sign), Steam (one emitter over the water) and Soak_1..3 (where the owner's soaking "
+                      "cats sit, each wearing CatCafe_Camp_Desert_SpaTowel on its head). Everything else collides "
+                      "and can be climbed.",
+    campstations.SPA_TOWEL: "late-stations.md section 1: the towel on a soaking cat's head at the Oasis Spa; weld it "
+                            "to the cat's Head. Nothing collides.",
+    campstations.MUSEUM: "late-stations.md section 2: the Relic Museum, the Ruins camp's station. _Glass is the case "
+                         "round the gold cat idol (see-through). Attachments PromptAnchor (the velvet rope, 1.5 up), "
+                         "BangAnchor (2 over the RELIC MUSEUM sign) and SparkleAnchor (the idol). Everything else "
+                         "collides and can be climbed.",
+    feedbackstand.NAME: "#3066: the Town Square's feedback stand: a red pillar post box (FEEDBACK plate, a letter in "
+                        "its slot) on a paved plinth, a teal FEEDBACK / TELL US! board behind, and the Postie Cat at "
+                        "1.5 times sitting on a parcel stack (_Cat_<Piece>, its cap _Cat_Prop and letter _Cat_Prop2 in "
+                        "its Head Model). Attachments PromptAnchor (the box's front, 1.5 up: the feedback prompt), "
+                        "BangAnchor (2 over the board) and CatSeat. Everything collides.",
+    campstations.BIN: "#3050: the Alleyway camp's Rummage Bin, about 4 tall: a teal bin with a cream band and paw "
+                      "print on a pallet. Two looks as child Models, show one: _Ready (lid flung back, a tuna, a "
+                      "golden fish tail and a crate corner poking out, sparkles) and _Empty (lid shut, a fish bone "
+                      "on it); hide the other (Transparency 1, CanCollide off) or parent it away. Attachments "
+                      "PromptAnchor (front, 1.5 up), BangAnchor (2.6 over the rim) and GlowAnchor (just over the "
+                      "mouth, for a ready glow). The bin and pallet collide.",
+    arcadecabinet.NAME: "#3062: the Cat Arcade cabinet (Circle Streak), 7.9 tall: a teal upright cabinet with cream "
+                        "sides, a red paw button, a joystick, a coin door with a gold slot and a fish, and cat ears on "
+                        "the marquee. _Screen is the 2.4 x 1.9 Screen part (night blue, for a SurfaceGui and the idle "
+                        "glow); _Glow holds the marquee's CAT ARCADE letters (Neon, for the idle pulse). Attachments "
+                        "PromptAnchor (in front of the panel, 1.5 up: the Play prompt), SlotAnchor (the coin slot, "
+                        "for the fish drop), ScreenAnchor and BangAnchor. The cabinet collides.",
+    campstations.LOST: "#1732 (camp-stations.md section 4b): the Lost and Found booth, replacing "
+                       "CatCafe_Camp_Sewer_LostFound at Layout.campExtras.sewer. _Bell is the desk bell (pivot at its "
+                       "base, for the ring-wobble), _Bulb the sign's bulbs (night glow), _Blink_Bulb the one that "
+                       "blinks while a find waits. Attachments PromptAnchor (counter front, 1.5 up), BangAnchor (2 over "
+                       "the LOST & FOUND sign, for ReadyBang) and Drip (the pipe's mouth). Everything collides and can "
+                       "be climbed.",
+    moneybag.NAME: "#3360 (rich-money-bags.md section 5): the rich customer's money bag, cloned by the client at "
+                   "the plot's RichTipAnchor for each waiting bag. Pivot at the base centre, the coin toward -Z. Gold "
+                   "parts are Metal; _Glow (the sparkle) is Neon. Display only: set CanCollide off on the clone.",
+    mysticpool.NAME: "#3314 (trait-station.md section 1): the Mystic Pool, the Picnic station reworked into the trait "
+                     "station. _Liquid_Glow is Neon and walk-through; Effects/MysticPool recolours it during a roll. "
+                     "Sage Sorrel's hat rides his Head Model and his staff his right arm (LegF2). Attachments: "
+                     "PromptAnchor, BangAnchor, GlowAnchor, PoolDrop (the liquid's surface) and StaffTip (the orb). "
+                     "_Runes_Glow (the stones' star runes) is Neon all day; _Lantern_Bulb (the moon arch's two "
+                     "lanterns) lights at night with the other _Bulb parts. The arch, kerb and stones collide.",
+    gardennursery.NAME: "#1200 (lawn-nursery.md section 2): the Garden Nursery at the Park camp, at gardennursery.SPOT "
+                        "in the Park's set space, tagged LawnStall; the game hangs the Nursery prompt on the "
+                        "Attachment PromptAnchor (bench front, 3 up) and the gardener's speech bubble on BubbleAnchor "
+                        "(in the cat's Head part, over the hat). The sun hat rides the cat's Head Model; the mini lamp "
+                        "post's lantern (_Bulb) is lit at night.",
+    "CatCafe_Street_ThanksBoard": "#1083 (idea-credits.md section 3): the Thank You board in the Town Square at "
+                                  "Layout.thanksBoard, tagged ThanksBoard, streams Atomic. The UI's SurfaceGui "
+                                  "(Adornee = the part named Screen, 7.6 x 5.2, cream) draws the credit rows on its "
+                                  "Front (-Z) face; the idea bulb (_Bulb) is lit at night.",
+    "CatCafe_Street_BellhopStand": "F96 (starter-cat.md section 2): the Bellhop Cat's stand in the street plaza, "
+                                   "between the Codes Cat and the Spin Wheel, the sign (-Z) toward the street. Tag "
+                                   "BellhopStand; claims check the caller within 12 studs of its pivot. Attachments "
+                                   "PromptAnchor (front of the dais, 3 studs up) and CatSeat (the cat's pivot on the "
+                                   "suitcase). The cat is _Cat_<Piece> (BellhopCat at 1.5 times): its cap _Cat_Prop and "
+                                   "collar _Cat_Prop2 ride inside _Cat_Head, the bell _Cat_Bell inside _Cat_Prop2, "
+                                   "pivoted where it hangs. The sign's _Bulbs are lit at night. The dais and cart collide.",
+    "CatCafe_Street_DealerCart": "F32: the night dealer's cart (DealerService clones it at night). The Bulb and Bulbs "
+                                 "are lit at night. The dealer's own cat sits on the cushion at the back of the counter: "
+                                 "Cat_Body, Cat_Head and the other hinged sitting-cat pieces, its hood Cat_Prop inside "
+                                 "the Head Model; it can idle like any cat.",
+    "CatCafe_Prop_FishCoin": "F52: the golden fish coin, a world pickup or prize; gold parts are Metal. Its HUD picture "
+                             "is exports/icons/CatCafe_Icon_GoldenFish.png (icons.py).",
+}
+
+
+for _n in themes.ASSETS:   # the Garden and Grand cafe themes (#1624): looks only, no collision
+    STUDIO_NOTES[_n] = ("Cafe theme piece (store-pass-looks.md): " + (
+        "placed at the Plot pivot like the shell, in the CatCafe_Theme_ folder; shown while the plot's Theme "
+        "attribute names it, with the shell's _Awning hidden. _Bulb and _Glow parts are Neon at night."
+        if "_Plot_" in _n else "a prop on each table top or chair seat (Garland: over the counter); pivot base "
+                                "centre (Garland: the middle of its hooks), front -Z.") + " No collision.")
+for _n in seasondecor.ASSETS:   # Cafe Pass season 1 paid-track decor (#1637): looks only, not in the Decor Index
+    STUDIO_NOTES[_n] = ("Cafe Pass season 1 decor: on a decor spot, 1.4 studs off the wall; pivot base centre, front -Z, "
+                        "no collision (CatCafe_Decor_). Looks only: no cafeMultiplier. _Glow parts are Neon all day.")
+for _n in gardendecor.ASSETS:   # the Garden Decor Pack pass's decor (#1852, #1851): looks only, not in the Decor Index
+    STUDIO_NOTES[_n] = ("Garden Decor Pack decor: on a decor spot, 1.4 studs off the wall; pivot base centre, front -Z, "
+                        "no collision (CatCafe_Decor_). Looks only: no cafeMultiplier.")
+for _n in {**crate_decor.ASSETS, **rallycrate.ASSETS, **eventdecor.ASSETS}:   # F53 crate pieces (F101 Rally's too): on decor spots
+    _index = _n.endswith(("MailboxPlanter", "MushroomLamp", "PipeFountain"))
+    STUDIO_NOTES[_n] = ("F53 crate piece: " + ("its zone's Epic, on the Index anchor or a decor spot" if _index
+                        else "on a decor spot, 1.4 studs off the wall") + "; pivot base centre, front -Z, no "
+                        "collision (CatCafe_Decor_). _Glow parts are Neon all day, _Water is Glass 0.3, _Glass "
+                        "Glass 0.45. The server sets DecorId, so a Mythical's effect finds it.")
+
+for _n in crates.ASSETS:                         # Cafe Crates: shelf, reveal and pictures
+    STUDIO_NOTES[_n] = ("F53 Cafe Crate" + (" (golden: gold parts are Metal)" if _n.endswith("_Gold") else "")
+                        + ": pivot base centre, front -Z, nothing collides. The child Model " + _n + "_Lid turns "
+                        "about its pivot's X (the back hinge): positive lifts the front, about 105 degrees is wide "
+                        "open. Its picture is exports/icons/" + _n.replace("Prop_", "Icon_") + ".png (icons.py).")
+for _n in potions.ASSETS:                        # F64 and F73 potions: the bag, the gift reveal and pictures
+    STUDIO_NOTES[_n] = ("Potion bottle (F64, F73): pivot base centre, front -Z, nothing collides; the liquid is the "
+                        "potion's colour. Its picture is exports/icons/" + _n.replace("Prop_", "Icon_")
+                        + ".png (icons.py).")
+PIVOT_NOTES["CatCafe_NPC_MysteryVisitor"] = ("the floor under a cafe chair's seat centre, facing the table (-Z); the cat "
+                                             "sits on the seat at 1.57")
+STUDIO_NOTES["CatCafe_Park_GateF85"] = STUDIO_NOTES["CatCafe_Park_Gate"].replace(
+    "Turn the Park, Woods and Sewer gates 180 degrees so -Z faces the street or back alley.",
+    "F85: the long Park's gate over its 24 stud opening, -Z toward the camp, in place of CatCafe_Park_Gate.")
+STUDIO_NOTES["CatCafe_Neighbourhood_GateF85"] = STUDIO_NOTES["CatCafe_Neighbourhood_Gate"].replace(
+    "Turn the Park, Woods and Sewer gates 180 degrees so -Z faces the street or back alley.",
+    "F85: the long Neighbourhood's gate over its 24 stud opening, -Z toward the camp, in place of "
+    "CatCafe_Neighbourhood_Gate.")
+STUDIO_NOTES[desertset.NAME] = (
+    "Tier 6 (tier6-7-areas.md section 4). Place it at the Desert's centre on its floor with the camp's turn (180: the "
+    "camp on the north edge), like the F85 sets. The floor is sand right out to the walls. Nothing invisible "
+    "stands inside the area (#2897): the dunes, humps and drifts are WedgeParts that collide where they are drawn "
+    "and the blockers have no _Barrier, so a player may climb them; the only _Barrier is the 30 high ring in the "
+    "border's wall band, all round but the 24 stud way in at z -280, starting 0.8 behind the border's faces. The "
+    "rescue spots (points_roblox trap_sand_dune, trap_clay_urn, trap_collapsed_canopy) carry their piece's turn.")
+STUDIO_NOTES[ruinsset.NAME] = (
+    "Tier 7 (tier6-7-areas.md section 5). Place it at the Ruins' centre on its floor with the camp's turn (0: the "
+    "camp on the south edge, toward the town), like the F85 sets. Every blocker has a _Barrier BLOCK_OVER over its "
+    "top and the walls a "
+    "30 high one all round but the 24 stud way in at z -300 and the east bridge bay (a 9 high parapet barrier). The "
+    "rescue spots (points_roblox trap_rubble_pile, trap_stone_urn, trap_bridge_ledge) carry their piece's turn.")
+STUDIO_NOTES[snowyset.NAME] = (
+    "Tier 8, the Snowy Mountain (next-areas plan section 1, #3997). Place it at the area's centre on its floor, camp "
+    "side -Z, like the Desert's set. The floor is snow right out to the walls and the lake is ice laid over the paths. "
+    "Nothing invisible stands inside the area: the ridges, humps and drifts are WedgeParts that collide where they "
+    "are drawn and the blockers have no _Barrier; the only _Barrier is the 30 high ring in the border's wall band, all "
+    "round but the 24 stud way in at z -280, starting 0.8 behind the border's faces. Icicles, frozen bubbles, block "
+    "lines and rope are _Decor (no collision). The rescue spots (points_roblox trap_snowdrift, trap_snowman, trap_sled, "
+    "trap_snow_log) carry their piece's turn.")
+STUDIO_NOTES[harvestset.NAME] = (
+    "#4251 Harvest Hollow, the limited autumn area (Nov 25 to Dec 6 2026). Place it at the area's centre on its floor; "
+    "players arrive by teleport at points_roblox player_spawn, so it is fenced all round with no way in. The only "
+    "_Barrier is the 30 high ring in the fence band. The creek is flat _Water with no kerb, the bridge a low hump. "
+    "The barn is hollow with a 10 wide open door; the maze walls are 9 high. points_roblox: spawn (14 stray spots), "
+    "nook (the maze's middle), pumpkin (12 pickup spots for CatCafe_Harvest_Pumpkin), stall and board (where "
+    "CatCafe_Harvest_Stall and CatCafe_Harvest_Board stand, with a turn). The windmill's sails are a "
+    "_Spin child Model pivoted at the hub.")
+STUDIO_NOTES[cherryset.NAME] = (
+    "Cherry Blossom Grove, the spring event area (Sat Mar 27 to Sat Apr 3 2027, behind cherryGrove; nothing in the "
+    "game places it before then). Place it at the area's centre on its floor; walled all round, players arrive at "
+    "points_roblox player_spawn. The only _Barrier is the 30 high ring in the wall band. The pond and the three "
+    "waterfalls are _Water (flat, no kerb); petals, koi and lily pads are _Decor. The pagoda is solid; the tea house "
+    "deck is 2.5 up with steps at its -X end. points_roblox: spawn (14 stray spots), nook (the pond's far shore) and "
+    "station (the Wishing Tree's walk-up spot by its wish box, facing the tree), petal (12 pickup spots on the Petal "
+    "patch for CatCafe_Cherry_Petals) and stall (where CatCafe_Cherry_Stall stands, with its turn).")
+STUDIO_NOTES[cherryset.STALL] = (
+    "The Blossom Stall (spec v2 section 4), front -Z, 12 wide: it shows the six items. Lanterns are _Glow, the "
+    "little pond _Water. Stand it at points_roblox stall of CatCafe_Cherry_Set.")
+STUDIO_NOTES[cherryset.PETALS] = (
+    "One Petal pile to pick up at a patch spot (base centre at the pivot, 2 across); its blossom is _Glow.")
+STUDIO_NOTES[cherryset.PORTAL] = (
+    "The Grove's Town Square portal: a red torii under two cherry trees, front -Z, 30 wide. _Portal_Glow is the way "
+    "in (7 x 8.25); the sign's face is _Screen (8.0 x 2.6, the same as the Snowglobe portal's) for the UI text.")
+STUDIO_NOTES[snowglobeset.NAME] = (
+    "Snowglobe Village, the Christmas Event area (Dec 1 2026 to Jan 3 2027, snowglobe-village-spec.md). Place it at the "
+    "area's centre on its floor; players arrive by teleport at points_roblox player_spawn. It is round: the curved "
+    "_Sky_Glass (no collision) stands at radius 60, and the only _Barrier is the 30 high ring just inside it. "
+    "_Snowfall is an invisible volume with no collision where the snow falls. The lodge is hollow with a 7 wide door. "
+    "points_roblox: spawn (14 stray spots), nook (behind the lodge), snowflake (12 pickup spots for "
+    "CatCafe_Snowglobe_Snowflake), stall (CatCafe_Snowglobe_Stall), fireplace and rug (CatCafe_Decor_StoneFireplace and "
+    "CatCafe_Decor_FiresideRug inside the lodge), each with a turn. The tree's bulbs are _TreeLights_Glow and its star "
+    "_TreeStar_Glow, a child Model pivoted at the star's middle.")
+STUDIO_NOTES[castleset.NAME] = (
+    "Tier 10, the Medieval Castle (next-areas plan section 3, #4067). Place it at the area's centre on its floor, "
+    "camp side -Z, like the Snowy set. Packed earth right out to the walls, cobbles, the field's sand and the keep's "
+    "flags over it. Nothing invisible stands inside the area: the only _Barrier is the 30 high ring in the border's "
+    "wall band, all round but the 24 stud way in at z -280, starting 0.8 behind the border's faces. The moat is a kerb "
+    "0.7 high (a step, not a wall) round shallow _Water; the drawbridge and the postern's plank bridge are 0.9 up with "
+    "a ramp at each end. The curtain wall and the keep's walls collide; the tilt fence is a low rail to hop. Torch "
+    "flames are _Glow, windows _Pane, the drawbridge's chains _Decor. The rescue spots (points_roblox trap_haystack, "
+    "trap_barrel, trap_banner_pole, trap_awning, trap_helmet) carry their piece's turn.")
+STUDIO_NOTES[waterparkset.NAME] = (
+    "Tier 9, the Theme Park and Water Park (next-areas plan section 2, #4066). Place it at the area's centre on its "
+    "floor, camp side -Z, like the Snowy set. Asphalt to z 20 and blue tiles from there on, right out to the walls. "
+    "Nothing invisible stands inside the area: the only _Barrier is the 30 high ring in the border's wall band, all "
+    "round but the 24 stud way in at z -280, starting 0.8 behind the border's faces. The lazy river is a kerb 0.7 high "
+    "(a step, not a wall) round _Water; the spine crosses it on two plank bridges 1.15 up with a ramp at each end. "
+    "The coaster's track, the balloons and the wave crests are _Decor (no collision), the pool's glass is _Pane. "
+    "Turning pieces for Motion-FX, each its own Model: ..._CarouselTurn about a vertical axis at (-38, -110), "
+    "..._TeacupsTurn about a vertical axis at (38, -118), ..._FerrisTurn about the x axis through its hub at "
+    "(59, 24, -42). The rescue spots (points_roblox trap_carousel, trap_ball_pit, trap_plush_pile, trap_river_ring, "
+    "trap_balloons) carry their piece's turn; trap_carousel's spot is 0.3 up, on its deck.")
+STUDIO_NOTES["CatCafe_NPC_MysteryVisitor"] = (
+    "F64 Mystery Visitor: the client pivots it at a MysteryTable chair's seat on the floor, looking at the table, and "
+    "tags it MysteryVisitor. A sitting cat (scale 1.3) with the usual hinged pieces (Head, Eye1, Eye2, EarL, EarR, "
+    "Tail, LegF1, LegF2); the hood is the child Model _Prop inside Head and the capelet _Cloak rides the body. "
+    "Nothing collides.")
+STUDIO_NOTES["CatCafe_Item_MysteryGift"] = (
+    "F64 Mystery Visitor's gift: pivot base centre, front -Z (the \"?\" tag), nothing collides; the client puts it "
+    "on the bottom of the plot's MysteryGiftAnchor and tags it MysteryGift.")
+for _k in ("_Common", "_Rare", "_Super"):
+    STUDIO_NOTES["CatCafe_Item_MysteryGift" + _k] = (
+        "#2614 the gift tiers: the Mystery Visitor's gift in the tier's wrap (Common cream and red, Rare blue and "
+        "silver, Super gold with a white ribbon). Same size, pivot and use as CatCafe_Item_MysteryGift: the client "
+        "picks the one named by the plot's MysteryGiftTier.")
+PIVOT_NOTES[yardfence.NAME] = "Plot.cframe: floor top centre of the cafe, as CatCafe_Plot_BackDoor; the yard is +Z"
+for _n in ringicons.NAMES:
+    PIVOT_NOTES[_n] = "the centre of its bottom face, lying flat; the picture's top points +Z"
+    STUDIO_NOTES[_n] = ("#2449: a flat picture for the middle of a walk-up floor ring (" + {
+        ringicons.SPIN: "the Spin Wheel", ringicons.FISH: "the Fish Market",
+        ringicons.SHOP: "the Corner Shop and the Day Cart", ringicons.DEALER: "the night market's Dealer Cart",
+        ringicons.BOWL: "the bait bowl, #2476", ringicons.MYSTERY: "Juniper's Mystery Market, #2565"}[_n]
+        + "). Plain parts, never Neon; CanCollide, CanTouch and CanQuery off, no shadow, no scripts. At most 4 x 4 "
+        "studs and under 0.1 thick: centre it in the ring, scale it to fit (Model:ScaleTo) and lift it just above "
+        "the ring's top.")
+STUDIO_NOTES[yardfence.NAME] = (
+    "Every cafe, at the Plot pivot, in place of WorldBuilder's YardFence parts (FenceSide x2, FenceBack): a white "
+    "picket fence on the same lines (sides x +-18.9 from z 15.7, back z 24.8), posts with caps and finials, climbing "
+    "roses on the back corners and a bird house on the middle back post. Only the posts collide; its _Barrier is "
+    "the code fence's three parts to the stud (invisible, solid), so the fence stops players where it did.")
+for _n, _b in plotsizes.BASE_OF.items():        # #4543: the cafe at its bigger room sizes
+    _w, _d = _n.rsplit("_", 1)[1].split("x")
+    PIVOT_NOTES[_n] = (f"as {_b}, on its own {_w} x {_d} room's floor centre: place it {plotsizes.set_back(_n):g} studs "
+                       "behind the plot's pivot (+Z), so the front wall and the door stay where the 44 x 34 room's are")
+    STUDIO_NOTES[_n] = (f"#4543 the cafe grows with rank ups: {_b} laid out for the {_w} x {_d} room (Tier "
+                        + {"48": "3 and 4", "52": "5 and 6", "56": "7 and 8", "60": "9 and 10"}[_w]
+                        + f"), in place of {_b} on a cafe of that size. " + STUDIO_NOTES.get(_b, ""))
+for _n in alleyblockers.ASSETS:
+    if "_Row" in _n:                             # the one-lane Alleyway's whole rows (Derek 11-02)
+        PIVOT_NOTES[_n] = "the floor on the one lane's middle line (set x 0), on the row's line; place it at rotY 0"
+        STUDIO_NOTES[_n] = ("Alleyway blocker row across the whole one lane (90 wide, walls at x +-45): the pieces end "
+                            "to end from the walls with one way through 25 to 29 wide and the row's own lamp post at "
+                            "it. Each piece's _Barrier arrives invisible, CanCollide true, CanQuery false and anchored "
+                            "(30 high on the row's line, from the wall to the way through); piles collide; _Bulb glows "
+                            "at night and does not collide.")
+        continue
+    _short = _n.endswith("Short")
+    PIVOT_NOTES[_n] = ("the floor on the back alley lane's middle line (lane x +-78). " + (
+        "A short pile: it spans local x -15 to -6.5; place two on one spot at rotY 0 and 180 (any pair) to leave "
+        "a 13 stud walk-through gap in the middle of the lane." if _short else
+        "A long pile: it spans local x -15 to 1 and leaves a 14 stud walk-past gap at +X (x 1 to 15). "
+        "RotY 180 puts the gap at -X."))
+    STUDIO_NOTES[_n] = ("F85 Alleyway blocker: a laneProp row, placed by WorldBuilder's plain clone. _Barrier arrives "
+                        "invisible, CanCollide true, CanQuery false and anchored (a " + ("8.5" if _short else "16")
+                        + " x 30 x 0.5 wall on the pile's line, ground to 30 studs, so nobody jumps it); the pile "
+                        "collides; the lamp's _Bulb glows at night and does not collide.")
+PIVOT_NOTES["CatCafe_NPC_Collector"] = "the floor under him, on the plot's CollectorSpot, facing into the room (-Z)"
+STUDIO_NOTES["CatCafe_NPC_Collector"] = (
+    "F63 Cat Collector: the client pivots it on the plot's CollectorSpot (floor centre, front into the room) and tags "
+    "it CatCollector. A sitting grey tabby (scale 1.45, 2.7 tall to the hat) with the usual hinged pieces (Head, "
+    "Eye1, Eye2, EarL, EarR, Tail, LegF1, LegF2); the bowler is the child Model _Prop inside Head, the tweed coat "
+    "_Coat rides the body and the magnifying glass _Lens is inside LegF2, whose paw is raised to his right eye. "
+    "Nothing collides.")
+for _n in customers.ASSETS:                      # F15 and F37 cafe customers, standing and seated
+    if _n.endswith("_Sit"):
+        PIVOT_NOTES[_n] = ("the floor under a cafe chair's middle (CatCafe_Furniture_Chair's pivot), facing the table "
+                           "(-Z); the customer sits on the cushion at 1.58")
+        STUDIO_NOTES[_n] = ("Seated customer: swap to it when the customer reaches its chair, PivotTo the chair's pivot "
+                            "(same CFrame, front toward the table). Forearms rest on a round table 2.4 in front. "
+                            "Nothing collides.")
+    else:
+        STUDIO_NOTES[_n] = ("Cafe customer (F15; Rich is F31): pivot at the feet, front -Z, nothing collides. Walk "
+                            "it with PivotTo; at the chair swap to " + _n + "_Sit.")
+for _n in townbuildings.ASSETS:                  # town buildings on the back alleys' outer walls
+    PIVOT_NOTES[_n] = "wall: back plane at the bottom centre; -Z faces into the alley"
+    STUDIO_NOTES[_n] = (
+        "Town building for a back alley's outer wall, in place of the WallWindows, WallDoor and FireEscape backs: "
+        "30 wide (30.8 over the side window sills), -Z into the lane. Its 12 deep body stands over the 1 thick wall "
+        "and 10 past it, windows down its sides: put the pivot 2.25 behind the wall's inner face, so the facade is 1 "
+        "out into the lane where the old backs' faces were. Side by side (the south end wall) keep 31 between centres. "
+        "The body and roof collide; _Pane parts glow at night (as the other wall pieces), _Lamp_Bulb is the door "
+        "lamp (Neon + a warm PointLight at night), _Flowers needs no collision.")
+STUDIO_NOTES[townbuildings.N + "Warehouse"] += (
+    " The fire escape is CatCafe_Alley_FireEscape's, at the same place on the facade: landings and ladder rungs "
+    "collide, landing_1 (top 9.35) is reached from CatCafe_Alley_CrateStack (top 7.7) just past its open left end "
+    "(local x -8), stairs lead to landing_2 (17.35). See ledges_roblox (in this model's frame).")
+for _st in doorsets.SETS:                       # F80 door sets: CafeService.refreshDoors places them
+    _f, _b = f"CatCafe_Door_{_st.NAME}_Front", f"CatCafe_Door_{_st.NAME}_Back"
+    PIVOT_NOTES[_f] = "the foot of the front doorway at its inside face, plot (0, 0, -14); the street is -Z"
+    PIVOT_NOTES[_b] = "the foot of the back doorway, plot (-8, 0, 14.5) turned 180; the yard is -Z"
+    STUDIO_NOTES[_f] = ("F80 door set, front half, in place of the cafe's own front door. The child Models _LeafL and "
+                        "_LeafR are pivoted on their hinges: -90 (LeafL) or +90 (LeafR) about Y swings them in. "
+                        "_Glass parts are Glass 0.45. Nothing collides.")
+    STUDIO_NOTES[_b] = ("F80 door set, back half, in place of CatCafe_Plot_BackDoor (it brings the threshold and the "
+                        "inside architrave). The child Model _Leaf swings on the cafe's own hinge (-90 about Y is wide "
+                        "open, out into the yard); its CatFlap Attachment takes an F80 flap (CatCafe_CatFlap_Plain "
+                        "when none is picked). "
+                        "Nothing collides.")
+PIVOT_NOTES[doorsets.FRONT_DOOR] = "the foot of the front doorway at its inside face, plot (0, 0, -17); the street is -Z"
+STUDIO_NOTES[doorsets.FRONT_DOOR] = ("#5385: the cafe's own front doors, as DoorFront where no F80 door set is in use "
+                                     "(CafeService.refreshDoors). The leaves (_OpenL, _OpenR) stand open into the "
+                                     "cafe and never move; the threshold fills the wall's depth. Nothing collides.")
+for _fl in doorsets.FLAPS:                      # F80 cat flaps: on a back leaf's CatFlap attachment
+    _n = f"CatCafe_CatFlap_{_fl}"
+    PIVOT_NOTES[_n] = "a back leaf's CatFlap Attachment (the foot of the leaf's yard face, mid-door); the yard is -Z"
+    STUDIO_NOTES[_n] = ("F80 cat flap: the frame on both faces of the leaf and its lining; ride the leaf. The child "
+                        "Model _Flap turns about its pivot's X (the top hinge) as a cat goes through"
+                        + ("; _Flap_Bulb is Neon at night" if _fl == "NeonPaw" else "")
+                        + ("; _Bell hangs from its pivot and can swing about X" if _fl == "Bell" else "")
+                        + ". Nothing collides.")
+
+for _n, _spec in cats.ROSTER.items():           # glowing eyes (Void, Aurora): Neon eye parts in Studio
+    if _spec.get("glow_eyes"):
+        for _v in (f"CatCafe_Cat_{_n}{g}{sfx}" for g in ("",) for sfx in cats.SUFFIX.values()):
+            STUDIO_NOTES[_v] = (STUDIO_NOTES.get(_v, "") + " Glowing eyes: set the parts of the Eye1 and Eye2 Models "
+                                "to Neon.").strip()
+    if props.slot(_n):                          # themed cats (data-model 3): the prop is part of the model
+        _rides = "the Body" if props.slot(_n) == "Back" else "the Head (its Model is inside the Head Model)"
+        _two = ""
+        if props.slot2(_n):                     # a second prop in another slot (v0.13)
+            _r2 = "the Body" if props.slot2(_n) == "Back" else "the Head (inside the Head Model)"
+            _two = (f" Second prop: the {props.slot2(_n)} prop is the child Model <name>_Prop2 and rides {_r2}; "
+                    f"PropSlot2 = {props.slot2(_n)}, so the role piece in that slot stays off too (F71).")
+        for _piece, _host in props.PIECES.get(_n, {}).items():
+            _two += (f" The child Model <name>_{_piece} hangs inside <name>_{_host}, pivoted where it hangs, and rides "
+                     + ("the Tail (Follows Tail)." if _host == "Tail" else "what that prop rides."))
+        for _v in (f"CatCafe_Cat_{_n}{g}{sfx}" for g in ("",) for sfx in cats.SUFFIX.values()):
+            STUDIO_NOTES[_v] = (STUDIO_NOTES.get(_v, "") + f" Prop: the {props.slot(_n)} prop is the child Model "
+                                f"<name>_Prop (and <name>_Prop_Glass, Glass) and rides {_rides}; PropSlot = "
+                                f"{props.slot(_n)}, so CatPose.dress leaves that slot's role piece off." + _two).strip()
+
+
+BUBBLE_LIFT = 0.75                          # a shop cat's BubbleAnchor this far over its ear tips (Carry), unscaled
+
+
+def gold_twin_name(name):
+    """The _Gold twin's name for a base cat model with a gold look (#4656), else None."""
+    cat, is_gold, body = cats.parse(name)
+    twin = f"CatCafe_Cat_{cat}_Gold{cats.SUFFIX[body]}"
+    return None if is_gold or twin not in gold.TWINS else twin
+
+
+def cat_rbx_extras(name):
+    """A cat's Part model carries its Scale, the Attachment Carry in the Head part (cats.carry_at) and one Attachment
+    per role outfit piece (Outfit_<Piece>) at that piece's slot, times the scale, in the Body or Head part: every
+    piece on the sitting model, the pieces that fit the walking body on the walking one (accessories.WALK_PIECES), so
+    the game needs no manifest at runtime. #1624: every body also has an Outfit_<Look> for each accessories.LOOKS
+    (head top, face, back; no back one under a Back prop). A themed cat also carries PropSlot (Head, Face or Back) and its prop's
+    parts carry Follows (Head or Body); a Head or Face prop's Model rides inside the Head Model. A second prop adds
+    PropSlot2 and `_Prop2` parts the same way."""
+    cat, _gold, body = cats.parse(name)
+    spec = cats.ROSTER[cat]
+    s = spec.get("scale", 1.0)
+    joints = cats.joints(spec, body)
+    # F90: where a carried tray or coin bag rests, above the ears, in the Head part so it follows head turns
+    attachments = [("_Head", "Carry", Matrix.Translation(Vector(joints["Head"]) +
+                                                         Vector(cats.carry_at(spec, body)) * cats.scale_of(spec, body)))]
+    if spec.get("shop"):                    # #1191: the shop-only cats' speech bubble, clear over the hat
+        carry = Vector(cats.carry_at(spec, body))
+        attachments.append(("_Head", "BubbleAnchor", Matrix.Translation(
+            Vector(joints["Head"]) + (carry + Vector((0.0, 0.0, BUBBLE_LIFT))) * cats.scale_of(spec, body))))
+    k = cats.scale_of(spec, body)
+    for obj, att, frame, pt in props.ATTACH.get(cat, []):     # #1191: VFX spots (King Croissant's CrownTop, Glow)
+        d = cats.dims(spec, body)
+        if frame == "chest":
+            at = Vector(d["body"][0] if body == "walk" else d["chest"][0]) * k
+        else:
+            fat, R, fs = props.Ctx(spec, "sit" if body == "work" else body, d)._frames[frame]
+            at = Vector(joints["Head"]) + (Vector(fat) + R @ Vector(pt) * fs) * k
+        attachments.append((obj, att, Matrix.Translation(at)))
+    pieces = {p for outfit in accessories.ROLE_OUTFITS.values() for p in outfit}
+    if body == "walk":                      # walking staff wear only the pieces that fit A (accessories.WALK_PIECES)
+        pieces &= set(accessories.WALK_PIECES)
+        if "Back" in (props.slot(cat), props.slot2(cat)):   # a Back prop: no back pieces (the cape is off too, F71)
+            pieces -= set(accessories.WALK_MESHES)
+    pieces |= set(accessories.LOOKS)        # #1624: every body has a slot for each look any cat can wear
+    if "Back" in (props.slot(cat), props.slot2(cat)):
+        pieces -= set(accessories.BACK_LOOKS)
+    for n, (part, off, r) in accessories.slots(spec, body).items():
+        if n in pieces:
+            turn = Euler([math.radians(a) for a in r], "XYZ").to_matrix().to_4x4()
+            attachments.append(("_" + part, "Outfit_" + n,
+                                Matrix.Translation(Vector(joints[part]) + Vector(off) * s) @ turn))
+    extras = {"attachments": attachments, "attributes": {"Scale": {"Float64": float(s)}}}
+    if spec.get("held_scale"):              # #3018: carried smaller so a big boxy body clears the arms (HeldCat)
+        extras["attributes"]["HeldScale"] = {"Float64": float(spec["held_scale"])}
+    slot = props.slot(cat)
+    if slot:                                # a themed cat's prop: its slot, and which piece its parts follow
+        rides = props.follows(slot)
+        extras["attributes"]["PropSlot"] = slot
+        extras["part_attributes"] = {"_Prop": {"Follows": rides}, "_Prop_Glass": {"Follows": rides}}
+        extras["nest"] = {"_Prop": "_Head", "_Prop_Glass": "_Head"} if rides == "Head" else {}
+        slot2 = props.slot2(cat)
+        if slot2:                           # and a second prop's (`_Prop2`, PropSlot2)
+            extras["attributes"]["PropSlot2"] = slot2
+            extras["part_attributes"]["_Prop2"] = {"Follows": props.follows(slot2)}
+            if props.follows(slot2) == "Head":
+                extras["nest"]["_Prop2"] = "_Head"
+        for piece, host in props.PIECES.get(cat, {}).items():   # extra objects (the Bellhop's bell): in their host
+            extras["nest"]["_" + piece] = "_" + host
+            extras["part_attributes"]["_" + piece] = {"Follows": props.piece_follows(cat, piece)}
+    return extras
+
+
+def _slot_entry(part, off, r, s=1.0):
+    off = [v * s for v in off]
+    return {"part": part, "offset": [round(v, 3) for v in off], "offset_roblox": common.to_roblox(off),
+            "angles_roblox_deg": common.euler_to_roblox(r)}
+
+
+def parse_args():
+    argv = sys.argv
+    argv = argv[argv.index("--") + 1:] if "--" in argv else (argv[1:] if not bpy.app.binary_path or argv[0].endswith(".py") else [])
+    p = argparse.ArgumentParser()
+    p.add_argument("--out", default=os.path.join(ROOT, "assets", "cat-cafe", "exports"))
+    p.add_argument("--docs", default=os.path.join(ROOT, "docs", "concepts", "cat-cafe"))
+    p.add_argument("--render", action="store_true", help="render a preview PNG and a five-view sheet per asset")
+    p.add_argument("--no-views", action="store_true", help="with --render: skip the five-view sheets")
+    p.add_argument("--views-engine", choices=common.VIEW_ENGINES, default="auto",
+                   help="sheet renderer; auto = Workbench where it can run, else Cycles CPU")
+    p.add_argument("--scenes", action="store_true", help="render the cafe and alley vignettes")
+    p.add_argument("--no-export", action="store_true")
+    p.add_argument("--rbx", default=os.path.join(ROOT, "assets", "cat-cafe", "rbx"),
+                   help="where the Part-built .model.json files go (Rojo syncs them into ReplicatedStorage.Assets)")
+    p.add_argument("--no-rbx", action="store_true", help="skip the Part-built Roblox models")
+    p.add_argument("--no-reset", action="store_true", help="keep the current scene (GUI use)")
+    p.add_argument("--only", default="", help="comma list of name fragments to build")
+    p.add_argument("--samples", type=int, default=32)
+    return p.parse_args(argv)
+
+
+# Older versions of the four long areas' sets, backdrops and camps (v1 and v3.2, before F85). The game loads only the
+# F85 ones (Layout.luau `set` and `artSuffix`), but everything in rbx/ is synced into ReplicatedStorage.Assets and so
+# held in memory on every client: these 15 were about 29,000 parts and 26 MB of model files for nothing (#3743, #3722).
+# A normal build skips them and writes no rbx file; name one exactly in --only to build it again.
+RETIRED = {f"CatCafe_{a}_{k}" for a in ("Park", "Neighbourhood", "Woods", "Sewer") for k in ("Set", "Backdrop")} | {
+    f"CatCafe_{a}_SetV32" for a in ("Neighbourhood", "Woods", "Sewer")} | {
+    f"CatCafe_Camp_{a}" for a in ("Park", "Neighbourhood", "Woods", "Sewer")}
+
+# Built for Blender only (#4656): the game never loads these, so a normal build writes their FBX and GLB and no rbx
+# file. The Tiny Hat left the Looks list (it is "tail_bow" now); its mesh stays as the Hat slot's attach reference
+# for the head pieces (accessories.HEAD_LOOKS, poses.py, the pack scripts).
+NO_RBX = {"CatCafe_Accessory_Hat"} | {
+    # #4656 (2026-11-17): 20 more no table or script names (about 600 instances on every client). Their builders stay:
+    # icons.py draws the potion icons from potions.py, scenes.py places the old starter decor, and the coin, net,
+    # crest, theme props and tip pile can come back by taking a name out of this set.
+    f"CatCafe_Prop_Potion_{k}" for k in (
+        "BigGoldRush", "BigLucky", "BigTip", "GoldRush", "Lucky", "MegaTip", "QuickBait", "Steady", "Swift", "Tip")
+} | {
+    "CatCafe_Prop_FishCoin", "CatCafe_Item_LongNet", "CatCafe_Prop_GardenGarland", "CatCafe_Prop_GardenTablePot",
+    "CatCafe_Prop_GrandCushion", "CatCafe_Decor_Cup", "CatCafe_Decor_MenuBoard", "CatCafe_Decor_PlantPot",
+    "CatCafe_Plot_SignKingCrest", "CatCafe_Prop_TipPile",
+}
+
+
+def all_assets():
+    out = {}
+    for m in MODULES:
+        for name, (fn, budget) in m.ASSETS.items():
+            out[name] = (fn, budget, m.__name__)
+    return out
+
+
+def main():
+    args = parse_args()
+    t0 = time.time()
+    if not args.no_reset:
+        common.reset_scene()
+    os.makedirs(args.out, exist_ok=True)
+    png = os.path.join(args.out, palette.TEXTURE_NAME + ".png")
+    palette.write_palette_png(png)
+    mat = common.palette_material(png)
+    sparkle_png = vfx.write_sparkle_png(os.path.join(args.out, vfx.SPARKLE + ".png"))
+    leaf_png = os.path.join(args.out, floortex.LEAF_LITTER + ".png")   # PIL, not bpy: `python floortex.py` writes it
+
+    wanted = [s.strip() for s in args.only.split(",") if s.strip()]
+    manifest, failed, built = [], [], {}
+    if args.render and not args.no_views:
+        print("view sheets:", common.resolve_views_engine(args.views_engine))
+    for name, (fn, budget, module) in all_assets().items():
+        if wanted and not any(w.lower() in name.lower() for w in wanted):
+            continue
+        if name in RETIRED and name not in wanted:
+            continue
+        objs = fn(mat)
+        built[name] = objs
+        extra = cat_rbx_extras(name) if name.startswith("CatCafe_Cat_") else {}
+        if name in boards.AREA_OF:                # the UI finds an Index Board by its tag and Area
+            extra = {"attributes": {"Area": boards.AREA_OF[name]}}
+        if name == "CatCafe_Street_CodesCat":     # the prompt's spot, and the cap rides the cat's Head
+            extra = {"attachments": [stations.prompt_attachment()], "nest": {"_Prop": "_Head"}}
+        if name == "CatCafe_Street_SpinWheel_Wheel9":   # #5171 spinCat: nine slices, the ninth a Secret cat
+            extra = {"attributes": {"SliceSpans": spinwheel.SLICE_SPANS9}}
+        if name == "CatCafe_Street_SpinWheel":    # the Spin prompt's spot; the host's hat rides its Head, its outfit its Body
+            extra = {"attachments": [spinwheel.prompt_attachment()], "nest": {"_Prop": "_Head", "_Outfit": "_Body"},
+                     "model_attributes": {"_Wheel": {"SliceSpans": spinwheel.SLICE_SPANS}}}   # #1411: 8 slices
+        if name == "CatCafe_Street_FishMarket":   # the Shop prompt's spot, and the hat rides the cat's Head
+            extra = {"attachments": [market.prompt_attachment()], "nest": {"_Prop": "_Head"}}
+        if name == daycart.NAME:                  # #1577: the prompt's spot, and the visor rides the cat's Head
+            extra = {"attachments": [daycart.prompt_attachment()], "nest": {"_Prop": "_Head"}}
+        if name == mysterymarket.NAME:            # #2565: the prompt and featured item spots; the hood rides the Head
+            extra = {"attachments": mysterymarket.attachments(), "nest": mysterymarket.NEST[name]}
+        if name == mysticpool.NAME:               # #3314: prompt, bang, glow, pool and staff spots; hat and staff ride
+            extra = {"attachments": mysticpool.attachments(), "nest": mysticpool.NEST,
+                     "attributes": {"SageTurn": mysticpool.SAGE_TURN}}
+        if name == gardennursery.NAME:            # #1200: the prompt and bubble spots; the sun hat rides the cat's Head
+            extra = {"attachments": gardennursery.attachments(), "nest": {"_Prop": "_Head"}}
+        if name == "CatCafe_Decor_DoorSign":      # #1140: the moon rides the CLOSED face's Model
+            extra = {"nest": decor.DOOR_SIGN_NEST}
+        if name == "CatCafe_Street_DealerCart":   # the dealer's cat: its hood rides its Head
+            extra = {"nest": {"_Prop": "_Head", "_Glow": "_Head"}}   # the fedora band (#2739) rides it too
+        if name in shopcats.ASSETS:               # #1191: King Croissant's cushion throne, its Seat
+            extra = {"attachments": shopcats.attachments()}
+        if name == feedbackstand.NAME:            # #3066: the feedback prompt's spot; the Postie's cap and letter in its Head
+            extra = {"attachments": feedbackstand.attachments(), "nest": feedbackstand.NEST,
+                     "part_attributes": feedbackstand.FOLLOWS}
+        if name == bellhop.NAME:                  # F96: the claim card's spots; the cat's cap and collar in its Head
+            extra = {"attachments": bellhop.attachments(), "nest": bellhop.NEST, "part_attributes": bellhop.FOLLOWS}
+        if name in {**mystery.NEST, **collector.NEST}:   # F64, F63: hats ride the Head, the glass the raised paw
+            extra = {"nest": {**mystery.NEST, **collector.NEST}[name]}
+        if name == "CatCafe_Furniture_CatTree":   # F79 sleep spots: pedestals, hops and the foot (furniture.TREE_SPOTS)
+            extra = {"attachments": furniture.spot_attachments(name, furniture.TREE_SPOTS)}
+        if name == "CatCafe_Furniture_CatBed":
+            extra = {"attachments": furniture.spot_attachments(name, furniture.BED_SPOTS)}
+        if name == "CatCafe_Decor_CatTreeTower":
+            extra = {"attachments": furniture.spot_attachments(name, crate_decor.TOWER_SPOTS)}
+        if name in crate_decor.MOVING:            # F89 2c: glows ride their _Swing; Angle, Rise, Seconds for Effects
+            extra = {**extra, **crate_decor.MOVING[name]}
+        if name.startswith("CatCafe_Plot_Cafe_"):  # the roof's trims ride the roof (it fades while you are inside)
+            extra = {"nest": {"_Roof_Trim": "_Roof", "_LampPost_Bulb": "_Garden", "_Flowers": "_Garden"}}
+            extra["attachments"] = [(name, "SignHook", Matrix.Translation(Vector(common.RB.p(
+                *plotsizes.plot_of(name).SIGN_HOOK))))]   # #1140; #4543: a sized shell's own hook
+        if name == doors.NAME:                    # the leaf's CatFlap spot; glass, flap and sign ride the leaf
+            extra = {"attachments": [doors.cat_flap_attachment()], "nest": doors.NEST}
+        if name.startswith("CatCafe_Item_Net_L"):  # the hand's spot for the net hold (Animation-Engineer)
+            extra = {"attachments": [items.grip_attachment()]}
+        if name.startswith(("CatCafe_Door_", "CatCafe_CatFlap_")):   # F80: glass, sign and panels ride their leaf
+            extra = {"nest": doorsets.NEST}
+            if name.endswith("_Back"):
+                extra["attachments"] = [doorsets.back_cat_flap_attachment(name)]
+        if name in cannon.ATTACHMENTS:            # F84: Muzzle, Fuse and Seat in the turret; ladder and cover ride it
+            extra = {"attachments": cannon.rbx_attachments(name), "nest": cannon.NEST}
+        if name in camps.ATTACHMENTS:             # F84: the carrier basket's Drop
+            extra = {"attachments": camps.rbx_attachments(name)}
+        if name in lawn.ASSETS:                   # F91: lanterns' lights ride their swing; nap and seat spots
+            extra = {"nest": lawn.NEST}
+            if name in lawn.SPOTS:
+                extra["attachments"] = furniture.spot_attachments(name, lawn.SPOTS[name])
+        if name == leaderboards.N:                # F98: each board's Screen rides its board's Model
+            extra = {"nest": leaderboards.NEST}
+        if name in menu.ATTACHMENTS:              # F90: the tray's Item spot, the oven's DoorGlow
+            extra = {"attachments": menu.rbx_attachments(name)}
+        if name == arcadecabinet.NAME:            # #3062: the Play prompt, the coin slot and the screen
+            extra = {"attachments": arcadecabinet.attachments(), "nest": arcadecabinet.NEST,
+                     "part_attributes": arcadecabinet.FOLLOWS}   # #4272: the mouse cat's ears ride his head
+        if name in campstations.ASSETS:           # #1319: PromptAnchor, BangAnchor, and GlowAnchor / Steam
+            extra = {"attachments": campstations.rbx_attachments(name), **campstations.MOVING.get(name, {})}
+        if name in townsfolk.ASSETS:              # #2687: the hat rides the Head Model
+            extra = {"nest": {"_Prop": "_Head", "_Glow": "_Head"}}   # the fedora band (#2739) rides it too
+        if name in campgrowth.ASSETS:             # #2687: the townsfolk cats' spots
+            extra = {"attachments": campgrowth.rbx_attachments(name)}
+        if name in nooks.ASSETS:                  # #2687: RescueSpot and PathEnd
+            extra = {"attachments": nooks.rbx_attachments(name)}
+        if name in campextras.ATTACHMENTS:          # F100: PromptAnchor, and Steam, FishJump or Drip
+            extra = {"attachments": campextras.rbx_attachments(name)}
+        if name in luckycat.ATTACHED:             # F88: PawHinge at the shoulder the _Paw model turns about
+            extra = {"attachments": luckycat.hinge_attachments(name)}
+        if name == advent.NAME:                   # #5502: Prize01 to Prize24 in the nooks, the PromptAnchor
+            extra = {"attachments": advent.rbx_attachments(name)}
+        if name in wallperch.ASSETS:              # the cat's Seat on the shelf
+            extra = {"attachments": wallperch.rbx_attachments(name)}
+        if name in dragon.ASSETS:                 # #4062: the joint chain, each joint's scales inside it
+            extra = {"nest": dragon.NEST}
+        if name in harvestset.MOVING:             # #4251: the windmill sails turn about their hub
+            extra = {**extra, **harvestset.MOVING[name]}
+        if name in snowglobeset.MOVING:           # the portal globe's flakes drift round
+            extra = {**extra, **snowglobeset.MOVING[name]}
+        if name in areakit.SWING_ASSETS:          # banners, flags, pennants and balloons that sway (areakit.SWING)
+            extra = {**extra, **areakit.SWING}
+        if name in areakit.SMOKE:                 # chimney tops: an Attachment named "Smoke" for Effects
+            extra = {**extra, "attachments": [*extra.get("attachments", ()), *areakit.SMOKE[name]]}
+        rbx_dir = os.path.join(args.rbx, riftrun.RBX_DIR) if name in riftrun.ASSETS else args.rbx   # Assets.RiftRun
+        rbx_dir = os.path.join(args.rbx, dragon.RBX_DIR) if name in dragon.ASSETS else rbx_dir      # Assets.Dragon
+        rbx_path, rbx_parts = ((None, 0) if args.no_rbx or name in NO_RBX
+                               else rbx_export.write_model(objs, name, rbx_dir, **extra))
+        if rbx_path and name.startswith("CatCafe_Cat_"):      # #3918: the base cat's parts say how its gold twin differs
+            twin = gold_twin_name(name)
+            if twin:                                  # #4656: the twin is built in memory and never shipped
+                tobjs = gold.TWINS[twin][0](mat)
+                with tempfile.TemporaryDirectory() as tmp:
+                    tpath, _ = rbx_export.write_model(tobjs, twin, tmp, **cat_rbx_extras(twin))
+                    if tpath:
+                        goldtone.stamp(rbx_path, tpath)
+                for o in tobjs:
+                    bpy.data.objects.remove(o, do_unlink=True)
+        spots_ok = None
+        if rbx_path and name in spot_clear.SETTLE and name in areakit.POINTS:   # cat spots out of solid props
+            blo, bhi = common.bounds(objs)
+            moved, stuck = spot_clear.settle(rbx_path, areakit.POINTS[name], (-bhi.x, blo.y), (-blo.x, bhi.y))
+            for label, a, b_ in moved:
+                print(f"  {name}: {label} spot moved from {a} to {b_}")
+            spots_ok = spot_clear.check(rbx_path, areakit.POINTS[name])[:2]
+        tris = common.tri_count(objs)
+        lo, hi = common.bounds(objs)
+        size = [round(v, 2) for v in (hi - lo)]
+        entry = {
+            "name": name, "category": name.split("_")[1], "module": module,
+            "objects": [o.name for o in objs], "triangles": tris, "budget": budget,
+            "size_studs": {"x": size[0], "y": size[1], "z": size[2]},     # Blender axes, z is height
+            "size_roblox": [size[0], size[2], size[1]],                    # width, height, depth
+            "bounds_min": [round(v, 2) for v in lo], "bounds_max": [round(v, 2) for v in hi],
+            "pivot": PIVOT_NOTES.get(name, "base center (floor contact)"),
+            "front": "-Z in Roblox, the LookVector (Blender -Y)",
+        }
+        moved = {o.name: list(o.location) for o in objs if o.location.length > 1e-6}
+        if moved and not name.startswith("CatCafe_Cat_"):   # parts with their own pivot (gate leaves, tree branch); cats use joints
+            entry["part_pivots"] = {k: [round(v, 2) for v in p] for k, p in moved.items()}
+            entry["part_pivots_roblox"] = {k: common.to_roblox(p) for k, p in moved.items()}
+        if name.startswith("CatCafe_Square_"):    # Layout.townSquare.props: world x, floor top y, z, turn about Y
+            entry["placements_roblox"] = [[x, 0.1, z, r] for (n, x, z, r) in square.PLACEMENTS if n == name]
+        if name in cannon.PLACEMENTS:
+            entry["placements_roblox"] = [list(cannon.PLACEMENTS[name])]
+        if name in cannon.ATTACHMENTS:            # where the turret turns and how far for each destination
+            ty = cannon.CAMP_TURRET_Y * cannon.CAMP_K if "_Camp_" in name else cannon.TURRET_Y
+            entry["turret"] = {"model": name + "_Turret", "pivot_roblox": [0, round(ty, 3), 0],
+                               "rest": "barrel along +Z", "turn_y_deg": dict(cannon.FIRE_TURNS),
+                               "attachments": [n for _, n, _, _ in cannon.ATTACHMENTS[name]]}
+        if name in areakit.POINTS:                # spots inside an area set (cat spawns, traps), area-space Roblox x, z
+            entry["points_roblox"] = areakit.POINTS[name]
+        if name in camps.CAMPS:                   # F84: the camp's rect and its way out, area space
+            entry["camp"] = camps.CAMPS[name]
+        if name in furniture.SIT_POINTS:
+            entry["sit_point"] = list(furniture.SIT_POINTS[name])
+            entry["sit_point_roblox"] = common.to_roblox(furniture.SIT_POINTS[name])
+        if name.startswith("CatCafe_Cat_"):
+            cat, is_gold, body = cats.parse(name)
+            spec = cats.ROSTER[cat]
+            entry["rarity"] = spec["rarity"]
+            entry["body"] = body                        # walk (A, on all fours), sit (B, sitting up) or work (S)
+            entry["gold"] = is_gold
+            look = gold.gold_spec(cat) if is_gold else spec
+            entry["pattern"] = look["pattern"]          # colors by field, as swatch and hex, for any future cat model
+            entry["coat"] = {k: {"swatch": sw, "hex": palette.SWATCHES[palette.idx(sw)][1]}
+                             for k, sw in cats.coat(look).items()}
+            s_ = spec.get("scale", 1.0)
+            entry["scale"] = s_                     # scale accessories by this too
+            joints = cats.joints(spec, body)        # every hinged piece's pivot (Head, Tail, legs, eyes, ears)
+            entry["joints"] = {k: [round(v, 3) for v in j] for k, j in joints.items() if k != "Body"}
+            entry["joints_roblox"] = {k: common.to_roblox(j) for k, j in joints.items() if k != "Body"}
+            entry["attachments"] = {k: _slot_entry(p, o, r, s_) for k, (p, o, r) in accessories.slots(spec, body).items()}
+            k_ = cats.SIT_SCALE if body in ("sit", "work") else 1.0
+            entry["attachments"]["Carry"] = _slot_entry("Head", [v * k_ for v in cats.carry_at(spec, body)], (0, 0, 0), s_)
+            if props.slot(cat):
+                entry["prop"] = {"slot": props.slot(cat), "follows": props.follows(props.slot(cat)),
+                                 "objects": [o.name for o in objs if o.name.endswith(("_Prop", "_Prop_Glass"))]}
+            if props.slot2(cat):
+                entry["prop2"] = {"slot": props.slot2(cat), "follows": props.follows(props.slot2(cat)),
+                                  "objects": [o.name for o in objs if o.name.endswith("_Prop2")]}
+            for piece, host in props.PIECES.get(cat, {}).items():
+                ob = next(o for o in objs if o.name.endswith("_" + piece))
+                entry.setdefault("prop_pieces", {})[piece] = {
+                    "object": ob.name, "inside": host, "follows": props.piece_follows(cat, piece),
+                    "pivot_roblox": common.to_roblox(list(ob.location))}
+            if spec.get("exclusive"):
+                entry["exclusive"] = True               # no gold twin, never rainbow (F96)
+            lifts = {k: cats.pose_lift(spec, v) for k, v in poses.CAT_POSES.items() if v["body"] == body and "lift" in v}
+            if lifts:                               # already times the cat's scale
+                entry["pose_lifts_roblox"] = {k: common.to_roblox([c * cats.scale_of(spec, body) for c in v])
+                                              for k, v in lifts.items()}
+        if name.startswith("CatCafe_Accessory_"):
+            n = name.split("_")[-1]
+            if n == "Walk":                         # a walking version: its slot on the walking Tabby
+                n = name.split("_")[-2]
+                entry["slot"] = dict(_slot_entry(*accessories.slots(cats.ROSTER["Tabby"], "walk")[n]), body="walk")
+            elif n == "Sit":                        # a sitting version: its slot on the sitting Tabby (and _Work)
+                n = name.split("_")[-2]
+                entry["slot"] = dict(_slot_entry(*accessories.slots(cats.ROSTER["Tabby"], "sit")[n]), body="sit")
+            elif n in accessories.SIT_SLOTS:
+                entry["slot"] = dict(_slot_entry(*accessories.SIT_SLOTS[n]), body="sit")
+            elif n in accessories.slots(cats.ROSTER["Tabby"], "walk"):
+                entry["slot"] = dict(_slot_entry(*accessories.slots(cats.ROSTER["Tabby"], "walk")[n]), body="walk")
+        if name == "CatCafe_Street_FishMarket":
+            entry["prompt_anchor_roblox"] = list(market.PROMPT_ROBLOX)
+        if name == daycart.NAME:
+            entry["prompt_anchor_roblox"] = list(daycart.PROMPT_ROBLOX)
+            entry["placement_suggested_roblox"] = [round(v, 2) for v in daycart.SPOT]
+        if name == mysterymarket.NAME:
+            entry["prompt_anchor_roblox"] = list(mysterymarket.PROMPT_ROBLOX)
+            entry["featured_item_roblox"] = [round(v, 3) for v in mysterymarket.FEATURED_ROBLOX]
+            entry["tags"] = ["MysteryMarket"]
+        if name == pitysign.NAME:
+            entry["screen"] = {"part": "Screen", "face": "Front (-Z)", "size": [pitysign.SW, pitysign.SH]}
+            entry["placement_suggested_roblox"] = [round(v, 2) for v in pitysign.SPOT]
+        if name == decorstand.NAME:
+            entry["placement_suggested_roblox"] = [round(v, 2) for v in decorstand.SPOT]
+        if name == mysterysign.NAME:
+            entry["placement_suggested_roblox"] = [round(v, 2) for v in mysterysign.SPOT]
+        if name == updateposter.NAME:
+            entry["screen"] = {"part": "Screen", "face": "Front (-Z)", "size": [updateposter.SW, updateposter.SH]}
+            entry["placement_suggested_roblox"] = [round(v, 2) for v in updateposter.SPOT]
+        if name == gardennursery.NAME:
+            entry["prompt_anchor_roblox"] = list(gardennursery.PROMPT_ROBLOX)
+            entry["placement_park_set_roblox"] = list(gardennursery.SPOT)
+            entry["tags"] = ["LawnStall"]
+        if name == "CatCafe_Street_DealerCart":
+            entry["display_slots"] = [list(p) for p in street.DISPLAY_SLOTS]
+            entry["display_slots_roblox"] = [common.to_roblox(p) for p in street.DISPLAY_SLOTS]
+        if name.startswith("CatCafe_Item_") and name.split("_")[-1] in items.FOODS:
+            entry["food_in_bowl_roblox"] = [0, items.FOOD_IN_BOWL, 0]
+        ledges = alleyway.LEDGES.get(name) or townbuildings.LEDGES.get(name)
+        if ledges:
+            entry["ledges_roblox"] = {k: list(v) for k, v in ledges.items()}
+        if name.endswith(("_Gate", "_GateF85")) and name in areas.ASSETS:
+            entry["sign_board_roblox"] = areas.SIGN_INFO
+        if name.startswith("CatCafe_Plot_Cafe_"):
+            _pm = plotsizes.plot_of(name)                             # #4543: a sized shell's own numbers
+            entry["chimney_top_roblox"] = list(_pm.CHIMNEY_TOP)
+            entry["sign_board_roblox"] = _pm.SIGN_INFO
+            entry["sign_hook_roblox"] = list(_pm.SIGN_HOOK)           # #1140: the door sign hangs here
+        if name in boards.AREA_OF:
+            host, (px, py, pz, turn) = boards.PLACEMENT[boards.AREA_OF[name]]
+            entry["area"] = boards.AREA_OF[name]
+            entry["screen"] = {"part": "Screen", "face": "Front (-Z)", "size": [boards.W, boards.H]}
+            entry["placement"] = {"relative_to": host, "offset_roblox": [px, py, pz], "turn_y_deg": turn,
+                                  "use": "host:GetPivot() * CFrame.new(offset) * CFrame.Angles(0, math.rad(turn), 0)"}
+        if name in night.HOSTS:
+            entry["placement"] = {"relative_to": night.HOSTS[name], "offset_roblox": [0, 0, 0], "turn_y_deg": 0,
+                                  "use": "host:GetPivot()"}
+        if name == "CatCafe_Street_CodesCat":
+            entry["prompt_anchor_roblox"] = list(stations.PROMPT_ROBLOX)
+            entry["codes_circle"] = {"part": "CodesCircle", "centre_roblox": [0, 0.05, stations.CIRCLE_Z],
+                                     "radius": stations.CIRCLE_R}
+        if name in poses.STUCK_POSES:
+            entry["stuck_pose"] = poses.manifest_pose(poses.STUCK_POSES[name])
+        if name in STUDIO_NOTES:
+            entry["studio"] = STUDIO_NOTES[name]
+        if rbx_path:
+            entry["rbx_model"] = os.path.relpath(rbx_path, ROOT)
+            entry["rbx_parts"] = rbx_parts
+        if not args.no_export and not name.endswith(("_Gold", "_Gold_Sit", "_Gold_Work")):   # gold cats: Part models only
+            entry["files"] = [os.path.relpath(p, ROOT) for p in common.export_asset(objs, name, args.out)]
+        entry["gates"] = gates.check(objs, name, budget, tris, lo, hi, PIVOT_NOTES.get(name), mat)
+        if spots_ok is not None:                  # spot_clear: every cat spot clear of the collidable parts (FAIL)
+            entry["gates"]["checks"]["cat_spots"] = spots_ok[1]
+            if not spots_ok[0]:
+                entry["gates"]["failed"].append("cat_spots")
+                entry["gates"]["pass"] = False
+        if args.render:
+            path = os.path.join(args.docs, "previews", name + ".png")
+            visible = [o for o in objs if not o.name.endswith(("_Glass", "_Fireflies", "_Climb", "_Barrier", "_Snowfall"))] or objs   # glass is opaque in Cycles here; firefly volumes are air
+            shifted = [o for o in objs if o.name.endswith("_Closed")]            # show both sign faces side by side
+            for o in shifted:
+                o.location.x += 3.2
+            common.render_preview(visible, path, samples=args.samples,
+                                 warm=not name.startswith("CatCafe_Alley_"), floor=True)
+            for o in shifted:
+                o.location.x -= 3.2
+            entry["preview"] = os.path.relpath(path, ROOT)
+            vpath = os.path.join(args.docs, "views", name + ".png")
+            if not args.no_views:
+                common.render_views(visible, vpath, engine=args.views_engine)
+            if os.path.exists(vpath):                 # --no-views keeps pointing at the earlier views
+                entry["views"] = os.path.relpath(vpath, ROOT)
+        else:                                     # keep pointing at earlier renders
+            for key, sub_dir in (("preview", "previews"), ("views", "views")):
+                path = os.path.join(args.docs, sub_dir, name + ".png")
+                if os.path.exists(path):
+                    entry[key] = os.path.relpath(path, ROOT)
+        g = entry["gates"]
+        flag = "ok" if g["pass"] else "FAIL " + ",".join(g["failed"])
+        if g["warnings"]:
+            flag += "  warn " + ",".join(g["warnings"])
+        if not g["pass"]:
+            failed.append(name)
+        print(f"{name:44s} tris {tris:5d} / {budget:5d} parts {rbx_parts:4d} {flag}  size {size}")
+        manifest.append(entry)
+
+    mpath = os.path.join(args.out, "manifest.json")
+    if wanted and os.path.exists(mpath):          # partial build: merge into the existing manifest
+        with open(mpath) as f:
+            old = {e["name"]: e for e in json.load(f).get("assets", [])}
+        old.update({e["name"]: e for e in manifest})
+        order = list(all_assets().keys())
+        manifest = sorted(old.values(), key=lambda e: order.index(e["name"]) if e["name"] in order else 999)
+    with open(mpath, "w") as f:
+        # no build time in it: a timestamp line made every two model PRs conflict here and in gates.md
+        json.dump({"units": "studs",
+                   "palette": os.path.relpath(png, ROOT),
+                   "pose_convention": poses.__doc__.strip().splitlines()[-5:],
+                   "poses": {k: poses.manifest_pose(v) for k, v in poses.POSES.items()},
+                   "cat_poses": {k: poses.manifest_cat_pose(v) for k, v in poses.CAT_POSES.items()},
+                   "role_outfits": accessories.ROLE_OUTFITS,
+                   "sit_slots": {k: _slot_entry(*v) for k, v in accessories.SIT_SLOTS.items()},
+                   "textures": {vfx.SPARKLE: vfx.manifest_entry(sparkle_png, ROOT),
+                                floortex.LEAF_LITTER: floortex.manifest_entry(leaf_png, ROOT)},
+                   "assets": manifest}, f, indent=2)
+    gates.write_report(os.path.join(args.out, "gates.md"), manifest, ROOT)
+
+    if args.render:
+        poses.render_pose_previews(built, mat, args.docs, samples=args.samples)
+        vfx.render_sparkle_preview(built, sparkle_png, os.path.join(args.docs, "previews", vfx.SPARKLE + ".png"),
+                                   samples=args.samples)
+        import contact_sheet
+        contact_sheet.build_sheets(args.docs, manifest)
+    if args.scenes:
+        import scenes
+        scenes.render_all(built, mat, args.docs, samples=max(args.samples, 48))
+
+    print(f"built {len(manifest)} assets in {time.time() - t0:.0f}s; gates report: {os.path.join(args.out, 'gates.md')}")
+    if failed:
+        print("GATES FAILED:", ", ".join(failed))
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
