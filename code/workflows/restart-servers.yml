@@ -1,0 +1,66 @@
+# Move every running Cat Cafe server onto the newest published version, without publishing anything (Creator Hub's
+# "Restart servers for updates"). publish.yml does the same after a live publish when its restart_servers input is
+# on; this one is for a publish that went out without it, or whose restart step failed. Start it from the Actions
+# tab (restart-servers > Run workflow) or with the GitHub actions_run_trigger tool on main. Needs universe Write on
+# the repo secret ROBLOX_PUBLISH_KEY (docs/setup-guide.md step 19). Players get a countdown first unless warn_players
+# is off (restart-countdown.sh, step 21).
+name: restart-servers
+
+on:
+  workflow_dispatch:
+    inputs:
+      warn_players:
+        description: "Tell every server 10 and 2 minutes and 30 seconds ahead and at the restart (adds 10 minutes)"
+        type: boolean
+        default: true
+      warnings:
+        description: "With warn_players: the countdown, in seconds before the restart, largest first (\"300 120 30 0\" for 5 minutes)"
+        type: string
+        default: "600 120 30 0"
+
+permissions:
+  contents: read
+  actions: read # wait-publish-lane.sh reads the publish and restart runs
+
+# Never alongside a publish, so a restart cannot land between the Saved upload and the live one. A restart shares
+# publish-hand with hand-started publishes; an automatic publish (group publish) is waited for by the first step,
+# so a finished main check can no longer cancel a restart that is still waiting (2026-11-13).
+concurrency:
+  group: publish-hand
+  cancel-in-progress: false
+
+jobs:
+  restart:
+    name: Restart running servers onto the newest version
+    runs-on: ubuntu-latest
+    timeout-minutes: 45 # 20 for the restart plus up to 25 waiting for an automatic publish
+    env:
+      ROBLOX_PUBLISH_KEY: ${{ secrets.ROBLOX_PUBLISH_KEY }}
+      UNIVERSE_ID: "${{ vars.ROBLOX_UNIVERSE_ID }}" # the Cat Cafe experience
+    defaults:
+      run:
+        working-directory: games/cat-cafe
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Wait for an automatic publish that started first
+        working-directory: .
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash .github/scripts/wait-publish-lane.sh 25 hand
+
+      - name: Check the publish key is set
+        run: |
+          if [ -z "$ROBLOX_PUBLISH_KEY" ]; then
+            echo "::error::The repo secret ROBLOX_PUBLISH_KEY is missing. Steps: docs/setup-guide.md step 15."
+            exit 1
+          fi
+
+      - name: Warn players in game (10 and 2 minutes, 30 seconds, then now)
+        if: inputs.warn_players
+        env:
+          WARNINGS: ${{ inputs.warnings }}
+        run: bash tools/opencloud/restart-countdown.sh
+
+      - name: Restart running servers
+        run: bash tools/opencloud/restart-servers.sh

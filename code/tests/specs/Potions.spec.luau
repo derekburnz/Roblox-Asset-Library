@@ -1,0 +1,786 @@
+--!strict
+-- shared/Potions.luau and the potion rows (F64, data-model section 12b): time left that pauses while away, the 60
+-- minute cap that refuses a drink whole (v0.13.8), each potion's effect, the Tip Potion's split in Economy.settle,
+-- the save's sanitizing and the Mystery gift's roll.
+return function()
+	local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+	local Catalog = require(Shared.Catalog)
+	local Config = require(Shared.Config)
+	local Economy = require(Shared.Economy)
+	local Potions = require(Shared.Potions)
+	local ProfileSchema = require(Shared.ProfileSchema)
+
+	local function fresh(now: number?): any
+		local profile: any = ProfileSchema.template(now or 1000)
+		profile.lastTick = now or 1000
+		return profile
+	end
+
+	describe("Catalog.potions and Catalog.mysteryGift (section 12b)", function()
+		it(
+			"has the potions in bag order with the design's minutes (Corner Shop v2 adds its own)",
+			function()
+				local minutes: { [string]: number } = {}
+				local order: { string } = {}
+				for _, def in Catalog.potions do
+					minutes[def.id] = def.minutes
+					table.insert(order, def.id)
+					expect(Catalog.getPotion(def.id)).to.equal(def)
+					expect(#def.name > 0 and #def.effect > 0).to.equal(true)
+				end
+				expect(order).to.deepEqual({
+					"tip_potion",
+					"lucky_potion",
+					"swift_potion",
+					"steady_potion",
+					"big_tip_potion",
+					"gold_rush_potion",
+					"quick_bait_potion",
+					-- corner-shop-v2.md section 1: the Corner Shop's sizes (#2891: the Cat Whistle retired)
+					"swift_potion_small",
+					"swift_potion_big",
+					"steady_potion_small",
+					"steady_potion_big",
+					"quick_bait_potion_small",
+					"quick_bait_potion_big",
+					-- #3462: the Day Cart's Tier 6 potions
+					"big_lucky_potion",
+					"big_gold_rush_potion",
+					"mega_tip_potion",
+					"admin_money_potion", -- #4195: the Admin Wheel's 3x money
+					"picnic_time", -- #5572: the Picnic Party's 2x money
+				})
+				expect(minutes).to.deepEqual({
+					tip_potion = 10,
+					lucky_potion = 10,
+					swift_potion = 10, -- corner-shop-v2.md section 1 (was 5)
+					swift_potion_small = 3,
+					swift_potion_big = 30,
+					steady_potion_small = 5,
+					steady_potion_big = 30,
+					quick_bait_potion_small = 10,
+					quick_bait_potion_big = 60,
+					steady_potion = 10,
+					big_tip_potion = 30,
+					gold_rush_potion = 30,
+					quick_bait_potion = 30,
+					big_lucky_potion = 30,
+					big_gold_rush_potion = 30,
+					mega_tip_potion = 30,
+					admin_money_potion = 60,
+					picnic_time = 3,
+				})
+				expect(Catalog.getPotion("nope")).never.to.be.ok()
+			end
+		)
+
+		it(
+			"rolls a wrap, Common 60, Rare 30, Super 10, each wrap's rows summing to 100 (#2614, #4884)",
+			function()
+				local total = 0
+				for _, tier in Catalog.mysteryGiftTiers do
+					total += tier.chance
+					local rows = 0
+					for _, row in tier.rows do
+						rows += row.chance
+					end
+					expect(rows).to.equal(100)
+				end
+				expect(total).to.equal(100)
+				expect(Catalog.mysteryGiftTiers[1].tier).to.equal("Common")
+				expect(Catalog.mysteryGiftTiers[1].chance).to.equal(60)
+				expect(Catalog.mysteryGiftTiers[2].chance).to.equal(30)
+				expect(Catalog.mysteryGiftTiers[3].chance).to.equal(10)
+				expect(Catalog.mysteryGift).to.equal(Catalog.mysteryGiftTiers[1].rows)
+			end
+		)
+	end)
+
+	describe("time left and drinking (UsePotion)", function()
+		it(
+			"counts down from lastTick, so a read between settles is exact, and never below 0",
+			function()
+				local p = fresh(1000)
+				p.buffs.tip_potion = 600
+				expect(Potions.left(p, "tip_potion", 1000)).to.equal(600)
+				expect(Potions.left(p, "tip_potion", 1100)).to.equal(500)
+				expect(Potions.left(p, "tip_potion", 2000)).to.equal(0)
+				expect(Potions.running(p, "tip_potion", 1599)).to.equal(true)
+				expect(Potions.running(p, "tip_potion", 1600)).to.equal(false)
+				expect(Potions.left(p, "lucky_potion", 1000)).to.equal(0)
+			end
+		)
+
+		it("drinks one: the bag loses it, its minutes run, potionsUsed counts", function()
+			local p = fresh(1000)
+			p.potions.tip_potion = 2
+			expect(Potions.useBlocker(p, "tip_potion", 1000)).to.equal(nil)
+			expect(Potions.use(p, "tip_potion", 1000)).to.equal(true)
+			expect(p.potions.tip_potion).to.equal(1)
+			expect(Potions.left(p, "tip_potion", 1000)).to.equal(600)
+			expect(p.stats.potionsUsed).to.equal(1)
+			-- the second of the same kind adds its time and empties the bag's row
+			expect(Potions.use(p, "tip_potion", 1000)).to.equal(true)
+			expect(p.potions.tip_potion).to.equal(nil)
+			expect(Potions.left(p, "tip_potion", 1000)).to.equal(1200)
+			expect(Potions.useBlocker(p, "tip_potion", 1000)).to.equal("None")
+			expect(Potions.use(p, "tip_potion", 1000)).to.equal(false)
+		end)
+
+		it("adds the time right even when lastTick is behind now", function()
+			local p = fresh(1000)
+			p.potions.swift_potion = 1
+			p.buffs.swift_potion = 100 -- 100 s left at 1000, 40 at 1060
+			Potions.use(p, "swift_potion", 1060)
+			expect(Potions.left(p, "swift_potion", 1060)).to.equal(40 + 600)
+		end)
+
+		it("refuses a drink whole when it would pass PotionMaxMinutes (v0.13.8)", function()
+			local p = fresh(1000)
+			p.potions.tip_potion = 1
+			local max = Config.PotionMaxMinutes * 60
+			p.buffs.tip_potion = max - 600 -- exactly room for one more 10 minute potion
+			expect(Potions.useBlocker(p, "tip_potion", 1000)).to.equal(nil)
+			p.buffs.tip_potion = max - 599 -- a second short: Full, nothing used
+			expect(Potions.useBlocker(p, "tip_potion", 1000)).to.equal("Full")
+			expect(Potions.use(p, "tip_potion", 1000)).to.equal(false)
+			expect(p.potions.tip_potion).to.equal(1)
+			expect(p.buffs.tip_potion).to.equal(max - 599)
+			-- once a second of play has passed it fits
+			expect(Potions.useBlocker(p, "tip_potion", 1001)).to.equal(nil)
+			expect(Potions.useBlocker(p, "nope", 1000)).to.equal("Unknown")
+		end)
+
+		it("counts and drinks as many as fit for Use all (#1600)", function()
+			local p = fresh(1000)
+			p.potions.tip_potion = 5
+			local max = Config.PotionMaxMinutes * 60
+			expect(Potions.fitCount(p, "tip_potion", 1000)).to.equal(5) -- the bag is the limit
+			p.buffs.tip_potion = max - 3 * 600 -- room for three 10 minute potions
+			expect(Potions.fitCount(p, "tip_potion", 1000)).to.equal(3)
+			expect(Potions.useMany(p, "tip_potion", 4, 1000)).to.equal(3) -- the fourth is Full, nothing wasted
+			expect(p.potions.tip_potion).to.equal(2)
+			expect(Potions.left(p, "tip_potion", 1000)).to.equal(max)
+			expect(Potions.fitCount(p, "tip_potion", 1000)).to.equal(0)
+			expect(Potions.useMany(p, "tip_potion", 2, 1000)).to.equal(0)
+			expect(p.stats.potionsUsed).to.equal(3)
+			expect(Potions.fitCount(p, "swift_potion", 1000)).to.equal(0) -- none in the bag
+			expect(Potions.fitCount(p, "nope", 1000)).to.equal(0)
+		end)
+
+		it("drinks every kind that fits at once for Use all potions (#3326)", function()
+			local p = fresh(1000)
+			local max = Config.PotionMaxMinutes * 60
+			p.potions.tip_potion = 3
+			p.potions.swift_potion = 2
+			p.potions.swift_potion_small = 4 -- shares the Swift Potion's timer
+			p.potions.lucky_potion = 1
+			p.buffs.lucky_potion = max -- full: skipped and kept
+			p.buffs.swift_potion = max - 600 - 2 * 180 -- room for one Swift and two Small Swift
+			local drunk, total = Potions.useAll(p, 1000)
+			expect(drunk.tip_potion).to.equal(3)
+			expect(drunk.swift_potion).to.equal(1)
+			expect(drunk.swift_potion_small).to.equal(2)
+			expect(drunk.lucky_potion).to.equal(nil)
+			expect(total).to.equal(6)
+			expect(p.potions.tip_potion).to.equal(nil)
+			expect(p.potions.swift_potion).to.equal(1)
+			expect(p.potions.swift_potion_small).to.equal(2)
+			expect(p.potions.lucky_potion).to.equal(1)
+			expect(Potions.left(p, "swift_potion", 1000)).to.equal(max)
+			local again, none = Potions.useAll(p, 1000)
+			expect(next(again)).to.equal(nil)
+			expect(none).to.equal(0)
+		end)
+
+		it("ticks every timer down by the time played and drops the ones that ran out", function()
+			local p = fresh(1000)
+			p.buffs.tip_potion = 30
+			p.buffs.swift_potion = 10
+			Potions.tick(p, 10)
+			expect(p.buffs.tip_potion).to.equal(20)
+			expect(p.buffs.swift_potion).to.equal(nil)
+		end)
+
+		it(
+			"orders a rejoin's running potions by time left, least first, and sends endsAt in server time",
+			function()
+				local p = fresh(1000)
+				p.buffs.tip_potion = 500
+				p.buffs.lucky_potion = 20
+				p.buffs.steady_potion = 300
+				expect(Potions.runningIds(p, 1000)).to.deepEqual({
+					"lucky_potion",
+					"steady_potion",
+					"tip_potion",
+				})
+				expect(Potions.runningIds(p, 1100)).to.deepEqual({ "steady_potion", "tip_potion" })
+				expect(Potions.endsAt(p, 1100)).to.deepEqual({
+					steady_potion = 1300,
+					tip_potion = 1500,
+				})
+			end
+		)
+	end)
+
+	describe("effects", function()
+		it(
+			"Tip +25%, Swift +4 speed, Lucky doubles the bait gold chance, Steady the next net level",
+			function()
+				local p = fresh(1000)
+				expect(Potions.tipMultiplier(p, 1000)).to.equal(1)
+				expect(Potions.speedBonus(p, 1000)).to.equal(0)
+				expect(Potions.baitGoldChance(p, 0.05, 1000)).to.be.near(0.05)
+				expect(Potions.netLevel(p, 1, 1000)).to.equal(1)
+				p.buffs.tip_potion = 60
+				p.buffs.swift_potion = 60
+				p.buffs.lucky_potion = 60
+				p.buffs.steady_potion = 60
+				expect(Potions.tipMultiplier(p, 1000)).to.be.near(1.25)
+				expect(Potions.speedBonus(p, 1000)).to.equal(4)
+				expect(Potions.baitGoldChance(p, 0.05, 1000)).to.be.near(0.10)
+				expect(Potions.netLevel(p, 1, 1000)).to.equal(2)
+				-- Circles clamps the level, so a Master net stays Master
+				local Circles = require(Shared.Circles)
+				expect(Circles.windows(Potions.netLevel(p, 3, 1000))).to.equal(Circles.windows(3))
+			end
+		)
+
+		-- F73 (quests.md section 4): the quest potions, earned only from quest sets and achievements
+		it(
+			"Big Tip +50% stacks with Tip, Gold Rush adds 0.25 gold luck, Quick Bait 0.25 bait speed",
+			function()
+				local p = fresh(1000)
+				expect(Potions.goldLuck(p, 1000)).to.equal(0)
+				expect(Potions.baitSpeed(p, 1000)).to.equal(0)
+				p.buffs.big_tip_potion = 60
+				expect(Potions.tipMultiplier(p, 1000)).to.be.near(1.5)
+				p.buffs.tip_potion = 60
+				expect(Potions.tipMultiplier(p, 1000)).to.be.near(1.75)
+				expect(Config.TimedTipsMax).to.equal(1.0)
+				p.buffs.gold_rush_potion = 60
+				p.buffs.quick_bait_potion = 60
+				expect(Potions.goldLuck(p, 1000)).to.be.near(0.25)
+				expect(Potions.baitSpeed(p, 1000)).to.be.near(0.25)
+				expect(Potions.MAX_GOLD_LUCK).to.be.near(0.75) -- #3462: with the Big Gold Rush Potion's 0.5
+				-- they run out like the rest
+				expect(Potions.goldLuck(p, 1061)).to.equal(0)
+				expect(Potions.tipMultiplier(p, 1061)).to.equal(1)
+			end
+		)
+
+		it("#3462: the Day Cart's Tier 6 potions are stronger kinds on their own timers", function()
+			local Luck = require(Shared.Luck)
+			for _, id in { "big_lucky_potion", "big_gold_rush_potion", "mega_tip_potion" } do
+				local def = Catalog.getPotion(id) :: any
+				expect(def.shopOnly).to.equal(true) -- never a Mystery gift
+				expect(def.buff).never.to.be.ok() -- its own timer
+				expect(def.quest).never.to.be.ok()
+				expect(Potions.buffOf(id)).to.equal(id)
+			end
+			-- Mega Money fills the money potions' cap by itself; the others add nothing on top
+			local p = fresh(1000)
+			p.buffs.mega_tip_potion = 60
+			expect(Potions.tipMultiplier(p, 1000)).to.be.near(2)
+			p.buffs.tip_potion = 60
+			p.buffs.big_tip_potion = 60
+			expect(Potions.tipMultiplier(p, 1000)).to.be.near(1 + Config.TimedTipsMax)
+			expect(Potions.tipMultiplier(p, 1061)).to.equal(1)
+			-- Big Gold Rush adds to Gold Rush
+			p = fresh(1000)
+			p.buffs.big_gold_rush_potion = 60
+			expect(Potions.goldLuck(p, 1000)).to.be.near(0.5)
+			p.buffs.gold_rush_potion = 30
+			expect(Potions.goldLuck(p, 1000)).to.be.near(0.75)
+			expect(Potions.goldLuck(p, 1040)).to.be.near(0.5)
+			-- Big Lucky's Luck takes the place of the Lucky Potion's, and both double the bait's gold chance
+			p = fresh(1000)
+			expect(select(1, Potions.luck(p, 1000))).to.equal(0)
+			expect(Potions.baitGoldChance(p, 0.01, 1000)).to.equal(0.01)
+			p.buffs.lucky_potion = 600
+			local value, left = Potions.luck(p, 1000)
+			expect(value).to.equal(Config.LuckyPotionLuck)
+			expect(left).to.equal(600)
+			expect(Luck.of(p, 1000, false)).to.be.near(1 + Config.LuckyPotionLuck)
+			p.buffs.big_lucky_potion = 60
+			value, left = Potions.luck(p, 1000)
+			expect(value).to.equal(0.75)
+			expect(left).to.equal(60)
+			expect(Luck.of(p, 1000, false)).to.be.near(1.75)
+			expect(Potions.baitGoldChance(p, 0.01, 1000)).to.be.near(
+				0.01 * Config.LuckyPotionGoldScale
+			)
+			-- the Big one runs out first: the Lucky Potion's Luck is back for the rest of its time
+			value, left = Potions.luck(p, 1061)
+			expect(value).to.equal(Config.LuckyPotionLuck)
+			expect(left).to.equal(539)
+			p.buffs.lucky_potion = nil
+			expect(Luck.of(p, 1000, false)).to.be.near(1.75)
+			expect(Potions.baitGoldChance(p, 0.01, 1000)).to.be.near(
+				0.01 * Config.LuckyPotionGoldScale
+			)
+			expect(Luck.of(p, 1061, false)).to.equal(1)
+		end)
+
+		it(
+			"puts Gold Rush luck on top of the Index's cap, and Quick Bait inside BaitSpeedMax",
+			function()
+				local IndexRewards = require(Shared.IndexRewards)
+				expect(IndexRewards.goldChance(0.1, 9)).to.be.near(0.1 * (1 + Config.GoldLuckMax))
+				expect(IndexRewards.rollChance(0.1, 9)).to.be.near(
+					0.1 * (1 + Config.GoldLuckMax + 0.75) -- #3462: Gold Rush 0.25 and Big Gold Rush 0.5
+				)
+				expect(IndexRewards.rollChance(0.1, 0.5)).to.be.near(0.15)
+				expect(IndexRewards.rollChance(0.1, -1)).to.equal(0.1)
+				local p = fresh(1000)
+				local before = Economy.baitWaitSeconds(p, false, 1000)
+				p.buffs.quick_bait_potion = 60
+				expect(Economy.baitWaitSeconds(p, false, 1000)).to.be.near(before * 0.75, 1)
+				expect(Economy.baitWaitSeconds(p, false)).to.equal(before) -- without `now`, no potion
+			end
+		)
+
+		it(
+			"settle pays a Tip and a Big Tip Potion each over the part of the window it covers",
+			function()
+				local p = fresh(1000)
+				p.buffs.tip_potion = 4 -- 4 of the 10 s get +25%
+				p.buffs.big_tip_potion = 6 -- 6 of the 10 s get +50%
+				local rate = Economy.incomePerSecond(p)
+				local earned = Economy.settle(p, 1010)
+				expect(earned).to.be.near(rate * (10 + 4 * 0.25 + 6 * 0.5))
+				expect(p.buffs.tip_potion).to.equal(nil)
+				expect(p.buffs.big_tip_potion).to.equal(nil)
+			end
+		)
+
+		it("#4195: the Admin Wheel's 3x money goes on top of the money potions' cap", function()
+			local def = Catalog.getPotion("admin_money_potion") :: any
+			expect(def.tipsOver).to.equal(2)
+			expect(def.tips).never.to.be.ok()
+			expect(def.shopOnly).to.equal(true) -- never a Mystery gift
+			for _, other in Catalog.potions do
+				if other.id ~= def.id then
+					expect((other :: any).tipsOver).never.to.be.ok()
+				end
+			end
+			local p = fresh(1000)
+			p.buffs.admin_money_potion = 60
+			expect(Potions.tipMultiplier(p, 1000)).to.be.near(3)
+			p.buffs.mega_tip_potion = 60
+			p.buffs.big_tip_potion = 60
+			expect(Potions.tipMultiplier(p, 1000)).to.be.near(1 + Config.TimedTipsMax + 2)
+			expect(Potions.tipMultiplier(p, 1061)).to.equal(1)
+			-- settle pays it over the part of the window it covers, beside a capped money potion
+			p = fresh(1000)
+			p.buffs.admin_money_potion = 4 -- 4 of the 10 s get +200%
+			p.buffs.mega_tip_potion = 6 -- 6 of the 10 s get +100%
+			local rate = Economy.incomePerSecond(p)
+			local earned = Economy.settle(p, 1010)
+			expect(earned).to.be.near(rate * (10 + 4 * 2 + 6 * 1))
+			expect(p.buffs.admin_money_potion).to.equal(nil)
+			-- an hour of it from one drink
+			p = fresh(1000)
+			p.potions.admin_money_potion = 1
+			expect(Potions.use(p, "admin_money_potion", 1000)).to.equal(true)
+			expect(Potions.left(p, "admin_money_potion", 1000)).to.equal(3600)
+		end)
+
+		it(
+			"settle pays the Tip Potion's share only over the part of the window it covers",
+			function()
+				local p = fresh(1000)
+				p.buffs.tip_potion = 4 -- 4 of the 10 s get +25%
+				local rate = Economy.incomePerSecond(p)
+				local earned = Economy.settle(p, 1010)
+				expect(earned).to.be.near(rate * (10 + 4 * Config.TipPotionBonus))
+				expect(p.buffs.tip_potion).to.equal(nil)
+			end
+		)
+
+		it("splits the Tip Potion's share at nightfall too", function()
+			local epoch = 1000
+			local dusk = epoch + Config.ServerStartDaySeconds
+			local p = fresh(dusk - 20) -- 20 s of day, then 30 s of night, the potion over the first 40
+			p.buffs.tip_potion = 40
+			local rate = Economy.incomePerSecond(p)
+			local night = Config.NightIncomeMultiplier
+			local earned = Economy.settle(p, dusk + 30, epoch)
+			local base = 20 + 30 * night
+			local boosted = 20 + 20 * night
+			expect(earned).to.be.near(rate * (base + boosted * Config.TipPotionBonus))
+		end)
+
+		it(
+			"pauses while away: the gap before a join settles nothing, so no time comes off",
+			function()
+				local p = fresh(1000)
+				p.buffs.tip_potion = 480
+				-- DataService.load resets lastTick on join; an hour later the potion still has 8 minutes
+				p.lastTick = 1000 + 3600
+				Economy.settle(p, 1000 + 3600)
+				expect(Potions.left(p, "tip_potion", 1000 + 3600)).to.equal(480)
+			end
+		)
+	end)
+
+	describe("the save (version 13)", function()
+		it(
+			"keeps known potions and buffs, drops unknown ids, zeros and junk, and clamps time to the cap",
+			function()
+				local raw = ProfileSchema.template(1000) :: any
+				raw.potions = {
+					tip_potion = 3,
+					swift_potion = 0,
+					nope = 5,
+					lucky_potion = -2,
+					steady_potion = "x",
+				}
+				raw.buffs =
+					{ tip_potion = 99999, lucky_potion = 120.5, swift_potion = -1, nope = 30 }
+				local p = ProfileSchema.migrate(raw, 2000)
+				expect(p.potions).to.deepEqual({ tip_potion = 3 })
+				expect(p.buffs).to.deepEqual({
+					tip_potion = Config.PotionMaxMinutes * 60,
+					lucky_potion = 120.5,
+				})
+			end
+		)
+
+		it("gives a save from before version 13 an empty bag", function()
+			local raw = ProfileSchema.template(1000) :: any
+			raw.version = 12
+			raw.potions = nil
+			raw.buffs = nil
+			local p = ProfileSchema.migrate(raw, 2000)
+			expect(next(p.potions)).never.to.be.ok()
+			expect(next(p.buffs)).never.to.be.ok()
+			expect(p.version).to.equal(ProfileSchema.VERSION)
+		end)
+	end)
+
+	describe("the Mystery gift's roll", function()
+		local function rolls(values: { number }): () -> number
+			local i = 0
+			return function()
+				i += 1
+				return values[i] or 0
+			end
+		end
+
+		it("picks a wrap, then a row at its chance and a potion at even odds (#2614)", function()
+			expect(Potions.rollGift(rolls({ 0, 0, 0 })) :: any).to.deepEqual({
+				kind = "potion",
+				id = "tip_potion",
+				count = 2,
+				tier = "Common",
+			})
+			expect(Potions.rollGift(rolls({ 0, 0.5 })) :: any).to.deepEqual({
+				kind = "coins",
+				count = 600,
+				tier = "Common",
+			})
+			expect(Potions.rollGift(rolls({ 0.59, 0.9 })) :: any).to.deepEqual({
+				kind = "fish",
+				count = 25,
+				tier = "Common",
+			})
+			expect(Potions.rollGift(rolls({ 0.6, 0.1, 0 })) :: any).to.deepEqual({
+				kind = "potion",
+				id = "big_tip_potion",
+				count = 2,
+				tier = "Rare",
+			})
+			expect(Potions.rollGift(rolls({ 0.89, 0.9 })) :: any).to.deepEqual({
+				kind = "food",
+				id = "big_cat_snack",
+				count = 4,
+				tier = "Rare",
+			})
+			expect(Potions.rollGift(rolls({ 0.91, 0.1 })) :: any).to.deepEqual({
+				kind = "crate",
+				id = "highest",
+				count = 2,
+				fish = 40,
+				tier = "Super",
+			})
+			expect(Potions.rollGift(rolls({ 0.9999, 0.9999 })) :: any).to.deepEqual({
+				kind = "fish",
+				count = 150,
+				tier = "Super",
+			})
+		end)
+
+		it("never holds a Swift Potion, and a Common potion is Money, Lucky or Steady", function()
+			expect(table.find(Potions.GIFT_POTIONS, "swift_potion")).to.equal(nil)
+			expect(Potions.GIFT_POTIONS :: any).to.deepEqual({
+				"tip_potion",
+				"lucky_potion",
+				"steady_potion",
+			})
+			expect(Potions.QUEST_POTIONS :: any).to.deepEqual({
+				"big_tip_potion",
+				"gold_rush_potion",
+				"quick_bait_potion",
+			})
+		end)
+
+		it(
+			"lands near 60/30/10 over 10,000 seeded rolls and pays about 15.9 golden fish a gift (#4884)",
+			function()
+				local rng = Random.new(2614)
+				local counts: { [string]: number } = { Common = 0, Rare = 0, Super = 0 }
+				for _ = 1, 10000 do
+					local tier = Potions.rollGiftTier(function()
+						return rng:NextNumber()
+					end)
+					counts[tier] += 1
+				end
+				expect(math.abs(counts.Common - 6000) <= 150).to.equal(true)
+				expect(math.abs(counts.Rare - 3000) <= 150).to.equal(true)
+				expect(math.abs(counts.Super - 1000) <= 150).to.equal(true)
+				expect(Potions.giftFishAverage()).to.be.near(15.9, 1e-9)
+			end
+		)
+
+		it("makes the gift after MysteryRareStreak Commons in a row Rare or better", function()
+			expect(Config.MysteryRareStreak).to.equal(4)
+			expect(Potions.rollGiftTier(rolls({ 0 }), 3)).to.equal("Common")
+			expect(Potions.rollGiftTier(rolls({ 0 }), 4)).to.equal("Rare")
+			expect(Potions.rollGiftTier(rolls({ 0.74 }), 4)).to.equal("Rare") -- 29.6 of 40
+			expect(Potions.rollGiftTier(rolls({ 0.9 }), 4)).to.equal("Super")
+			expect(Config.MysteryGiftKeepSeconds).to.equal(900)
+		end)
+
+		it("turns a gift into the prize shape Payout pays", function()
+			expect(Potions.giftPrize({ kind = "potion", id = "lucky_potion", count = 1 }) :: any).to.deepEqual({
+				potions = { lucky_potion = 1 },
+			})
+			expect(Potions.giftPrize({ kind = "lure", id = "salmon", count = 2 }) :: any).to.deepEqual({
+				lures = { salmon = 2 },
+			})
+			expect(Potions.giftPrize({ kind = "fish", count = 10 }) :: any).to.deepEqual({
+				fish = 10,
+			})
+			expect(Potions.giftPrize({ kind = "spin", count = 1 }) :: any).to.deepEqual({
+				spins = 1,
+			})
+			expect(Potions.giftPrize({ kind = "coins", count = 180 }) :: any).to.deepEqual({
+				coins = 0,
+				coinSeconds = 180,
+			})
+			expect(
+				Potions.giftPrize({ kind = "crate", id = "highest", count = 1, fish = 15 }) :: any
+			).to.deepEqual({
+				crates = { highest = 1 },
+				fish = 15,
+			})
+			expect(Potions.giftPrize({ kind = "food", id = "big_cat_snack", count = 2 }) :: any).to.deepEqual({
+				catFood = { big_cat_snack = 2 },
+			})
+		end)
+
+		it(
+			"pays a spin as the table's golden fish when the spin bank is full, and every other gift as rolled",
+			function()
+				local spin = { kind = "spin", count = 1 } :: any
+				expect(Potions.giftPaid(spin, Config.SpinBankCap - 1) :: any).to.deepEqual(spin)
+				expect(Potions.giftPaid(spin, Config.SpinBankCap) :: any).to.deepEqual({
+					kind = "fish",
+					count = 25,
+				})
+				-- a Rare spin with the bank full pays the Rare wrap's 60 (#4884)
+				local rare = { kind = "spin", count = 1, tier = "Rare" } :: any
+				expect(Potions.giftPaid(rare, Config.SpinBankCap) :: any).to.deepEqual({
+					kind = "fish",
+					count = 60,
+					tier = "Rare",
+				})
+				local potion = { kind = "potion", id = "tip_potion", count = 1 } :: any
+				expect(Potions.giftPaid(potion, Config.SpinBankCap) :: any).to.deepEqual(potion)
+				local fish = { kind = "fish", count = 10 } :: any
+				expect(Potions.giftPaid(fish, Config.SpinBankCap) :: any).to.deepEqual(fish)
+			end
+		)
+	end)
+
+	describe("potion edges (QA)", function()
+		it(
+			"refuses a 10 minute potion 5 minutes from the cap and takes it at 10; a Small Swift fits at 3 exactly",
+			function()
+				-- the cap is PotionMaxMinutes (F95: 24 hours, was 60 minutes)
+				local cap = Config.PotionMaxMinutes * 60
+				local p = fresh(1000)
+				p.potions.tip_potion = 1
+				p.potions.swift_potion_small = 1
+				p.buffs.tip_potion = cap - 5 * 60
+				expect(Potions.useBlocker(p, "tip_potion", 1000)).to.equal("Full")
+				p.buffs.tip_potion = cap - 10 * 60
+				expect(Potions.useBlocker(p, "tip_potion", 1000)).to.equal(nil)
+				-- a Small Swift (3 minutes) runs the Swift Potion's timer (corner-shop-v2.md section 4)
+				p.buffs.swift_potion = cap - 3 * 60
+				expect(Potions.useBlocker(p, "swift_potion_small", 1000)).to.equal(nil)
+				p.buffs.swift_potion = cap - 3 * 60 + 1
+				expect(Potions.useBlocker(p, "swift_potion_small", 1000)).to.equal("Full")
+			end
+		)
+
+		it("leaves the bag, the timer and potionsUsed alone on every refusal", function()
+			local p = fresh(1000)
+			p.buffs.lucky_potion = 120
+			expect(Potions.use(p, "lucky_potion", 1000)).to.equal(false) -- none in the bag
+			expect(Potions.use(p, "nope", 1000)).to.equal(false)
+			expect(p.buffs.lucky_potion).to.equal(120)
+			expect(p.potions.lucky_potion).to.equal(nil)
+			expect(p.stats.potionsUsed or 0).to.equal(0)
+		end)
+
+		it(
+			"never adds time when lastTick is ahead of now, and reads junk timers as not running",
+			function()
+				local p = fresh(1000)
+				p.buffs.tip_potion = 100
+				expect(Potions.left(p, "tip_potion", 900)).to.equal(100)
+				p.buffs.tip_potion = 0 / 0
+				expect(Potions.running(p, "tip_potion", 1000)).to.equal(false)
+				p.buffs.tip_potion = "600"
+				expect(Potions.left(p, "tip_potion", 1000)).to.equal(0)
+				expect(Potions.tipMultiplier(p, 1000)).to.equal(1)
+				p.buffs.swift_potion = 1
+				expect(Potions.speedBonus(p, 1001)).to.equal(0) -- the second it ends, the speed goes
+			end
+		)
+
+		it("ticks nothing for no time or negative time", function()
+			local p = fresh(1000)
+			p.buffs.tip_potion = 30
+			Potions.tick(p, 0)
+			Potions.tick(p, -50)
+			expect(p.buffs.tip_potion).to.equal(30)
+		end)
+
+		it("breaks a tie in time left by id, so a rejoin's order is fixed", function()
+			local p = fresh(1000)
+			p.buffs.tip_potion = 300
+			p.buffs.lucky_potion = 300
+			p.buffs.swift_potion = 300
+			expect(Potions.runningIds(p, 1000)).to.deepEqual({
+				"lucky_potion",
+				"swift_potion",
+				"tip_potion",
+			})
+		end)
+
+		it(
+			"rolls only real gifts: a known potion, counts above 0, no food since F94, and the last row past 100",
+			function()
+				local seen: { [string]: boolean } = {}
+				for i = 0, 99 do
+					for j = 0, 9 do
+						local values = { i / 100 + 0.004, j / 10 + 0.05 }
+						local n = 0
+						local gift = Potions.rollGift(function()
+							n += 1
+							return values[n] or 0
+						end, (({ "Common", "Rare", "Super" }) :: { any })[j % 3 + 1])
+						expect(gift.count > 0).to.equal(true)
+						if gift.kind == "potion" then
+							expect(Catalog.getPotion(gift.id :: string) ~= nil).to.equal(true)
+						elseif gift.kind == "lure" then
+							expect(Catalog.getLure(gift.id :: string) ~= nil).to.equal(true)
+						end
+						seen[gift.kind .. ":" .. tostring(gift.id)] = true
+					end
+				end
+				-- #2614: a Rare gift may hold a quest potion; the Swift Potion and the Corner Shop's own
+				-- (corner-shop-v2.md) never come from a gift
+				for _, def in Catalog.potions do
+					expect(seen["potion:" .. def.id] == true).to.equal(
+						def.shopOnly ~= true and def.id ~= "swift_potion"
+					)
+				end
+				expect(seen["fish:nil"] and seen["spin:nil"]).to.equal(true)
+				for key in seen do
+					expect(string.sub(key, 1, 5) == "lure:").to.equal(false)
+				end
+				local over = Potions.rollGift(function()
+					return 1
+				end)
+				expect(over.kind).to.equal("fish") -- the Super wrap's last row (#2614)
+				expect(over.tier).to.equal("Super")
+			end
+		)
+
+		it("pays nothing for a gift it cannot name", function()
+			expect(Potions.giftPrize({ kind = "potion", count = 1 } :: any) :: any).to.deepEqual({})
+			expect(Potions.giftPrize({ kind = "lure", count = 2 } :: any) :: any).to.deepEqual({})
+			expect(Potions.giftPrize({ kind = "hat", id = "x", count = 1 } :: any) :: any).to.deepEqual({})
+		end)
+
+		it(
+			"swaps a spin for the fish row only from the bank cap up, leaving the roll and other gifts alone",
+			function()
+				local cap = Config.SpinBankCap
+				local fishRows, fishCount = 0, 0
+				for _, row in Catalog.mysteryGift do
+					if row.kind == "spin" then
+						-- one spin a gift, so a bank one short of the cap still takes the whole gift
+						expect(row.count).to.equal(1)
+					elseif row.kind == "fish" then
+						fishRows += 1
+						fishCount = row.count
+					end
+				end
+				expect(fishRows).to.equal(1)
+				local spin = { kind = "spin", count = 1 } :: any
+				for _, banked in { -1, 0, cap - 1 } do
+					expect(Potions.giftPaid(spin, banked)).to.equal(spin)
+				end
+				for _, banked in { cap, cap + 1, math.huge } do
+					local paid = Potions.giftPaid(spin, banked) :: any
+					expect(paid).never.to.equal(spin)
+					expect(paid :: any).to.deepEqual({ kind = "fish", count = fishCount })
+					expect(Potions.giftPrize(paid) :: any).to.deepEqual({ fish = fishCount })
+				end
+				expect(spin :: any).to.deepEqual({ kind = "spin", count = 1 })
+				-- every other gift the table can roll pays as rolled, even with the bank full
+				for i = 1, 100 do
+					local gift = Potions.rollGift(function()
+						return (i - 0.5) / 100
+					end)
+					if gift.kind ~= "spin" then
+						expect(Potions.giftPaid(gift, cap)).to.equal(gift)
+					end
+				end
+			end
+		)
+
+		it("keeps the Config numbers the relay and data-model 12b give", function()
+			expect(Config.MysteryStaySeconds).to.equal(120)
+			expect(Config.MysteryGiftKeepSeconds).to.equal(900) -- #2614 (was 600)
+			expect(Config.MysteryRangeStuds).to.equal(12)
+			expect(Config.PotionMaxMinutes).to.equal(1440) -- F95 (economy-ladder.md section 6b)
+			expect(Config.TipPotionBonus).to.equal(0.25)
+			expect(Config.SwiftPotionSpeed).to.equal(4)
+			expect(Config.LuckyPotionGoldScale).to.equal(2)
+		end)
+	end)
+	describe("Potions.steadySoften (#5601 steadySoft)", function()
+		it("moves each band two thirds of the way from the own net to the next", function()
+			local out = Potions.steadySoften(
+				{ perfect = 0.13, good = 0.31 }, -- the next level's bands times 2 for the other scales
+				{ perfect = 0.065, good = 0.155 },
+				{ perfect = 0.055, good = 0.13 }
+			)
+			expect(math.abs(out.perfect - 2 * (0.055 + 0.01 * 2 / 3)) < 1e-9).to.equal(true)
+			expect(math.abs(out.good - 2 * (0.13 + 0.025 * 2 / 3)) < 1e-9).to.equal(true)
+		end)
+		it("leaves the bands alone at the top net, where both levels match", function()
+			local same = { perfect = 0.08, good = 0.18 }
+			local out = Potions.steadySoften({ perfect = 0.16, good = 0.36 }, same, same)
+			expect(math.abs(out.perfect - 0.16) < 1e-9 and math.abs(out.good - 0.36) < 1e-9).to.equal(
+				true
+			)
+		end)
+	end)
+end

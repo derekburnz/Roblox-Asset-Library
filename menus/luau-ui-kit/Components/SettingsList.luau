@@ -1,0 +1,300 @@
+--!strict
+-- The Settings screen's rows and what each one shows (UI plan 2026-10-27, wave 2; Derek 2026-10-27: volume,
+-- screen shake and the like). Pure: no Theme, so the cloud spec runner can load it.
+--
+-- Switches hold booleans and volumes numbers from 0 to 1 (shared/Settings, which also gives each key's default:
+-- Low performance starts off, everything else on and at full volume). A tap or a slider release shows at once and
+-- fires events.setSetting; the row then follows the saved value from ProfileSync. While the server has not caught
+-- up (HOLD_SECONDS) the player's choice wins, and a key the server does not send keeps it for the session.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Settings = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Settings"))
+
+export type Kind = "switch" | "volume"
+
+export type Row = {
+	key: string,
+	kind: Kind,
+	icon: string,
+	name: string,
+	detail: string,
+}
+
+export type Section = { title: string, rows: { Row } }
+
+export type Tap = { value: boolean | number, at: number }
+
+local SettingsList = {}
+
+SettingsList.HOLD_SECONDS = 5
+SettingsList.VOLUME_STEPS = 20 -- a slider moves in 5% steps, so the saved two decimals match what it shows
+
+SettingsList.SECTIONS = {
+	{
+		title = "Sound",
+		rows = {
+			{
+				key = "music",
+				kind = "switch",
+				icon = "🎵",
+				name = "Music",
+				detail = "Cafe tunes by day, the night song after dark",
+			},
+			{
+				key = "musicVolume",
+				kind = "volume",
+				icon = "🎧",
+				name = "Music volume",
+				detail = "",
+			},
+			{
+				key = "sfx",
+				kind = "switch",
+				icon = "🔔",
+				name = "Sound effects",
+				detail = "Meows, coins, buttons and the street",
+			},
+			{
+				key = "sfxVolume",
+				kind = "volume",
+				icon = "🔊",
+				name = "Sound volume",
+				detail = "",
+			},
+		},
+	},
+	{
+		title = "Screen",
+		rows = {
+			{
+				key = "screenShake",
+				kind = "switch",
+				icon = "📳",
+				name = "Screen shake",
+				detail = "The camera bump on tackles and catches",
+			},
+			{
+				key = "lowPerformance",
+				kind = "switch",
+				icon = "🐢",
+				-- #1573 (Derek, 2026-11-05: "a lighter phone setting: reduce effects and shadows first, never hide the
+				-- cats you own"): the Low performance switch, named for what it does. Your own cats always show.
+				-- #4311 (Derek 2026-11-14: "I know their is a low quality mode just make it better and suggest it to
+				-- them"): "Smooth mode", the name the slow-device card (#4313) offers it by; kids read "low" as worse
+				name = "Smooth mode",
+				detail = "Fewer shadows, glow and sparkles. Cats still show",
+			},
+			{
+				key = "showOtherCats",
+				kind = "switch",
+				icon = "🐈",
+				name = "Other players' cats",
+				detail = "Cats in other cafes and in other arms",
+			},
+			{
+				-- #2551 (Derek2 11-09): the "+$3/s" over each working cat, yours and everyone else's
+				key = "catIncome",
+				kind = "switch",
+				icon = "💰",
+				name = "Cat income",
+				detail = "The money a second over each working cat",
+			},
+			{
+				key = "markers",
+				kind = "switch",
+				icon = "📍",
+				name = "Map icons",
+				detail = "My Cafe, and the Night Market while it's open",
+			},
+			{
+				-- #4668 (Derek 2026-11-15): off by default; the menus still open when you step up to a station
+				key = "stationCircles",
+				kind = "switch",
+				icon = "⭕",
+				name = "Station circles",
+				detail = "The glowing rings in front of stations",
+			},
+			{
+				-- #5586 (a player's feedback, Derek 2026-11-20): on by default
+				key = "catNames",
+				kind = "switch",
+				icon = "🏷️",
+				name = "Cat names",
+				detail = "The names over wild cats near you",
+			},
+		},
+	},
+} :: { Section }
+
+-- F72: the Tutorial tile's switch, in the Screen section once shared/Settings saves its key (the engineer's ninth
+-- SetSetting key, default on). Settings hides it until the intro is live.
+SettingsList.TUTORIAL_KEY = "tutorialButton"
+if Settings.kinds[SettingsList.TUTORIAL_KEY] then
+	local row: Row = {
+		key = SettingsList.TUTORIAL_KEY,
+		kind = "switch",
+		icon = "❓",
+		name = "Tutorial and tips",
+		detail = "The ? tile, the hint at the top and the tip cards",
+	}
+	table.insert(SettingsList.SECTIONS[2].rows, row)
+end
+
+-- F94's "Shop alerts" switch left with the Fresh Catch (#3118). shared/Settings still saves its key, so old saves
+-- keep it, but no row shows it.
+SettingsList.SHOP_ALERTS_KEY = "shopAlerts"
+
+-- #1920 (first-hour.md section 6): the session recap card's switch, once shared/Settings saves its key (default on).
+-- Off, the card never shows (UI.recap).
+SettingsList.SESSION_RECAP_KEY = "sessionRecap"
+if Settings.kinds[SettingsList.SESSION_RECAP_KEY] then
+	local row: Row = {
+		key = SettingsList.SESSION_RECAP_KEY,
+		kind = "switch",
+		icon = "📋",
+		name = "Session recap",
+		detail = "A short card on your cafe after a long play",
+	}
+	table.insert(SettingsList.SECTIONS[2].rows, row)
+end
+
+-- #1955 (auto-equip.md): Auto Equip, once shared/Settings saves its key. The same switch sits over Equip Best in the
+-- Cats window (Screens/CatRoom). On by default for new accounts and off for older ones; the server sends which.
+SettingsList.AUTO_EQUIP_KEY = "autoEquip"
+if Settings.kinds[SettingsList.AUTO_EQUIP_KEY] then
+	local row: Row = {
+		key = SettingsList.AUTO_EQUIP_KEY,
+		kind = "switch",
+		icon = "✨",
+		name = "Auto Equip",
+		detail = "Puts a better cat to work by itself",
+	}
+	table.insert(SettingsList.SECTIONS[2].rows, row)
+end
+
+-- #4991 (Derek 2026-11-16): the VIP tag over your head, off by default. Settings shows the row to a VIP owner alone
+-- (showVipTag, from the server's VipOwner attribute on the player).
+SettingsList.VIP_TAG_KEY = "vipTag"
+if Settings.kinds[SettingsList.VIP_TAG_KEY] then
+	local row: Row = {
+		key = SettingsList.VIP_TAG_KEY,
+		kind = "switch",
+		icon = "👑",
+		name = "VIP tag",
+		detail = "The gold VIP tag over your head",
+	}
+	-- #5010: first on the Screen tab, where the Store's "turn it on in Settings" sends a new VIP (a phone shows 3 rows)
+	table.insert(SettingsList.SECTIONS[2].rows, 1, row)
+end
+
+-- Saved keys the Settings screen shows outside these rows. F102: Trade requests is a three-way choice ("everyone",
+-- "friends" or "off", default "everyone") in the Trading section (Screens/Settings, TradeLogic.requestsMode), so the
+-- server can save its key without a switch row here. #1893: roadmapOpen was the Grand Opening strip's open or closed
+-- state; the strip is retired (#4162) but saves still hold the key, so it has no row either.
+SettingsList.TRADE_REQUESTS_KEY = "tradeRequests"
+SettingsList.OTHER_KEYS = {
+	[SettingsList.TRADE_REQUESTS_KEY] = true,
+	roadmapOpen = true,
+	goalFolded = true, -- #2714: the goal card's fold tab and chip set it
+	perfAsked = true, -- #4311: the Low performance ask sets it (shared/PerfSuggest)
+	shopAlerts = true, -- #3118: still saved, but its Fresh Catch alert is gone, so no row
+	catPickSort = true, -- #3940: the Mystic Pool's Filter pop-up sets these three
+	catPickFlipped = true,
+	catPickShow = true,
+	autoBowlClaim = true, -- #4266: the Bait bowl window's Auto Bowl switches set these three
+	autoBowlRefill = true,
+	bowlNewCatCard = true,
+	afkMode = true, -- #5322: AFK mode's saved mark, the server's (the AFK button)
+} :: { [string]: boolean }
+
+-- Every row in screen order.
+SettingsList.ROWS = {} :: { Row }
+for _, section in SettingsList.SECTIONS do
+	for _, row in section.rows do
+		table.insert(SettingsList.ROWS, row)
+	end
+end
+
+local DEFAULTS = Settings.defaults() :: any
+
+function SettingsList.isKey(key: unknown): boolean
+	for _, row in SettingsList.ROWS do
+		if row.key == key then
+			return true
+		end
+	end
+	return false
+end
+
+function SettingsList.kind(key: string): Kind?
+	for _, row in SettingsList.ROWS do
+		if row.key == key then
+			return row.kind
+		end
+	end
+	return nil
+end
+
+-- What a key shows before the server sends it (shared/Settings.defaults, N122).
+function SettingsList.default(key: string): boolean | number
+	local value = DEFAULTS[key]
+	if SettingsList.kind(key) == "volume" then
+		return if type(value) == "number" then value else 1
+	end
+	return value ~= false
+end
+
+-- A volume as the slider holds it: 0 to 1 in 5% steps (dividing, so 0.35 is exactly the number 0.35).
+function SettingsList.step(volume: number): number
+	local steps = SettingsList.VOLUME_STEPS
+	return math.clamp(math.floor(volume * steps + 0.5), 0, steps) / steps
+end
+
+-- "75%"
+function SettingsList.percent(volume: number): string
+	return ("%d%%"):format(math.floor(volume * 100 + 0.5))
+end
+
+-- The saved value, or nil when the server sends no settings or no usable value for this key.
+function SettingsList.saved(settings: { [string]: unknown }?, key: string): (boolean | number)?
+	if settings == nil then
+		return nil
+	end
+	local value = settings[key]
+	if value == nil then
+		return nil
+	end
+	if SettingsList.kind(key) == "volume" then
+		return if type(value) == "number" and value == value then math.clamp(value, 0, 1) else nil
+	end
+	return value ~= false
+end
+
+local function same(a: boolean | number, b: boolean | number): boolean
+	if type(a) == "number" and type(b) == "number" then
+		return math.abs(a - b) < 0.001
+	end
+	return a == b
+end
+
+-- What the row shows: a fresh choice until the server agrees or HOLD_SECONDS pass, a choice on a key the server
+-- does not send for the rest of the session, else the saved value, else the default.
+function SettingsList.shown(
+	settings: { [string]: unknown }?,
+	taps: { [string]: Tap },
+	key: string,
+	now: number
+): boolean | number
+	local saved = SettingsList.saved(settings, key)
+	local tap = taps[key]
+	if saved == nil then
+		return if tap then tap.value else SettingsList.default(key)
+	end
+	if tap and not same(tap.value, saved) and now - tap.at < SettingsList.HOLD_SECONDS then
+		return tap.value
+	end
+	return saved
+end
+
+return SettingsList

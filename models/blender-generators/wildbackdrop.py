@@ -1,0 +1,1307 @@
+"""Backdrop rings for the five wild areas (hometown-cannon.md section 6a: "Each area sits on its own ground with a
+backdrop ring outside its walls (hills, trees, house roofs or brick vaults by theme), so no player ever sees the empty
+space between places"; Derek 2026-10-28 17:10: "make it so that the sides of the map are blended in with terrain more
+smoothly and not just a patch of grass ground stretching out").
+
+One model per area, in set space like the area's kit set and its camp set (x across, -Z toward the camp and the town,
+the area's centre on the ground at the origin): place it where the camp set goes, at y 0,
+CFrame.new(spec.center.x, 0, spec.center.z) * CFrame.Angles(0, math.rad(camp.turn), 0).
+
+  CatCafe_<Area>_Backdrop           the pieces: buildings, houses, trees, chimneys and the rest, by theme.
+  CatCafe_<Area>_Backdrop_Ground    the ground carried on from WorldBuilder's plate under the area and its camp
+                                    (CAMP_GROUND_MARGIN 80 past the walls) out to under the far hill ring (#1174: no
+                                    square tray past the hills seen from the cannon), top at -0.1 like the plate,
+                                    in the plate's grass (the Alleyway's in asphalt over the plate too).
+  CatCafe_<Area>_Backdrop_Hills     the near ring of rolling hills, sunk into the ground (backdrop.Hill).
+  CatCafe_<Area>_Backdrop_HillsFar  the far ring, bigger and paler (the Woods': grey mountains, Rock).
+  CatCafe_<Area>_Backdrop_Snow      the Woods' snow caps on the tallest mountains.
+  CatCafe_<Area>_Backdrop_Road      the Alleyway's asphalt over the plate, the Neighbourhood's road, the Sewer's yard.
+  CatCafe_<Area>_Backdrop_Flowers   flower tufts and beds.
+  CatCafe_<Area>_Backdrop_Bulbs     windows, lit at night like every _Bulbs.
+
+Themes: the Alleyway in city blocks, the Park in hills and parkland with a lake, the Neighbourhood in house rows along
+a road, the Woods in deep forest under mountains, the Sewer in brick works with chimneys. Nothing collides, casts a
+shadow or takes a raycast (rbx_export BACKDROP), and every piece keeps KEEP clear of the area's walls and its camp set.
+Built against Config.World's v4 (F84) sizes; each F85 long rectangle gets its own ring with its numbers in AREAS
+(CatCafe_Park_BackdropF85 round the 120 x 310 Park, CatCafe_Neighbourhood_BackdropF85 round the 180 x 430 Neighbourhood,
+CatCafe_Woods_BackdropF85 round the 160 x 490 Woods). Tier 6 and 7 (#2651): CatCafe_Desert_Backdrop in dunes, mesas and
+a far pyramid on sand, CatCafe_Ruins_Backdrop in jungle hills, grey cliffs, broken columns and a far temple on earth.
+Tier 8 (#3997): CatCafe_Snowy_Backdrop in snow drifts and snowy firs under a ring of snow-capped grey mountains, a
+frozen pond outside the west wall and one great peak past the summit end. Tier 9 (#4066): CatCafe_WaterPark_Backdrop in
+green hills with palms, striped big tops either side, hot-air balloons over the hills and a great wheel past the far
+end, its bulbs lit at night.
+"""
+
+import math
+
+from mathutils import Matrix, Vector
+
+import rbx_export
+from alleyway import flower_clump
+from backdrop import GRASS_RGB, Hill, _hash, _ring
+from common import RB
+from plot import rot_y
+
+CAMP_D = 30.0          # Config.World.CampDepth: the camp lies across the gate side, this deep
+CAMP_SET = 2.0         # the camp sets' ground runs this far past the camp's back line (CatCafe_Camp_<Area>)
+MARGIN = 80.0          # WorldBuilder's CAMP_GROUND_MARGIN: its plate reaches this far past the walls and the camp
+REACH = 260.0          # this backdrop's ground carries on this far past the plate
+TOP = -0.1             # the plate's top (1 thick, centred at -0.6)
+KEEP = 3.0             # nothing stands nearer than this to the walls' outer faces or the camp set
+
+# area: (half its width across, half its length from the gate line to the far wall, theme), Config.World v4 (F84)
+AREAS = {
+    "Alleyway": (45.0, 125.5, "city"),        # the one lane (two lanes and a block until 11-02), 90 x 251
+    "Park": (80.0, 60.0, "park"),             # ParkWidth 160, ParkDepth 120
+    "Neighbourhood": (140.0, 140.0, "houses"),
+    "Woods": (120.0, 120.0, "forest"),        # turned a quarter: its depth runs across
+    "Sewer": (90.0, 90.0, "works"),
+    "ParkF85": (60.0, 155.0, "park"),         # F85's long Park, 120 x 310 (parkf85.py)
+    "NeighbourhoodF85": (90.0, 215.0, "houses"),   # F85's long Neighbourhood, 180 x 430 (neighbourhoodf85.py)
+    "WoodsF85": (80.0, 245.0, "forest"),      # F85's long Woods, 160 x 490 (woodsf85.py)
+    "SewerF85": (60.0, 285.0, "works"),       # F85's long Sewer, 120 x 570 (sewerf85.py)
+    "Desert": (75.0, 280.0, "desert"),        # Tier 6 (#2651), 150 x 560 (desertset.py)
+    "Ruins": (70.0, 300.0, "ruins"),          # Tier 7 (#2651), 140 x 600 (ruinsset.py)
+    "Snowy": (75.0, 280.0, "snowy"),          # Tier 8 (#3997), 150 x 560 (snowyset.py)
+    "WaterPark": (75.0, 280.0, "funfair"),    # Tier 9 (#4066), 150 x 560 (waterparkset.py)
+    "Castle": (75.0, 280.0, "medieval"),      # Tier 10 (#4067), 150 x 560 (castleset.py)
+}
+NAMES = {"ParkF85": "CatCafe_Park_BackdropF85", "NeighbourhoodF85": "CatCafe_Neighbourhood_BackdropF85",
+         "WoodsF85": "CatCafe_Woods_BackdropF85",
+         "SewerF85": "CatCafe_Sewer_BackdropF85"}   # an F85 ring keeps its area's name, so WorldBuilder can pick it
+
+ASPHALT_RGB = (70, 70, 75)                     # WorldBuilder's ASPHALT
+PALE_RGB = (150, 186, 128)                     # the far hills, as in the hometown's
+WOODS_RGB = (86, 120, 70)                      # WorldBuilder's Woods floor
+MOUNTAIN_RGB = (118, 140, 150)
+FOREST_RGB = (62, 110, 70)
+
+
+def _look(name, rgb, material):
+    rbx_export.LOOKS[name] = ([round(v / 255, 4) for v in rgb], material)
+
+
+# ---------------------------------------------------------------------------------------------------- frame --
+class Frame:
+    """An area's footprint in set space: the walls' outer faces at |x| ex and z ez1, the camp set's back at ez0."""
+
+    def __init__(self, A, H):
+        self.A, self.H = A, H
+        self.ex = A + 1.0
+        self.ez0 = -(H + CAMP_D + CAMP_SET)
+        self.ez1 = H + 1.0
+        self.cz = (self.ez0 + self.ez1) / 2
+        self.hz = (self.ez1 - self.ez0) / 2
+        self.px = A + MARGIN                            # WorldBuilder's plate
+        self.pz0 = -(H + CAMP_D) - MARGIN
+        self.pz1 = H + MARGIN
+        self.hills = []
+        self.rings = []                                 # (d, corner, across) of every hill ring, for ground()
+
+    def out(self, x, z):
+        """How far (x, z) is outside the footprint (negative inside)."""
+        return max(abs(x) - self.ex, self.ez0 - z, z - self.ez1)
+
+    def gy(self, x, z):
+        return max([TOP] + [h.height(x, z) for h in self.hills])
+
+    def around(self, d, step, seed, wobble=0.0, shift=0.0, corners=True):
+        """Points every `step` round the footprint at distance d (a rounded rectangle), each (x, z, nx, nz) with its
+        outward normal; `wobble` moves each in or out by up to that, `shift` along by up to that."""
+        ex, ez0, ez1 = self.ex, self.ez0, self.ez1
+        legs = [((-ex - d, ez0), (-ex - d, ez1), (-1, 0)), ((-ex, ez1 + d), (ex, ez1 + d), (0, 1)),
+                ((ex + d, ez1), (ex + d, ez0), (1, 0)), ((ex, ez0 - d), (-ex, ez0 - d), (0, -1))]
+        corner_at = [(-ex, ez1, math.pi), (ex, ez1, math.pi / 2), (ex, ez0, 0.0), (-ex, ez0, -math.pi / 2)]
+        pts = []
+        for k, ((x0, z0), (x1, z1), (nx, nz)) in enumerate(legs):
+            L = math.hypot(x1 - x0, z1 - z0)
+            n = max(1, round(L / step))
+            for i in range(n):
+                t = (i + 0.5) / n
+                pts.append((x0 + (x1 - x0) * t, z0 + (z1 - z0) * t, nx, nz))
+            if corners:
+                cx, cz, a0 = corner_at[k]
+                m = max(1, round(d * math.pi / 2 / step))
+                for i in range(m):
+                    a = a0 - (i + 0.5) / m * math.pi / 2
+                    pts.append((cx + d * math.cos(a), cz + d * math.sin(a), math.cos(a), math.sin(a)))
+        out = []
+        for i, (x, z, nx, nz) in enumerate(pts):
+            w = (_hash(seed, i, 1) - 0.5) * 2 * wobble
+            s = (_hash(i, seed, 2) - 0.5) * 2 * shift
+            out.append((x + nx * w - nz * s, z + nz * w + nx * s, nx, nz))
+        return out
+
+
+def ring(f, d, step, sizes, seed, corner=None):
+    """A ring of hills round the footprint, d past it, every hill's foot KEEP + 4 clear of it (shrunk or left out)."""
+    rx, rz = f.ex + d, f.hz + d
+    corner = corner if corner is not None else min(0.8 * d, rx, rz)
+    f.rings.append((d, corner, sizes[1]))
+    hills = []
+    for h in _ring(rx, rz, corner, step, sizes, seed):
+        h.z += f.cz
+        foot = math.sqrt(1 - (Hill.SINK / (1 + Hill.SINK)) ** 2)
+        for _ in range(8):
+            if _foot_clear(f, h, foot):
+                hills.append(h)
+                break
+            h = Hill(h.x, h.z, h.a * foot * 0.85, h.c * foot * 0.85, h.rise * 0.85, h.turn)
+    return hills
+
+
+def _foot_in(h, box):
+    """Whether any of a hill's foot lies in box (x0, x1, z0, z1)."""
+    foot = math.sqrt(1 - (Hill.SINK / (1 + Hill.SINK)) ** 2)
+    ct, st = math.cos(h.turn), math.sin(h.turn)
+    for k in range(32):
+        a = 2 * math.pi * k / 32
+        for r in (0.0, 0.5, 1.0):
+            u, v = h.a * foot * r * math.cos(a), h.c * foot * r * math.sin(a)
+            x, z = h.x + u * ct + v * st, h.z - u * st + v * ct
+            if box[0] <= x <= box[1] and box[2] <= z <= box[3]:
+                return True
+    return False
+
+
+def _foot_clear(f, h, foot):
+    ct, st = math.cos(h.turn), math.sin(h.turn)
+    for k in range(32):
+        a = 2 * math.pi * k / 32
+        u, v = h.a * foot * math.cos(a), h.c * foot * math.sin(a)
+        x, z = h.x + u * ct + v * st, h.z - u * st + v * ct
+        if f.out(x, z) < KEEP + 4:
+            return False
+    return True
+
+
+def _rounded_sdf(x, z, rx, rz, r):
+    """Signed distance from (x, z) to a rounded rectangle centred on the origin (half sizes rx, rz, corner r)."""
+    qx, qz = abs(x) - (rx - r), abs(z) - (rz - r)
+    return math.hypot(max(qx, 0.0), max(qz, 0.0)) + min(max(qx, qz), 0.0) - r
+
+
+def _ray_to(sdf, ux, uz, far=4000.0):
+    """How far along the unit ray (ux, uz) from the origin the shape with this signed distance is crossed."""
+    lo, hi = 0.0, far
+    for _ in range(48):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if sdf(ux * mid, uz * mid) < 0 else (lo, mid)
+    return (lo + hi) / 2
+
+
+CORNER_STEPS = 8                 # steps round each rounded corner of the ground's outer edge
+
+
+def ground(f, rb, swatch):
+    """The ground round WorldBuilder's plate, top at TOP: from the plate's edge out to the far hill ring's own
+    rounded rectangle plus half a hill's foot (#1174: a square tray reaching REACH past the plate stuck out past the
+    hills and read from the cannon's flight as a floating square of grass). Its edge lies under the far hills, so
+    from the air the ground ends where the hills do. Built after the theme's rings (Frame.rings)."""
+    d, corner, across = max(f.rings) if f.rings else (REACH, 0.0, 0.0)
+    D = d + across * 0.5
+    rx, rz, r = f.ex + D, f.hz + D, min(corner + across * 0.5, f.ex + D, f.hz + D)
+    cz = (f.pz0 + f.pz1) / 2                                         # the plate's centre; the rings' is f.cz
+    px, pz = f.px, (f.pz1 - f.pz0) / 2
+    outer = lambda x, z: _rounded_sdf(x, z + cz - f.cz, rx, rz, r)   # noqa: E731  (centred on the plate)
+    inner = lambda x, z: max(abs(x) - px, abs(z) - pz)              # noqa: E731
+    # The outline's own points (its straight runs need only their ends; each rounded corner CORNER_STEPS steps), as
+    # angles seen from the plate's centre, and the plate's four corners, so every quad below has its inner edge on one
+    # side of the plate and its outer edge on one straight run or one corner step (Review-Agent: 256 even angles made
+    # ~1,040 WedgeParts per backdrop).
+    angles = [math.atan2(sz * pz, sx * px) % (2 * math.pi) for sx in (-1, 1) for sz in (-1, 1)]   # plate corners
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            ccx, ccz = sx * (rx - r), f.cz + sz * (rz - r) - cz          # corner centre, from the plate's centre
+            for k in range(CORNER_STEPS + 1):
+                t = math.radians(90.0 * k / CORNER_STEPS)
+                ox = ccx + sx * r * math.sin(t)
+                oz = ccz + sz * r * math.cos(t)
+                angles.append(math.atan2(oz, ox) % (2 * math.pi))
+    angles = sorted(set(round(a, 9) for a in angles))
+    ring_pts = []
+    for a in angles:
+        ux, uz = math.cos(a), math.sin(a)
+        ti, to = _ray_to(inner, ux, uz), _ray_to(outer, ux, uz)
+        ring_pts.append(((ux * ti, uz * ti + cz), (ux * to, uz * to + cz)))
+    ring_pts.append(ring_pts[0])
+    for (i0, o0), (i1, o1) in zip(ring_pts, ring_pts[1:]):           # a quad per step, plate edge to outer edge
+        bl = lambda p: (-p[0], p[1])                                  # noqa: E731  Roblox (x, z) -> Blender (x, y)
+        rb.b.fan((0.0, 0.0, TOP - 0.5), bl(i0), [bl(o0), bl(o1), bl(i1)], 1.0, swatch)
+
+
+# ------------------------------------------------------------------------------------------------- turning --
+class Turned:
+    """A local frame at (x, y, z) turned `turn` degrees about Y (CFrame.Angles), front -Z: pieces built facing -Z
+    land facing the area when turn = atan2(nx, nz) for the outward normal (nx, nz)."""
+
+    def __init__(self, x, z, turn, y=0.0):
+        self.o = Vector((x, y, z))
+        self.R = rot_y(turn)
+
+    @staticmethod
+    def facing(x, z, nx, nz, y=0.0):
+        return Turned(x, z, math.degrees(math.atan2(nx, nz)), y)
+
+    def p(self, c):
+        return tuple(self.R @ Vector(c) + self.o)
+
+    def span(self, rb, lo, hi, swatch):
+        c = tuple((a + b) / 2 for a, b in zip(lo, hi))
+        rb.box(self.p(c), tuple(abs(b - a) for a, b in zip(lo, hi)), swatch, rot=self.R)
+
+    def wedge(self, rb, c, s, swatch, rot):
+        rb.wedge(self.p(c), s, swatch, rot=self.R @ rot)
+
+    def cyl(self, rb, c, r, h, swatch, segments=12):
+        rb.cyl(self.p(c), r, h, swatch, segments=segments)
+
+    def ball(self, rb, c, r, swatch, sy=1.0):
+        rb.ball(self.p(c), r, swatch, scale=(1.0, sy, 1.0))
+
+
+# ---------------------------------------------------------------------------------------------- vegetation --
+LEAVES = ("leaf_green", "leaf_dark", "paw_park")
+
+
+def tree(rb, f, x, z, s=1.0, leaf="leaf_green"):
+    """The hometown backdrop's round tree, standing on this backdrop's ground."""
+    y = f.gy(x, z) - 0.3 * s
+    rb.cyl((x, y + 2.2 * s, z), 0.5 * s, 4.4 * s, "fur_brown", segments=8)
+    rb.ball((x, y + 6.0 * s, z), 3.1 * s, leaf)                         # #4857: two balls, not three (phones)
+    rb.ball((x + 1.5 * s, y + 4.8 * s, z - 0.6 * s), 2.3 * s, leaf, scale=(1.25, 0.9, 1.1))
+
+
+def fir(rb, f, x, z, s=1.0, leaf="leaf_dark"):
+    """A fir: a trunk under two stacked tiers (#4857: three before; these stand far outside the walls and every
+    part of every backdrop is sent to every phone)."""
+    y = f.gy(x, z) - 0.3 * s
+    rb.cyl((x, y + 1.6 * s, z), 0.45 * s, 3.2 * s, "fur_brown", segments=8)
+    for r, h, sy in ((2.8, 4.1, 0.9), (1.7, 7.0, 1.15)):
+        rb.ball((x, y + h * s, z), r * s, leaf, scale=(1.0, sy, 1.0))
+
+
+def far_tree(rb, f, x, z, s, leaf):
+    y = f.gy(x, z) - 0.3 * s
+    rb.cyl((x, y + 1.8 * s, z), 0.5 * s, 3.6 * s, "fur_brown", segments=6)
+    rb.ball((x, y + 5.2 * s, z), 2.9 * s, leaf, scale=(1.0, 1.1, 1.0))
+
+
+def bush(rb, f, x, z, s=1.0, leaf="leaf_dark"):
+    y = f.gy(x, z)
+    rb.ball((x, y + 0.6 * s, z), 1.6 * s, leaf, scale=(1.3, 0.8, 1.0))
+    rb.ball((x + 1.6 * s, y + 0.4 * s, z + 0.5 * s), 1.0 * s, leaf, scale=(1.2, 0.8, 1.0))
+
+
+def tuft(rb, flowers, x, z, spread):
+    rb.cyl((x, TOP + 0.04, z), spread + 0.6, 0.08, "leaf_dark", segments=10)
+    flower_clump(flowers, x, TOP + 0.08, z, n=3, spread=spread)
+
+
+def on_hills(rb, f, hills, per, seed, scale, plant=tree, leaves=LEAVES, pad=8.0):
+    """Trees on the hills' upper slopes, `per` a hill."""
+    for i, h in enumerate(hills):
+        for k in range(per):
+            a = 2 * math.pi * _hash(seed, i, k)
+            d = 0.12 + 0.45 * _hash(k, i, seed)
+            u, v = math.cos(a) * h.a * d, math.sin(a) * h.c * d
+            x = h.x + u * math.cos(h.turn) + v * math.sin(h.turn)
+            z = h.z - u * math.sin(h.turn) + v * math.cos(h.turn)
+            if f.out(x, z) < KEEP + pad:
+                continue
+            plant(rb, f, x, z, scale * (0.8 + 0.5 * _hash(i, k, seed)), leaves[int(_hash(k, seed, i) * 97) % len(leaves)])
+
+
+def belt(rb, f, d, step, seed, plant=tree, scale=1.0, leaves=LEAVES, wobble=3.0):
+    """A belt of trees round the footprint, d past it."""
+    for i, (x, z, nx, nz) in enumerate(f.around(d, step, seed, wobble=wobble, shift=step * 0.3)):
+        if f.out(x, z) < KEEP + 3:
+            continue
+        plant(rb, f, x, z, scale * (0.85 + 0.35 * _hash(i, seed, 5)), leaves[int(_hash(seed, i, 6) * 97) % len(leaves)])
+
+
+# ------------------------------------------------------------------------------------------------ buildings --
+WALLS = ("pastel_butter", "blush", "mint", "pastel_sky", "pastel_lilac", "cream")
+ROOFS = ("terracotta", "bowl_red", "fur_slate", "sign_teal", "brick", "galaxy_blue")
+CITY = ("brick", "fur_latte", "concrete", "pastel_butter", "terracotta", "fur_sand", "blush", "fur_mist")
+
+
+def house(t, rb, lit, w, d, h, wall, roof, k):
+    """A house facing -Z in its frame, its front at z -d/2: walls, a gable roof of two wedges, a door, two windows
+    (lit) and on every other house a chimney."""
+    t.span(rb, (-w / 2, TOP, -d / 2), (w / 2, h, d / 2), wall)
+    rise = 0.45 * w
+    for s in (-1, 1):
+        t.wedge(rb, (s * (w / 4 + 0.15), h + rise / 2, 0), (d + 1.2, rise, w / 2 + 0.3), roof, rot_y(-s * 90))
+    if k % 2 == 0:
+        t.span(rb, (w * 0.22, h + rise * 0.3, d * 0.1), (w * 0.22 + 1.1, h + rise * 0.95, d * 0.1 + 1.1), "brick")
+    t.span(rb, (-0.8, TOP, -d / 2 - 0.12), (0.8, 2.8, -d / 2), ROOFS[(k + 2) % len(ROOFS)])
+    for s in (-1, 1):
+        wx = s * w * 0.3
+        t.span(lit, (wx - 0.8, h * 0.45, -d / 2 - 0.12), (wx + 0.8, h * 0.45 + 1.5, -d / 2), "pastel_sky")
+
+
+def block(t, rb, lit, w, d, h, wall, k, grid=True, tank=False, bands=True, shop=True):
+    """A city building facing -Z in its frame, its front at z -d/2: body, cornice, a glass face behind floor bands
+    (`bands`) and piers (`grid`) so it reads as rows of windows, lit at night, a shop front and roof things. The
+    overlays run back into the body, each a little prouder than the one under it, so no faces meet flat."""
+    fz = -d / 2
+    t.span(rb, (-w / 2, TOP - 0.02 * (k % 5), fz), (w / 2, h, d / 2), wall)   # neighbours at the corners overlap
+    trim = "cream" if wall in ("brick", "terracotta", "fur_latte") else "concrete_dark"
+    t.span(rb, (-w / 2 - 0.3, h, fz - 0.3), (w / 2 + 0.3, h + 0.7, d / 2 + 0.3), trim)
+    t.span(lit, (-w / 2 + 1.0, 4.2, fz - 0.1), (w / 2 - 1.0, h - 1.4, fz + 0.05), "pastel_butter")   # the glass
+    if bands:
+        floors = max(1, int((h - 5.6) / 4.5))
+        pitch = (h - 5.6) / floors
+        for i in range(1, floors + 1):                                                              # floor bands
+            y = 4.2 + i * pitch
+            t.span(rb, (-w / 2 + 0.9, y - 1.1, fz - 0.2), (w / 2 - 0.9, y + 0.1, fz + 0.1), wall)
+    if grid:
+        n = max(2, round((w - 2) / 3.4))
+        for j in range(1, n):
+            x = -w / 2 + 1.0 + j * (w - 2) / n
+            t.span(rb, (x - 0.35, 4.1, fz - 0.24), (x + 0.35, h - 1.3, fz + 0.15), wall)
+    if shop:                                                       # the shop front: an awning over a lit window
+        t.span(lit, (-w / 2 + 1.5, 0.6, fz - 0.1), (w / 2 - 1.5, 3.0, fz + 0.05), "lamp_warm")
+        t.wedge(rb, (0, 3.5, fz - 0.9), (w - 2.4, 0.9, 1.8), ROOFS[k % len(ROOFS)], rot_y(0))
+    if tank:                                                                                      # a water tank
+        tx, tz = w * 0.18, d * 0.12
+        t.span(rb, (tx - 1.5, h + 0.7, tz - 1.5), (tx + 1.5, h + 3.4, tz + 1.5), "dark_wood")       # its stand
+        t.cyl(rb, (tx, h + 5.2, tz), 2.0, 3.6, "caramel_wood", segments=12)
+        t.ball(rb, (tx, h + 7.0, tz), 2.0, "fur_charcoal", sy=0.45)
+    else:
+        t.span(rb, (-w * 0.25 - 1.2, h + 0.7, -0.8), (-w * 0.25 + 1.2, h + 2.2, 0.8), "metal")    # an air unit
+
+
+# ---------------------------------------------------------------------------------------------------- themes --
+def _on_bed(f, x, z, r):
+    """Whether a disc of radius r at (x, z) meets one of theme_park's flower beds behind the camp."""
+    bz = f.ez0 - 12.0
+    return any(abs(x - bx) < 5.0 + r and abs(z - bz) < 2.0 + r for bx in (-36.0, -18.0, 0.0, 18.0, 36.0))
+
+
+def theme_park(f, P):
+    lake = (0.0, f.ez1 + 26.0, 30.0, 11.0)                        # x, z, half along x, half along z
+    lx, lz, la, lc = lake
+    box = (lx - la - 12.0, lx + la + 12.0, lz - lc - 6.0, lz + lc + 16.0)
+    near = [h for h in ring(f, 52.0, 40.0, (38.0, 26.0, 8.0, 16.0), 11) if not _foot_in(h, box)]
+    far = ring(f, 175.0, 64.0, (60.0, 44.0, 22.0, 40.0), 12)
+    f.hills = near + far
+    for h in near:
+        h.add(P["hills"], "leaf_green")
+    for h in far:
+        h.add(P["far"], "leaf_green")
+    rb, flowers, lit = P["rb"], P["flowers"], P["lit"]
+    on_hills(rb, f, near, 3, 13, 1.7)
+    on_hills(rb, f, far, 2, 14, 2.6, plant=far_tree)
+    # parkland between the walls and the hills: trees, bushes and flower tufts, clear of the lake
+    for i, (x, z, nx, nz) in enumerate(f.around(16.0, 15.0, 15, wobble=9.0, shift=5.0)):
+        if f.out(x, z) < KEEP + 2 or (abs(x - lake[0]) < lake[2] + 6 and abs(z - lake[1]) < lake[3] + 6):
+            continue
+        r = _hash(i, 16)
+        if r >= 0.8 and any(_on_bed(f, tx, tz, tr) for tx, tz, tr in ((x, z, 1.3), (x + 1.9, z + 0.8, 1.2))):
+            continue                                                       # a tuft would lie on a flower bed
+        if r < 0.55:
+            tree(rb, f, x, z, 1.1 + 0.5 * r, LEAVES[i % 3] if _hash(i, 17) < 0.85 else "blush")
+        elif r < 0.8:
+            bush(rb, f, x, z, 1.0 + r, LEAVES[(i + 1) % 3])
+        else:
+            tuft(rb, flowers, x, z, 0.7)
+            tuft(rb, flowers, x + 1.9, z + 0.8, 0.6)
+    # the lake past the far wall, with the near hills opened round it: sandy rim, water, a jetty, a little boathouse
+    # and two ducks
+    rb.ball((lx, TOP, lz), 1.0, "fur_sand", scale=(la + 3.0, 0.3, lc + 3.0))
+    rb.ball((lx, TOP, lz), 1.0, "puddle", scale=(la, 0.4, lc))
+    jx = lx + 12.0
+    rb.span((jx - 1.4, 0.35, lz - lc + 2.0), (jx + 1.4, 0.65, lz - lc - 3.5), "caramel_wood")
+    for pz in (lz - lc - 3.0, lz - lc + 1.5):
+        for px in (jx - 1.2, jx + 1.2):
+            rb.span((px - 0.2, TOP, pz - 0.2), (px + 0.2, 0.35, pz + 0.2), "dark_wood")
+    bx, bz = lx - 22.0, lz + lc + 4.0
+    t = Turned(bx, bz, 0.0)
+    house(t, rb, lit, 8.0, 6.0, 4.5, "offwhite", "sign_teal", 3)
+    for k, (dx, dz) in enumerate(((-6.0, -2.0), (5.0, 3.0))):
+        x, z = lx + dx, lz + dz
+        rb.ball((x, 0.55, z), 0.7, "offwhite", scale=(1.3, 0.8, 1.0))
+        rb.ball((x + 0.75, 1.25, z), 0.4, "offwhite")
+        rb.span((x + 1.05, 1.15, z - 0.12), (x + 1.45, 1.35, z + 0.12), "fur_orange")
+    # a white gazebo on the left, a flower garden behind the camp
+    gx, gz = -f.ex - 26.0, f.cz + 20.0
+    rb.cyl((gx, 0.3, gz), 5.0, 0.8, "cream", segments=16)
+    for k in range(6):
+        a = 2 * math.pi * (k + 0.5) / 6
+        rb.cyl((gx + 4.4 * math.cos(a), 2.95, gz + 4.4 * math.sin(a)), 0.22, 4.5, "offwhite", segments=8)
+    rb.cyl((gx, 5.4, gz), 5.4, 0.4, "offwhite", segments=16)
+    for k, r in enumerate((4.8, 3.6, 2.3, 1.0)):
+        rb.cyl((gx, 6.0 + 0.7 * k, gz), r, 0.7 + 0.01 * k, "sign_teal", segments=16)
+    for i in range(5):
+        x = -36.0 + i * 18.0
+        z = f.ez0 - 12.0
+        rb.span((x - 5.0, TOP, z - 2.0), (x + 5.0, 0.5, z + 2.0), "dark_wood")
+        for j in range(3):
+            flower_clump(flowers, x - 3.0 + j * 3.0, 0.5, z, n=3, spread=0.6)
+
+
+def theme_forest(f, P):
+    near = ring(f, 60.0, 42.0, (40.0, 28.0, 10.0, 22.0), 21)
+    far = ring(f, 215.0, 90.0, (80.0, 56.0, 60.0, 95.0), 22, corner=180.0)
+    f.hills = near + far
+    for h in near:
+        h.add(P["hills"], "leaf_dark")
+    for h in far:
+        h.add(P["far"], "leaf_dark")
+    rb = P["rb"]
+    for h in far:                                                    # snow on the tallest peaks
+        if h.rise > 80.0:
+            P["snow"].b.ico(RB.p(h.x, h.b * 0.86 - h.rise * Hill.SINK, h.z), 1.0, "offwhite", subdivisions=2,
+                            scale=(h.a * 0.32, h.c * 0.32, h.b * 0.17), rot=(h.turn, "Z"))
+    leaves = ("leaf_dark", "paw_woods", "leaf_green", "paw_woods")
+    belt(rb, f, 9.0, 13.0, 23, plant=fir, scale=1.6, leaves=leaves)
+    belt(rb, f, 25.0, 16.0, 24, plant=tree, scale=1.8, leaves=leaves, wobble=5.0)
+    on_hills(rb, f, near, 2, 26, 2.2, plant=fir, leaves=leaves)
+
+
+def theme_houses(f, P):
+    near = ring(f, 95.0, 46.0, (40.0, 28.0, 8.0, 16.0), 31)
+    far = ring(f, 200.0, 70.0, (62.0, 46.0, 22.0, 40.0), 32)
+    f.hills = near + far
+    for h in near:
+        h.add(P["hills"], "leaf_green")
+    for h in far:
+        h.add(P["far"], "leaf_green")
+    rb, lit, flowers = P["rb"], P["lit"], P["flowers"]
+    on_hills(rb, f, near, 1, 33, 1.6)
+    on_hills(rb, f, far, 1, 34, 2.6, plant=far_tree)
+    # a road round the area with a pavement on its far side, the first row of houses facing it
+    road = P["road"]
+    for (x0, x1, z0, z1) in _frame_rects(f, 5.0, 15.0):
+        road.span((x0, TOP + 0.05, z0), (x1, 0.12, z1), "fur_charcoal")
+    for (x0, x1, z0, z1) in _frame_rects(f, 15.0, 18.0):
+        rb.span((x0, TOP + 0.05, z0), (x1, 0.3, z1), "paving_sand")
+    for i, (x, z, nx, nz) in enumerate(f.around(29.0, 27.0, 35, corners=False)):
+        t = Turned.facing(x, z, nx, nz)
+        w, d, h = 10.0 + 3 * _hash(i, 1), 9.0, 6.0 + 3.5 * _hash(i, 2)
+        house(t, rb, lit, w, d, h, WALLS[i % len(WALLS)], ROOFS[(i * 5) % len(ROOFS)], i)
+        t.span(rb, (-w / 2 - 1.5, TOP, -11.0), (w / 2 + 1.5, 1.3, -10.7), "offwhite")   # a fence on the pavement
+        if i % 2:
+            tuft(rb, flowers, *t.p((w * 0.3, 0, -6.6))[::2], 0.6)
+        if _hash(i, 3) < 0.6:
+            tree(rb, f, *t.p((w / 2 + 4.5, 0, 2.0))[::2], 1.2, LEAVES[i % 3])
+        if i % 2 == 0:                                                   # a street lamp at the kerb
+            lx, _, lz = t.p((-w / 2 - 3.0, 0, -13.0))
+            rb.cyl((lx, 2.4, lz), 0.18, 5.0, "fur_charcoal", segments=8)
+            lit.span((lx - 0.4, 4.9, lz - 0.4), (lx + 0.4, 5.6, lz + 0.4), "lamp_warm")
+            rb.span((lx - 0.55, 5.6, lz - 0.55), (lx + 0.55, 5.85, lz + 0.55), "fur_charcoal")
+    # a second row further out: plainer houses between trees, seen as roofs over the first
+    for i, (x, z, nx, nz) in enumerate(f.around(58.0, 30.0, 36, corners=False, shift=4.0)):
+        if _hash(i, 4) < 0.35:
+            tree(rb, f, x, z, 1.5, LEAVES[i % 3])
+            continue
+        t = Turned.facing(x, z, nx, nz, y=f.gy(x, z) - 0.2)
+        w, h = 11.0 + 3 * _hash(i, 5), 7.0 + 3 * _hash(i, 6)
+        t.span(rb, (-w / 2, TOP, -4.5), (w / 2, h, 4.5), WALLS[(i + 3) % len(WALLS)])
+        rise = 0.45 * w
+        for s in (-1, 1):
+            t.wedge(rb, (s * (w / 4 + 0.15), h + rise / 2, 0), (10.2, rise, w / 2 + 0.3), ROOFS[(i * 3) % len(ROOFS)],
+                    rot_y(-s * 90))
+        t.span(lit, (-0.8, h * 0.45, -4.62), (0.8, h * 0.45 + 1.5, -4.5), "pastel_sky")
+
+
+def theme_city(f, P):
+    far = ring(f, 220.0, 80.0, (66.0, 48.0, 22.0, 40.0), 41)
+    f.hills = far
+    for h in far:
+        h.add(P["far"], "leaf_green")
+    rb, lit = P["rb"], P["lit"]
+    road = P["road"]
+    for (x0, x1, z0, z1) in _frame_rects(f, 0.0, MARGIN - 1.0):     # the plate under the city in asphalt
+        road.span((x0, TOP + 0.05, z0), (x1, 0.08, z1), "fur_charcoal")
+    # the first row just past the alley buildings' backs (12 deep since 11-02, 10 past the walls), the second taller
+    # behind it; none on the camp's side (the street behind the camp)
+    for row, (d, step, h0, h1, depth) in enumerate(((11.6, 17.0, 16.0, 34.0, 20.0), (36.0, 21.0, 30.0, 58.0, 22.0))):
+        for i, (x, z, nx, nz) in enumerate(f.around(d + depth / 2, step, 42 + row, corners=row == 1)):
+            back = nz < -0.9
+            if back and row == 0:
+                continue                                                # the street behind the camp
+            if back:                                                    # behind the street's own row
+                x, z = x + nx * 12.0, z + nz * 12.0
+            t = Turned.facing(x, z, nx, nz)
+            w = step - 0.6 - 2.0 * _hash(i, row, 1)
+            h = h0 + (h1 - h0) * _hash(i, row, 2)
+            block(t, rb, lit, w, depth, h, CITY[(i * 3 + row) % len(CITY)], i, grid=row == 1 or _hash(i, 3) < 0.5,
+                  tank=_hash(i, row, 4) < 0.3, bands=row == 0, shop=row == 0)
+    # behind the camp: a kerb, then the first row across the street
+    for i, (x, z, nx, nz) in enumerate(f.around(24.0, 16.0, 44, corners=False)):
+        if nz > -0.9:
+            continue
+        t = Turned.facing(x, z, nx, nz)
+        block(t, rb, lit, 15.0 - 1.5 * _hash(i, 9), 18.0, 18.0 + 14.0 * _hash(i, 8), CITY[(i * 5) % len(CITY)], i,
+              tank=i % 2 == 0)
+    for (x0, x1, z0, z1) in _frame_rects(f, 12.5, 14.5, sides=("back",)):
+        rb.span((x0, 0.0, z0), (x1, 0.3, z1), "concrete")
+    # towers further off, in soft hazy colours, their faces in window rows
+    for i, (x, z, nx, nz) in enumerate(f.around(110.0, 60.0, 45, wobble=16.0, shift=12.0)):
+        if _hash(i, 46) < 0.3:
+            continue
+        w, h = 16.0 + 8 * _hash(i, 47), 46.0 + 34 * _hash(i, 48)
+        t = Turned.facing(x, z, nx, nz)
+        sw = ("fur_mist", "pastel_lilac", "fur_silver", "fur_teal_grey")[i % 4]
+        t.span(rb, (-w / 2, TOP, -w / 2), (w / 2, h, w / 2), sw)
+        t.span(rb, (-w / 2 - 0.4, h, -w / 2 - 0.4), (w / 2 + 0.4, h + 1.0, w / 2 + 0.4), "concrete")
+        t.span(lit, (-w / 2 + 1.5, 4.0, -w / 2 - 0.1), (w / 2 - 1.5, h - 2.0, -w / 2 + 0.05), "pastel_sky")
+        for k in range(1, int((h - 6.0) / 9.0) + 1):
+            y = 4.0 + k * 9.0
+            t.span(rb, (-w / 2 + 1.4, y - 1.6, -w / 2 - 0.2), (w / 2 - 1.4, y + 0.1, -w / 2 + 0.1), sw)
+
+
+def theme_works(f, P):
+    near = ring(f, 70.0, 44.0, (40.0, 28.0, 7.0, 14.0), 51)
+    far = ring(f, 200.0, 70.0, (62.0, 46.0, 22.0, 40.0), 52)
+    f.hills = near + far
+    for h in near:
+        h.add(P["hills"], "leaf_green")
+    for h in far:
+        h.add(P["far"], "leaf_green")
+    rb, lit = P["rb"], P["lit"]
+    on_hills(rb, f, near, 2, 53, 1.6)
+    on_hills(rb, f, far, 2, 54, 2.6, plant=far_tree)
+    # a concrete yard round the sewer, brick works sheds with arched windows on it, facing in
+    for (x0, x1, z0, z1) in _frame_rects(f, 0.0, 40.0):
+        P["road"].span((x0, TOP + 0.05, z0), (x1, 0.08, z1), "concrete")
+    for i, (x, z, nx, nz) in enumerate(f.around(18.0, 30.0, 55, corners=False, shift=3.0)):
+        if _hash(i, 56) < 0.25:
+            continue
+        t = Turned.facing(x, z, nx, nz)
+        works_shed(t, rb, lit, 22.0 + 4 * _hash(i, 57), 18.0, 12.0 + 8 * _hash(i, 58), i)
+    for k, (x, z) in enumerate(((-f.ex - 34.0, f.cz - 40.0), (f.ex + 40.0, f.cz + 30.0), (-30.0, f.ez1 + 44.0),
+                                (f.ex + 26.0, f.ez0 - 30.0))):
+        chimney(rb, x, z, 44.0 + 10 * (k % 2))
+    water_tower(rb, f.ex + 34.0, f.cz - 50.0)
+    for k, (x, z) in enumerate(((-f.ex - 30.0, f.ez1 + 48.0), (36.0, f.ez1 + 50.0))):
+        rb.cyl((x, 8.0, z), 11.0, 16.2, "fur_pewter", segments=16)               # gas holders
+        rb.cyl((x, 16.4, z), 11.4, 0.6, "fur_gunmetal", segments=16)
+        for j in range(8):
+            a = 2 * math.pi * j / 8
+            rb.span((x + 11.5 * math.cos(a) - 0.3, TOP, z + 11.5 * math.sin(a) - 0.3),
+                    (x + 11.5 * math.cos(a) + 0.3, 18.0, z + 11.5 * math.sin(a) + 0.3), "bowl_red")
+    # a big pipe on stands along each side, its flanges every 12
+    for s in (-1, 1):
+        x = s * (f.ex + 6.0)
+        z0, z1 = f.ez0 + 10.0, f.ez1 - 10.0
+        rb.cyl((x, 3.0, (z0 + z1) / 2), 1.3, z1 - z0, "rust", axis="Z", segments=12)
+        n = int((z1 - z0) / 12)
+        for j in range(n + 1):
+            z = z0 + j * (z1 - z0) / n
+            rb.cyl((x, 3.0, z), 1.6, 0.5, "metal", axis="Z", segments=12)
+            rb.span((x - 0.4, TOP, z - 0.3), (x + 0.4, 1.7, z + 0.3), "concrete_dark")
+
+
+def works_shed(t, rb, lit, w, d, h, k):
+    """A brick works shed facing -Z: brick body, a saw-tooth roof, a row of tall arched windows (lit), a big door."""
+    fz = -d / 2
+    t.span(rb, (-w / 2, TOP, fz), (w / 2, h, d / 2), "brick")
+    t.span(rb, (-w / 2 - 0.25, h, fz - 0.25), (w / 2 + 0.25, h + 0.5, d / 2 + 0.25), "concrete")
+    n = 3
+    for j in range(n):                                                      # saw-tooth roof, glass to the front
+        z0 = fz + j * d / n
+        t.wedge(rb, (0, h + 0.5 + 1.6, z0 + d / n / 2), (w, 3.2, d / n), "fur_charcoal", rot_y(180))
+    m = max(2, int(w / 4.4))
+    for j in range(m):
+        x = -w / 2 + (j + 0.5) * w / m
+        if abs(x) < 2.6:
+            continue
+        y0, y1 = 2.2, h - 3.4
+        t.span(lit, (x - 0.9, y0, fz - 0.12), (x + 0.9, y1, fz), "pastel_butter")
+        t.span(rb, (x - 1.15, y1, fz - 0.2), (x + 1.15, y1 + 0.9, fz), "cream")        # the arch's keystone band
+        t.span(rb, (x - 1.15, y0 - 0.3, fz - 0.24), (x + 1.15, y0, fz), "cream")
+    t.span(rb, (-2.4, TOP, fz - 0.15), (2.4, 5.4, fz), "dark_wood")
+    t.span(rb, (-2.8, 5.4, fz - 0.3), (2.8, 6.1, fz), "cream")
+
+
+def chimney(rb, x, z, h):
+    rb.span((x - 3.2, TOP, z - 3.2), (x + 3.2, 4.0, z + 3.2), "brick")
+    rb.cyl((x, 4.0 + h / 2, z), 2.2, h, "brick", segments=12)
+    rb.cyl((x, 4.0 + h + 0.5, z), 2.6, 1.0, "fur_charcoal", segments=12)
+    for y in (h * 0.35, h * 0.7):
+        rb.cyl((x, 4.0 + y, z), 2.35, 0.6, "cream", segments=12)
+
+
+def water_tower(rb, x, z):
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            rb.span((x + sx * 3.5 - 0.3, TOP, z + sz * 3.5 - 0.3), (x + sx * 3.5 + 0.3, 15.9, z + sz * 3.5 + 0.3),
+                    "metal")
+    rb.span((x - 4.0, 15.4, z - 4.0), (x + 4.0, 16.0, z + 4.0), "concrete_dark")
+    rb.cyl((x, 19.5, z), 4.6, 7.0, "sign_teal", segments=16)
+    rb.ball((x, 23.0, z), 4.6, "fur_gunmetal", scale=(1.0, 0.4, 1.0))
+
+
+def _frame_rects(f, d0, d1, sides=("left", "right", "far", "back")):
+    """The band d0 to d1 past the footprint as up to four rects (x0, x1, z0, z1), corners on the left and right."""
+    ex, z0, z1 = f.ex, f.ez0, f.ez1
+    out = []
+    if "left" in sides:
+        out.append((-ex - d1, -ex - d0, z0 - d1, z1 + d1))
+    if "right" in sides:
+        out.append((ex + d0, ex + d1, z0 - d1, z1 + d1))
+    if "far" in sides:
+        out.append((-ex - d0, ex + d0, z1 + d0, z1 + d1))
+    if "back" in sides:
+        out.append((-ex - d0, ex + d0, z0 - d1, z0 - d0))
+    return out
+
+
+# --------------------------------------------------------------------------------------- desert and ruins --
+SAND_RGB = (230, 207, 168)                     # the Desert's plate and dunes (fur_oat)
+DUNE_RGB = (215, 185, 135)                     # fur_dune
+MESA_RGB = (207, 143, 82)                      # fur_caramel, as Sandstone
+EARTH_RGB = (167, 149, 124)                    # the Ruins' plate (paving_grout)
+JUNGLE_RGB = (62, 127, 78)                     # leaf_dark
+CLIFF_RGB = (150, 145, 140)                    # fur_dusty
+STONY_RGB = (140, 132, 120)                    # the Ruins' stony skirt (Derek2 11-09: no jungle, rocky sides)
+
+
+def palm(rb, f, x, z, s=1.0, leaf="leaf_green"):
+    """A leaning palm: three trunk pieces stepping over, a crown of five long squashed fronds."""
+    y = f.gy(x, z) - 0.3 * s
+    lean = 2 * math.pi * _hash(x, z, 3)
+    dx, dz = math.cos(lean) * 0.5 * s, math.sin(lean) * 0.5 * s
+    for k in range(3):
+        rb.cyl((x + dx * k, y + (1.4 + 2.8 * k) * s, z + dz * k), (0.45 - 0.07 * k) * s, 3.0 * s, "fur_toffee",
+               segments=8)
+    cx, cy, cz = x + dx * 2.5, y + 8.6 * s, z + dz * 2.5
+    for k in range(5):
+        a = 2 * math.pi * k / 5 + lean
+        rb.ball((cx + math.cos(a) * 2.0 * s, cy - 0.5 * s, cz + math.sin(a) * 2.0 * s), 2.4 * s, leaf,
+                scale=(1.0 + 0.6 * abs(math.cos(a)), 0.22, 1.0 + 0.6 * abs(math.sin(a))))
+    rb.ball((cx, cy, cz), 0.8 * s, "fur_toffee")
+
+
+def desert_rock(rb, f, x, z, s=1.0, leaf=None):
+    y = f.gy(x, z)
+    rb.ball((x, y, z), 2.2 * s, "fur_caramel", scale=(1.3, 0.8, 1.0))
+    rb.ball((x + 1.8 * s, y, z + 0.8 * s), 1.3 * s, "fur_latte", scale=(1.0, 0.9, 1.2))
+
+
+def cactus(rb, f, x, z, s=1.0, leaf="leaf_green"):
+    y = f.gy(x, z) - 0.2
+    rb.cyl((x, y + 2.0 * s, z), 0.55 * s, 4.0 * s, leaf, segments=8)
+    for sx, h in ((-1, 1.8), (1, 2.6)):
+        x0, x1 = sorted((x + sx * 0.5 * s, x + sx * 1.3 * s))
+        rb.span((x0, y + (h - 0.25) * s, z - 0.3 * s), (x1, y + (h + 0.25) * s, z + 0.3 * s), leaf)
+        rb.cyl((x + sx * 1.3 * s, y + (h + 0.7) * s, z), 0.32 * s, 1.6 * s, leaf, segments=8)
+
+
+def mesa(t, rb, w, d, h, k):
+    """A flat-topped mesa facing -Z in its frame: two or three stepped tiers with darker strata bands."""
+    tiers = 2 + k % 2
+    y = TOP
+    for i in range(tiers):
+        ww, dd = w * (1 - 0.22 * i), d * (1 - 0.25 * i)
+        hh = h * (0.55 if i == 0 else 0.45 / (tiers - 1))
+        t.span(rb, (-ww / 2, y, -dd / 2), (ww / 2, y + hh, dd / 2), "fur_caramel" if i % 2 == 0 else "terracotta")
+        t.span(rb, (-ww / 2 - 0.3, y + hh * 0.45, -dd / 2 - 0.3), (ww / 2 + 0.3, y + hh * 0.55, dd / 2 + 0.3),
+               "fur_copper")
+        y += hh
+
+
+def _crest(f, h, k=0.34, lift=1.22):
+    """A dune's sharp ridge: a narrow, taller hill along the top of h, set back toward the outside, so the dune has
+    a long gentle face toward the area and a crest line instead of reading as a round clump (Derek2 11-09)."""
+    ct, st = math.cos(h.turn), math.sin(h.turn)
+    ox, oz = st, ct                                                     # h's across axis
+    if ox * h.x + oz * (h.z - f.cz) < 0:
+        ox, oz = -ox, -oz                                               # pointing out, away from the area
+    foot = math.sqrt(1 - (Hill.SINK / (1 + Hill.SINK)) ** 2)
+    a, c = h.a * foot, h.c * foot
+    return Hill(h.x + ox * c * 0.3, h.z + oz * c * 0.3, a * 0.78, c * k, h.rise * lift, h.turn)
+
+
+def cat_sphinx(t, rb):
+    """The Desert's landmark (research section 5: one landmark seen from everywhere): a giant cat sphinx lying on a
+    stepped plinth outside the wall, facing the area in its frame's -Z, about 44 high: front paws out, a striped
+    headcloth in turquoise and gold, cat ears through it, a gold collar and a tail curled along the plinth."""
+    S, G, T, D = "fur_caramel", "brass", "sign_teal", "fur_latte"
+    y = TOP
+    t.span(rb, (-30, y - 2, -40), (30, y + 3, 38), "paving_tan")                         # the plinth, two steps
+    t.span(rb, (-27, y + 3, -37), (27, y + 6, 35), "fur_dune")
+    t.span(rb, (-27.3, y + 4.2, -37.3), (27.3, y + 5.0, 35.3), "terracotta")           # its band
+    y += 6
+    for sx in (-1, 1):                                                                   # the front paws
+        t.span(rb, (sx * 9 - 5, y, -34), (sx * 9 + 5, y + 6, -4), S)
+        for k in (-1, 0, 1):
+            t.ball(rb, (sx * 9 + k * 3.2, y + 2.6, -34), 2.0, S)                         # toes
+    t.span(rb, (-15, y, -6), (15, y + 14, 30), S)                                        # the body
+    t.ball(rb, (0, y + 9, 24), 15.0, S, sy=0.72)                                         # the haunch
+    t.span(rb, (-12, y, -10), (12, y + 22, 6), S)                                        # the chest
+    t.span(rb, (-12.4, y + 18, -10.4), (12.4, y + 20, 6.4), G)                           # the collar
+    t.span(rb, (-3, y + 14, -11.2), (3, y + 19, -10.2), G)                               # its tag
+    hy = y + 20
+    t.span(rb, (-11, hy, -16), (11, hy + 18, 4), S)                                      # the head
+    t.span(rb, (-6, hy + 1, -19), (6, hy + 7, -15.5), "fur_cream")                      # the muzzle
+    t.span(rb, (-1.6, hy + 6, -19.6), (1.6, hy + 8, -18.6), "terracotta")               # the nose
+    for sx in (-1, 1):
+        t.span(rb, (sx * 5.5 - 2.4, hy + 9, -16.4), (sx * 5.5 + 2.4, hy + 13, -15.8), "fur_ink")   # the eyes
+        t.span(rb, (sx * 5.5 - 0.6, hy + 11.6, -16.6), (sx * 5.5 + 0.6, hy + 12.6, -16.3), "offwhite")
+        for k in (0, 1):                                                                  # whiskers
+            t.span(rb, (sx * 6, hy + 3.4 + 1.6 * k, -19.4), (sx * 13, hy + 3.9 + 1.6 * k, -19.0), D)
+        for k, (w, h) in enumerate(((7.0, 4.0), (5.0, 4.0), (3.0, 3.5), (1.4, 3.0))):   # an ear, stepping in
+            x = sx * (7.5 - 0.6 * k)
+            t.span(rb, (x - w / 2, hy + 18 + 3.6 * k, -9), (x + w / 2, hy + 18 + 3.6 * k + h, -4), S)
+        t.span(rb, (sx * 7.5 - 2.0, hy + 19, -9.4), (sx * 7.5 + 2.0, hy + 26, -9.1), "blush")   # the ear's inside
+        for k in range(6):                                                                # the headcloth's lappets
+            t.span(rb, (sx * 11, hy - 2 - 2.6 * k + 16, -14), (sx * 14.5, hy + 16 - 2.6 * k + 2.6, 2),
+                   (T, G)[k % 2])
+    for k in range(5):                                                                    # its stripes over the top
+        t.span(rb, (-11.5, hy + 18, -15 + 3.8 * k), (11.5, hy + 19.2, -13 + 3.8 * k), (T, G)[k % 2])
+    t.span(rb, (-1.6, hy + 14.5, -16.5), (1.6, hy + 17.5, -15.9), "fur_emerald")         # a gem on its brow
+    for k in range(8):                                                                    # the tail, round the side
+        a = k / 7 * math.pi * 0.9
+        x, z = 17 + 4 * math.sin(a), 30 - 34 * k / 7
+        t.span(rb, (x - 2.2, y, z - 2.6), (x + 2.2, y + 4.0 - 0.15 * k, z + 2.6), S)
+    t.span(rb, (13.6, y, -14), (21.4, y + 4.6, -9), G)                                   # its gold tip ring
+    for sx in (-1, 1):                                                                    # two obelisks by it
+        x = sx * 34
+        t.span(rb, (x - 3, TOP, -38), (x + 3, TOP + 3, -32), "paving_tan")
+        t.span(rb, (x - 2, TOP + 3, -37), (x + 2, TOP + 26, -33), "fur_dune")
+        t.span(rb, (x - 1.2, TOP + 26, -36.2), (x + 1.2, TOP + 29, -33.8), G)
+
+
+def theme_desert(f, P):
+    # dunes in three rows, lower and smaller near the walls, each with its crest (Derek2 11-09: the old ring of round
+    # 18-high hills read as "clumps of nothing")
+    near = ring(f, 46.0, 34.0, (22.0, 13.0, 4.0, 8.0), 61)
+    mid = ring(f, 100.0, 52.0, (36.0, 20.0, 8.0, 14.0), 65)
+    far = ring(f, 210.0, 84.0, (78.0, 40.0, 16.0, 28.0), 62)
+    crests = [_crest(f, h) for h in near + mid]
+    f.hills = near + mid + far + crests
+    for h in near + mid:
+        h.add(P["hills"], "fur_oat")
+    for h in far + crests:
+        h.add(P["far"], "fur_dune")
+    rb = P["rb"]
+    for i, (x, z, nx, nz) in enumerate(f.around(14.0, 24.0, 63, wobble=6.0, shift=7.0)):   # palms, rocks, cacti
+        if f.out(x, z) < KEEP + 3:
+            continue
+        r = _hash(i, 64)
+        if r < 0.4:
+            palm(rb, f, x, z, 1.1 + 0.4 * _hash(i, 65), ("leaf_green", "paw_park")[i % 2])
+        elif r < 0.7:
+            desert_rock(rb, f, x, z, 1.0 + 0.8 * _hash(i, 66))
+        else:
+            cactus(rb, f, x, z, 0.9 + 0.5 * _hash(i, 67))
+    for i, (x, z, nx, nz) in enumerate(f.around(125.0, 85.0, 68, wobble=18.0, shift=20.0)):   # mesas between rings
+        if _hash(i, 69) < 0.35 or nz < -0.9:
+            continue                                                    # gaps, and none behind the camp (the town)
+        mesa(Turned.facing(x, z, nx, nz), rb, 34.0 + 20 * _hash(i, 70), 26.0 + 12 * _hash(i, 71),
+             28.0 + 26 * _hash(i, 72), i)
+    cat_sphinx(Turned.facing(f.ex + 64.0, f.cz + 70.0, 1.0, 0.0), rb)     # the landmark, east of the far half
+    px, pz = 0.0, f.ez1 + 150.0                                         # a far pyramid past the area's far end
+    for k in range(6):
+        w = 90.0 - k * 15.0
+        rb.span((px - w / 2, TOP + k * 9.0, pz - w / 2), (px + w / 2, TOP + (k + 1) * 9.0, pz + w / 2),
+                "fur_dune" if k % 2 == 0 else "paving_tan")
+
+
+def ruin_column(rb, f, x, z, s=1.0, leaf="leaf_dark"):
+    """A broken column on a plinth, ivy on it; one in three lies fallen beside its stump."""
+    y = f.gy(x, z) - 0.2
+    rb.span((x - 1.4 * s, y, z - 1.4 * s), (x + 1.4 * s, y + 0.9 * s, z + 1.4 * s), "fur_dusty")
+    h = (5.0 + 7.0 * _hash(x, z, 4)) * s
+    if _hash(z, x, 5) < 0.33:
+        h = 2.0 * s
+        rb.cyl((x + 4.0 * s, y + 0.9 * s, z + 1.0 * s), 0.9 * s, 8.0 * s, "fur_pewter", axis="X", segments=10)
+    rb.cyl((x, y + 0.9 * s + h / 2, z), 0.9 * s, h, "fur_pewter", segments=10)
+    rb.ball((x + 0.6 * s, y + 0.9 * s + h * 0.6, z - 0.6 * s), 0.9 * s, leaf, scale=(0.9, 1.6, 0.9))
+
+
+def ruin_wall(t, rb, w, h, k):
+    """A ruined wall facing -Z in its frame: courses that break off in steps toward one end, ivy over it."""
+    n = 5
+    for i in range(n):
+        ww = w * (1 - 0.15 * i) if k % 2 == 0 else w
+        x0 = -w / 2 if k % 2 == 0 else -w / 2 + w * 0.12 * i
+        t.span(rb, (x0, TOP + i * h / n, -1.0), (x0 + ww * (1 if k % 2 == 0 else 1 - 0.12 * i), TOP + (i + 1) * h / n,
+                                                1.0), "fur_dusty" if i % 2 == 0 else "fur_pewter")
+    t.span(rb, (-w * 0.3, TOP, -1.25), (-w * 0.1, h * 0.7, -1.02), "leaf_dark")
+
+
+def crag(t, rb, w, d, h, k):
+    """A grey rock crag facing -Z in its frame: three or four tiers stepping in and leaning a little, darker strata,
+    moss on some ledges (Derek2 11-09: the Ruins' sides are rocky mountains, no trees)."""
+    y = TOP - 1.0
+    tiers = 3 + k % 2
+    for i in range(tiers):
+        f = 1.0 - 0.2 * i
+        hh = h * (0.4 if i == 0 else 0.6 / (tiers - 1))
+        ox, oz = (0.08 * w * ((k + i) % 3 - 1)), 0.06 * d * (i % 2)
+        t.span(rb, (ox - w * f / 2, y, oz - d * f / 2), (ox + w * f / 2, y + hh, oz + d * f / 2),
+               ("fur_dusty", "fur_pewter", "fur_dusty", "concrete")[i])
+        t.span(rb, (ox - w * f / 2 - 0.4, y + hh * 0.5, oz - d * f / 2 - 0.4),
+               (ox + w * f / 2 + 0.4, y + hh * 0.5 + 1.1, oz + d * f / 2 + 0.4), "fur_soot")
+        if (k + i) % 3 == 0:
+            t.span(rb, (ox - w * f / 2, y + hh, oz - d * f / 2), (ox + w * f * 0.1, y + hh + 0.5, oz + d * f / 2),
+                   "leaf_dark")
+        y += hh
+
+
+def carved_cliff(t, rb, k):
+    """A cliff with a temple front carved into it, facing -Z in its frame (Derek2 11-09: "ruin carvings into side of
+    rocks"): a tall rock face, a stepped base, four columns either side of a dark doorway, a pediment, and a giant
+    cat's head in relief over it with jade eyes."""
+    y = TOP - 1.0
+    W, H, D = 46.0, 40.0, 16.0
+    t.span(rb, (-W / 2, y, 0), (W / 2, y + H, D), "fur_dusty")                       # the rock
+    t.span(rb, (-W / 2 - 4, y, 4), (-W / 2 + 6, y + H * 0.75, D + 2), "fur_pewter")   # rough flanks
+    t.span(rb, (W / 2 - 6, y, 3), (W / 2 + 5, y + H * 0.85, D + 2), "concrete")
+    t.span(rb, (-W / 2 + 2, y + H, 2), (W / 2 - 4, y + H + 5, D - 2), "fur_pewter")    # its top
+    t.span(rb, (-W / 2 + 6, y + H + 5, 4), (-2, y + H + 5.6, D - 4), "leaf_dark")       # moss up there
+    t.span(rb, (-16, y, -3), (16, y + 1.5, 0), "fur_pewter")                          # steps cut at its foot
+    t.span(rb, (-14, y + 1.5, -1.5), (14, y + 3, 0), "fur_pewter")
+    t.span(rb, (-4.5, y + 3, -0.2), (4.5, y + 15, 0.4), "fur_soot")                   # the doorway
+    for sx in (-1, 1):
+        for c in (7.0, 12.0):                                                         # columns
+            x = sx * c
+            t.span(rb, (x - 1.3, y + 3, -1.2), (x + 1.3, y + 17, 0.2), "paving_tan")
+            t.span(rb, (x - 1.7, y + 17, -1.5), (x + 1.7, y + 18, 0.2), "fur_dune")
+    t.span(rb, (-15, y + 18, -1.6), (15, y + 20, 0.2), "fur_dune")                    # the lintel
+    for i, w in enumerate((30.0, 22.0, 14.0, 6.0)):                                   # the pediment, stepped
+        t.span(rb, (-w / 2, y + 20 + 1.4 * i, -1.2), (w / 2, y + 21.4 + 1.4 * i, 0.2), "paving_tan")
+    hy = y + 27
+    t.span(rb, (-8, hy, -1.4), (8, hy + 11, 0.2), "fur_pewter")                       # the cat's head
+    for sx in (-1, 1):
+        for i, w in enumerate((5.0, 3.4, 1.8)):
+            t.span(rb, (sx * 5.5 - w / 2, hy + 11 + 1.6 * i, -1.2), (sx * 5.5 + w / 2, hy + 12.6 + 1.6 * i, 0.2),
+                   "fur_pewter")
+        t.span(rb, (sx * 3.6 - 1.4, hy + 5.5, -1.7), (sx * 3.6 + 1.4, hy + 8, -1.3), "fur_emerald")
+    t.span(rb, (-1.0, hy + 3.4, -1.8), (1.0, hy + 4.6, -1.3), "fur_soot")              # its nose
+    for j in range(3 + k % 2):                                                         # vines down the face
+        x = -W / 2 + 4 + j * 11.0 + 2.0 * (k % 3)
+        t.span(rb, (x, y + H - 9 - 3 * (j % 2), -0.3), (x + 1.0, y + H, 0.1), "leaf_dark")
+
+
+def stone_circle(rb, f, cx, cz, r=17.0):
+    """A ring of standing stones on a low mound (Derek2 11-09: "famous stone places like stone henge"): twelve
+    uprights about 18 high, lintels across pairs, two fallen, an altar stone in the middle with a jade glyph."""
+    y = f.gy(cx, cz)
+    rb.ball((cx, y - 3.0, cz), r + 8.0, "fur_pewter", scale=(1.0, 0.18, 1.0))
+    y += 0.8
+    n = 12
+    for i in range(n):
+        a = 2 * math.pi * i / n
+        x, z = cx + r * math.cos(a), cz + r * math.sin(a)
+        if i in (4, 9):                                                               # fallen ones
+            t = Turned(x, z, -math.degrees(a) + 20)
+            t.span(rb, (-6.5, y - 0.4, -1.5), (6.5, y + 2.2, 1.5), "fur_dusty")
+            continue
+        t = Turned(x, z, -math.degrees(a) + 90)
+        h = 18.0 - 2.0 * (i % 3 == 1)
+        t.span(rb, (-2.4, y - 1, -1.6), (2.4, y + h, 1.6), ("fur_dusty", "fur_pewter")[i % 2])
+        if i % 2 == 0 and (i + 1) % n not in (4, 9):                                  # a lintel to the next
+            a2 = 2 * math.pi * (i + 0.5) / n
+            lt = Turned(cx + r * math.cos(a2), cz + r * math.sin(a2), -math.degrees(a2) + 90)
+            lt.span(rb, (-6.6, y + h, -1.4), (6.6, y + h + 2.4, 1.4), "fur_pewter")
+    rb.box((cx, y + 1.0, cz), (6.0, 2.0, 3.4), "fur_soot")                             # the altar
+    rb.box((cx, y + 2.05, cz), (2.0, 0.1, 2.0), "fur_emerald")
+
+
+def theme_ruins(f, P):
+    # rocky mountains round the plateau, no trees (Derek2 11-09): a low stony skirt, crags in a ring with two cliffs
+    # carved as temple fronts on the long sides, a stone circle outside the west wall, grey peaks behind
+    near = ring(f, 58.0, 42.0, (40.0, 26.0, 3.0, 7.0), 71)
+    far = ring(f, 210.0, 90.0, (80.0, 56.0, 50.0, 85.0), 72, corner=180.0)
+    f.hills = near + far
+    for h in near:
+        h.add(P["hills"], "fur_pewter")
+    for h in far:
+        h.add(P["far"], "fur_dusty")
+    rb = P["rb"]
+    carved = {(-1, 0): f.cz + 40.0, (1, 0): f.cz - 90.0}                               # (nx, nz): z of its middle
+    for (nx, nz), zc in carved.items():
+        carved_cliff(Turned.facing(nx * (f.ex + 34.0), zc, nx, nz), rb, int(zc) % 5)
+    stone_circle(rb, f, -(f.ex + 50.0), f.cz - 110.0, r=19.0)
+    for i, (x, z, nx, nz) in enumerate(f.around(36.0, 24.0, 80, wobble=6.0, shift=6.0)):  # the crags
+        if nz < -0.9 and abs(x) < f.ex:
+            continue                                                    # none behind the camp
+        if any(abs(nx - cx) < 0.1 and abs(z - zc) < 34.0 for (cx, _), zc in carved.items()):
+            continue
+        if math.hypot(x + f.ex + 50.0, z - f.cz + 110.0) < 36.0:
+            continue
+        crag(Turned.facing(x, z, nx, nz), rb, 16.0 + 10 * _hash(i, 81), 12.0 + 6 * _hash(i, 82),
+             16.0 + 16 * _hash(i, 83), i)
+    for i, (x, z, nx, nz) in enumerate(f.around(11.0, 19.0, 75, wobble=3.0, shift=5.0)):   # columns and walls
+        if f.out(x, z) < KEEP + 2.5:
+            continue
+        if _hash(i, 76) < 0.6:
+            ruin_column(rb, f, x, z, 1.0 + 0.3 * _hash(i, 77), ("leaf_dark", "paw_woods")[i % 2])
+        else:
+            ruin_wall(Turned.facing(x, z, nx, nz), rb, 10.0 + 6 * _hash(i, 78), 6.0 + 5 * _hash(i, 79), i)
+    tx, tz = 0.0, f.ez1 + 140.0                                          # a stepped temple on the far horizon
+    for k in range(5):
+        w = 80.0 - k * 14.0
+        rb.span((tx - w / 2, TOP + k * 10.0, tz - w / 2), (tx + w / 2, TOP + (k + 1) * 10.0, tz + w / 2),
+                "fur_dusty" if k % 2 == 0 else "fur_pewter")
+    rb.span((tx - 6.0, TOP + 50.0, tz - 6.0), (tx + 6.0, TOP + 60.0, tz + 6.0), "fur_soot")
+    rb.span((tx - 2.0, TOP + 52.0, tz - 6.1), (tx + 2.0, TOP + 57.0, tz - 5.95), "fur_emerald")
+    for sx in (-1, 1):                                                  # two broken towers either side of it
+        x = sx * 70.0
+        rb.span((x - 7.0, TOP, tz - 7.0), (x + 7.0, TOP + 38.0 + 8 * sx, tz + 7.0), "fur_pewter")
+        rb.span((x - 7.6, TOP + 22.0, tz - 7.6), (x + 7.6, TOP + 23.5, tz + 7.6), "fur_dusty")
+
+
+# ------------------------------------------------------------------------------------------------- snowy --
+SNOW_RGB = (240, 244, 248)                     # the Snowy Mountain's plate and drifts (milk, as Snow)
+DRIFT_RGB = (226, 233, 241)                    # the near drifts, a touch blue so their shapes read
+PEAK_RGB = (128, 138, 152)                     # the far mountains' rock (concrete), snow-capped
+
+
+def snow_fir(rb, f, x, z, s=1.0, leaf="leaf_dark"):
+    """A fir in snow: the fir's trunk and two tiers, a white cap on each tier."""
+    fir(rb, f, x, z, s, leaf)
+    y = f.gy(x, z) - 0.3 * s
+    for r, h in ((2.2, 5.2), (1.25, 8.25)):
+        rb.ball((x, y + h * s, z), r * s, "milk", scale=(1.0, 0.45, 1.0))
+
+
+def snow_rock(rb, f, x, z, s=1.0, leaf=None):
+    """A grey boulder with snow on its top."""
+    y = f.gy(x, z)
+    rb.ball((x, y + 0.6 * s, z), 2.2 * s, "concrete", scale=(1.3, 0.75, 1.0))
+    rb.ball((x, y + 1.7 * s, z), 1.9 * s, "milk", scale=(1.2, 0.35, 0.9))
+
+
+def frozen_pond(rb, f, cx, cz, r):
+    """A round frozen pond on the snow outside the wall: a ring of snow, the ice in two blues, a few firs."""
+    y = f.gy(cx, cz)
+    rb.cyl((cx, y + 0.05, cz), r + 2.0, 0.3, "milk", segments=20)
+    rb.cyl((cx, y + 0.12, cz), r, 0.3, "pastel_sky", segments=20)
+    rb.cyl((cx + r * 0.2, y + 0.18, cz - r * 0.15), r * 0.45, 0.3, "fish_belly", segments=14)
+    for k in range(5):
+        a = 2 * math.pi * (k + 0.3) / 5
+        snow_fir(rb, f, cx + (r + 6.0) * math.cos(a), cz + (r + 6.0) * math.sin(a), 1.4 + 0.3 * (k % 2))
+
+
+def _snow_caps(f, P, hills, over, k=0.34):
+    """A snow cap on every hill rising over `over`, sunk into its top like the Woods' caps."""
+    for h in hills:
+        if h.rise > over:
+            P["snow"].b.ico(RB.p(h.x, h.b * 0.86 - h.rise * Hill.SINK, h.z), 1.0, "offwhite", subdivisions=2,
+                            scale=(h.a * k, h.c * k, h.b * 0.17), rot=(h.turn, "Z"))
+
+
+def theme_snowy(f, P):
+    # snow to the horizon, no grass: low drifts by the walls, snowy firs in two belts, grey peaks with snow caps
+    # behind, a frozen pond outside the west wall and one great peak past the summit end
+    near = ring(f, 50.0, 40.0, (36.0, 24.0, 3.5, 8.0), 91)
+    far = ring(f, 210.0, 88.0, (80.0, 56.0, 55.0, 110.0), 92, corner=180.0)
+    great = Hill(0.0, f.ez1 + 175.0, 120.0, 95.0, 160.0, 0.0)
+    f.hills = near + far + [great]
+    for h in near:
+        h.add(P["hills"], "milk")
+    for h in far + [great]:
+        h.add(P["far"], "concrete")
+    _snow_caps(f, P, far, 50.0)
+    _snow_caps(f, P, [great], 0.0, k=0.42)
+    rb = P["rb"]
+    pond = (-(f.ex + 46.0), f.cz - 70.0, 18.0)
+    leaves = ("leaf_dark", "paw_woods")
+    for i, (x, z, nx, nz) in enumerate(f.around(10.0, 15.0, 93, wobble=3.0, shift=4.0)):
+        if f.out(x, z) < KEEP + 3 or math.hypot(x - pond[0], z - pond[1]) < pond[2] + 10.0:
+            continue
+        if _hash(i, 94) < 0.8:
+            snow_fir(rb, f, x, z, 1.5 + 0.4 * _hash(i, 95), leaves[i % 2])
+        else:
+            snow_rock(rb, f, x, z, 1.0 + 0.6 * _hash(i, 96))
+    for i, (x, z, nx, nz) in enumerate(f.around(27.0, 21.0, 97, wobble=5.0, shift=6.0)):
+        if f.out(x, z) < KEEP + 3 or math.hypot(x - pond[0], z - pond[1]) < pond[2] + 10.0:
+            continue
+        snow_fir(rb, f, x, z, 1.9 + 0.5 * _hash(i, 98), leaves[(i + 1) % 2])
+    on_hills(rb, f, near, 2, 99, 2.0, plant=snow_fir, leaves=leaves)
+    frozen_pond(rb, f, *pond)
+
+
+# ----------------------------------------------------------------------------------------------- funfair --
+CANDY = ("shirt_red", "shirt_blue", "pastel_butter", "leaf_green")
+
+
+def big_top(rb, f, x, z, s=1.0, col="shirt_red"):
+    """A striped circus tent: a drum in stripes, a cone roof in two rings, a pole and a pennant."""
+    y = f.gy(x, z) - 0.5
+    n = 12
+    for k in range(n):
+        a = 2 * math.pi * (k + 0.5) / n
+        rb.box((x + 10.2 * s * math.cos(a), y + 4.0 * s, z + 10.2 * s * math.sin(a)), (5.6 * s, 8.0 * s, 0.6),
+               (col, "milk")[k % 2], rot=_roty(math.pi / 2 - a))
+    rb.cyl((x, y + 4.0 * s, z), 10.0 * s, 8.0 * s, "milk", segments=n)
+    rb.cyl((x, y + 8.4 * s, z), 11.4 * s, 0.9 * s, col, segments=n)
+    rb.cyl((x, y + 12.3 * s, z), 11.0 * s, 7.0 * s, "milk", r2=4.4 * s, segments=n)
+    rb.cyl((x, y + 18.0 * s, z), 4.4 * s, 4.6 * s, col, r2=0.5 * s, segments=n)
+    rb.cyl((x, y + 22.3 * s, z), 0.3 * s, 4.2 * s, "rarity_legend", segments=6)
+    rb.span((x, y + 22.9 * s, z - 0.1), (x + 3.0 * s, y + 24.3 * s, z + 0.1), col)
+
+
+def hot_balloon(rb, x, y, z, s, col, col2="milk"):
+    """A hot-air balloon in the sky: a striped envelope, a skirt and a basket."""
+    for k, (dy, r) in enumerate(((0.0, 0.62), (2.6, 0.92), (5.4, 1.0), (8.2, 0.86), (10.4, 0.55))):
+        rb.cyl((x, y + (6.0 + dy) * s, z), 6.0 * r * s, 2.9 * s, (col, col2)[k % 2], segments=12)
+    rb.cyl((x, y + 3.6 * s, z), 2.4 * s, 2.0 * s, col, r2=3.6 * s, segments=12)
+    rb.span((x - 1.2 * s, y, z - 1.2 * s), (x + 1.2 * s, y + 1.8 * s, z + 1.2 * s), "caramel_wood")
+    for sx in (-1, 1):
+        rb.span((x + sx * 1.1 * s - 0.08, y + 1.8 * s, z - 0.08), (x + sx * 1.1 * s + 0.08, y + 2.8 * s, z + 0.08),
+                "dark_wood")
+
+
+def great_wheel(rb, lit, f, x, z, R=46.0):
+    """A great observation wheel past the far end, facing the area (its plane along X): two legs, a rim of spokes,
+    sixteen cabins in the candy colours and a bulb on each (lit at night)."""
+    y = f.gy(x, z) - 0.5
+    hub = y + R + 9.0
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            rb.box((x + sx * 10.0, y + (R + 9.0) / 2, z + sz * 3.0), (2.2, math.hypot(R + 9.0, 20.0), 2.2), "milk",
+                   rot=_rotz(sx * math.atan2(10.0, (R + 9.0) / 2) * 0.5))
+    rb.cyl((x, hub, z), 3.4, 8.0, "rarity_legend", axis="Z", segments=12)
+    n = 16
+    for k in range(n // 2):
+        rb.box((x, hub, z), (1.0, 2 * R, 0.8), "milk", rot=_rotz(math.pi * k / (n // 2)))
+    seg = 2 * R * math.sin(math.pi / n)
+    for k in range(n):
+        a = 2 * math.pi * (k + 0.5) / n
+        rb.box((x + R * math.cos(math.pi / n) * math.cos(a), hub + R * math.cos(math.pi / n) * math.sin(a), z),
+               (1.4, seg + 0.6, 1.4), ("shirt_red", "milk")[k % 2], rot=_rotz(a))
+        a = 2 * math.pi * k / n
+        cx, cy = x + R * math.cos(a), hub + R * math.sin(a)
+        rb.span((cx - 2.6, cy - 5.6, z - 2.2), (cx + 2.6, cy - 1.6, z + 2.2), CANDY[k % 4])
+        rb.span((cx - 3.0, cy - 1.6, z - 2.6), (cx + 3.0, cy - 0.9, z + 2.6), "milk")
+        lit.ball((cx, cy, z - 1.0), 1.1, "lamp_warm")
+
+
+def _roty(a):
+    return Matrix.Rotation(a, 3, "Y")
+
+
+def _rotz(a):
+    return Matrix.Rotation(a, 3, "Z")
+
+
+def theme_funfair(f, P):
+    # green hills and parkland with palms round the park, big tops either side, balloons over the hills, the great
+    # wheel past the far end
+    wheel = (0.0, f.ez1 + 60.0)
+    tents = [(-(f.ex + 30.0), f.cz - 150.0, 1.0, "shirt_red"), (f.ex + 32.0, f.cz - 40.0, 1.15, "shirt_blue"),
+             (-(f.ex + 34.0), f.cz + 70.0, 1.2, "shirt_red"), (f.ex + 30.0, f.cz + 190.0, 1.0, "shirt_blue")]
+    clear = [(wheel[0], wheel[1], 52.0)] + [(x, z, 15.0 * s + 6.0) for x, z, s, _ in tents]
+
+    def taken(x, z, pad=0.0):
+        return any(math.hypot(x - cx, z - cz) < r + pad for cx, cz, r in clear)
+    near = [h for h in ring(f, 56.0, 40.0, (38.0, 26.0, 8.0, 16.0), 111)
+            if not any(_foot_in(h, (cx - r, cx + r, cz - r, cz + r)) for cx, cz, r in clear)]
+    far = ring(f, 185.0, 64.0, (60.0, 44.0, 22.0, 40.0), 112)
+    f.hills = near + far
+    for h in near:
+        h.add(P["hills"], "leaf_green")
+    for h in far:
+        h.add(P["far"], "leaf_green")
+    rb, flowers, lit = P["rb"], P["flowers"], P["lit"]
+    on_hills(rb, f, near, 3, 113, 1.7)
+    on_hills(rb, f, far, 2, 114, 2.6, plant=far_tree)
+    for i, (x, z, nx, nz) in enumerate(f.around(14.0, 15.0, 115, wobble=7.0, shift=5.0)):
+        if f.out(x, z) < KEEP + 2 or taken(x, z, 3.0):
+            continue
+        r = _hash(i, 116)
+        if r < 0.45:
+            palm(rb, f, x, z, 1.0 + 0.4 * r)
+        elif r < 0.7:
+            tree(rb, f, x, z, 1.1 + 0.5 * r, LEAVES[i % 3])
+        elif r < 0.9:
+            bush(rb, f, x, z, 1.0 + r, LEAVES[(i + 1) % 3])
+        else:
+            tuft(rb, flowers, x, z, 0.7)
+    for x, z, s, col in tents:
+        big_top(rb, f, x, z, s, col)
+    great_wheel(rb, lit, f, *wheel)
+    for k, (x, y, z, s) in enumerate(((-(f.ex + 95.0), 62.0, f.cz - 60.0, 1.5), (f.ex + 110.0, 78.0, f.cz + 110.0, 1.8),
+                                      (f.ex + 80.0, 55.0, f.cz - 190.0, 1.3), (-(f.ex + 120.0), 86.0, f.cz + 200.0, 1.9),
+                                      (-60.0, 96.0, f.ez1 + 150.0, 1.7))):
+        hot_balloon(rb, x, y, z, s, CANDY[k % 4])
+
+
+# ---------------------------------------------------------------------------------------------- medieval --
+def far_keep(rb, lit, f, x, z, s=1.0):
+    """The great keep on the skyline past the far end: a tall block with battlements, four round corner towers under
+    navy cone roofs with gold pennant balls, a taller middle tower in red, lit windows (lit at night)."""
+    y = f.gy(x, z) - 0.5
+    w, d, h = 46.0 * s, 30.0 * s, 44.0 * s
+    rb.span((x - w / 2, y, z - d / 2), (x + w / 2, y + h, z + d / 2), "concrete")
+    rb.span((x - w / 2 - 1.0, y + h, z - d / 2 - 1.0), (x + w / 2 + 1.0, y + h + 2.0 * s, z + d / 2 + 1.0), "concrete_dark")
+    n = 9
+    for k in range(n):                                                    # merlons toward the area
+        mx = x - w / 2 + (k + 0.5) * w / n
+        if k % 2 == 0:
+            rb.span((mx - w / n / 2, y + h + 2.0 * s, z - d / 2 - 1.0), (mx + w / n / 2, y + h + 5.0 * s, z - d / 2 + 2.0),
+                    "metal")
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            tx, tz, th = x + sx * w / 2, z + sz * d / 2, h + 12.0 * s
+            rb.cyl((tx, y + th / 2, tz), 7.0 * s, th, "metal", segments=10)
+            rb.cyl((tx, y + th + 1.0 * s, tz), 8.2 * s, 2.0 * s, "concrete_dark", segments=10)
+            rb.cyl((tx, y + th + 9.0 * s, tz), 8.0 * s, 14.0 * s, "pants_navy", r2=0.4 * s, segments=10)
+            rb.ball((tx, y + th + 16.6 * s, tz), 1.0 * s, "rarity_legend")
+            if sz < 0:
+                lit.span((tx - 1.2 * s, y + th * 0.62, tz - 7.2 * s), (tx + 1.2 * s, y + th * 0.62 + 4.0 * s, tz - 6.6 * s),
+                         "lamp_warm")
+    th = h + 30.0 * s                                                     # the middle tower
+    rb.span((x - 8.0 * s, y + h, z - 8.0 * s), (x + 8.0 * s, y + th, z + 8.0 * s), "concrete")
+    rb.span((x - 9.2 * s, y + th, z - 9.2 * s), (x + 9.2 * s, y + th + 2.0 * s, z + 9.2 * s), "concrete_dark")
+    rb.cyl((x, y + th + 11.0 * s, z), 10.0 * s, 18.0 * s, "shirt_red", r2=0.5 * s, segments=8)
+    rb.cyl((x, y + th + 23.0 * s, z), 0.4 * s, 7.0 * s, "rarity_legend", segments=6)
+    rb.span((x, y + th + 23.5 * s, z - 0.15), (x + 6.0 * s, y + th + 26.5 * s, z + 0.15), "rarity_legend")
+    for k in range(4):                                                    # lit windows on the front
+        wx = x - w / 2 + (k + 0.5) * w / 4
+        lit.span((wx - 1.3 * s, y + h * 0.55, z - d / 2 - 0.3), (wx + 1.3 * s, y + h * 0.55 + 4.4 * s, z - d / 2 + 0.3),
+                 "lamp_warm")
+    lit.span((x - 1.5 * s, y + h + 14.0 * s, z - 8.3 * s), (x + 1.5 * s, y + h + 19.0 * s, z - 7.7 * s), "lamp_warm")
+    rb.span((x - 5.0 * s, y, z - d / 2 - 0.4), (x + 5.0 * s, y + 13.0 * s, z - d / 2 + 0.4), "dark_wood")   # the great door
+
+
+def windmill(rb, f, x, z, s=1.0, turn=0.5):
+    """A stone windmill: a tapered cream tower on a stone foot, a tiled cap, four timber sails with cloth facing the
+    area along Z."""
+    y = f.gy(x, z) - 0.5
+    rb.cyl((x, y + 2.0 * s, z), 7.6 * s, 4.0 * s, "concrete", segments=10)
+    rb.cyl((x, y + 13.0 * s, z), 7.0 * s, 18.0 * s, "cream", r2=4.6 * s, segments=10)
+    rb.cyl((x, y + 25.0 * s, z), 5.4 * s, 6.0 * s, "terracotta", r2=0.6 * s, segments=10)
+    rb.span((x - 1.2 * s, y + 4.0 * s, z - 7.4 * s), (x + 1.2 * s, y + 8.0 * s, z - 6.2 * s), "dark_wood")
+    hub = y + 21.0 * s
+    hz = z - 6.2 * s
+    rb.cyl((x, hub, hz), 1.2 * s, 2.4 * s, "dark_wood", axis="Z", segments=8)
+    for k in range(4):
+        a = turn + math.pi * k / 2
+        ca, sa = math.cos(a), math.sin(a)
+        rb.box((x + 8.5 * s * ca, hub + 8.5 * s * sa, hz - 0.9 * s), (17.0 * s, 0.7 * s, 0.6 * s), "dark_wood", rot=_rotz(a))
+        rb.box((x + 10.5 * s * ca - 1.8 * s * sa, hub + 10.5 * s * sa + 1.8 * s * ca, hz - 1.0 * s),
+               (12.0 * s, 3.2 * s, 0.3 * s), "milk", rot=_rotz(a))
+
+
+def wizard_tower(rb, lit, f, x, z, s=1.0):
+    """A wizard's tower on a hill: a thin stone tower that leans in two steps, a jutting room under a tall crooked
+    purple hat roof with a gold star, and a glowing orb window (lit at night)."""
+    y = f.gy(x, z) - 0.5
+    rb.cyl((x, y + 11.0 * s, z), 5.0 * s, 22.0 * s, "concrete", r2=4.2 * s, segments=8)
+    rb.cyl((x + 0.8 * s, y + 30.0 * s, z), 4.2 * s, 16.0 * s, "metal", r2=3.8 * s, segments=8)
+    rb.cyl((x + 0.8 * s, y + 39.0 * s, z), 6.4 * s, 2.0 * s, "dark_wood", segments=8)
+    rb.cyl((x + 0.8 * s, y + 44.0 * s, z), 6.0 * s, 8.0 * s, "cream", segments=8)
+    rb.cyl((x + 0.8 * s, y + 48.6 * s, z), 7.6 * s, 1.2 * s, "rarity_epic", segments=8)
+    rb.cyl((x + 1.4 * s, y + 55.0 * s, z), 6.6 * s, 12.0 * s, "rarity_epic", r2=2.6 * s, segments=8)
+    rb.cyl((x + 3.0 * s, y + 64.0 * s, z), 2.6 * s, 7.0 * s, "rarity_epic", r2=0.3 * s, segments=8)
+    rb.ball((x + 3.4 * s, y + 68.4 * s, z), 1.1 * s, "rarity_legend")
+    lit.ball((x + 0.8 * s, y + 44.0 * s, z - 6.0 * s), 2.0 * s, "lamp_warm")
+    lit.span((x - 0.9 * s, y + 24.0 * s, z - 4.6 * s), (x + 0.9 * s, y + 27.5 * s, z - 4.0 * s), "lamp_warm")
+    rb.span((x - 1.2 * s, y, z - 5.2 * s), (x + 1.2 * s, y + 4.6 * s, z - 4.4 * s), "dark_wood")
+
+
+def farm_hut(rb, lit, f, x, z, s=1.0, k=0):
+    """A thatched cottage: cream walls in a dark frame, a steep straw roof, a lit window."""
+    y = f.gy(x, z) - 0.5
+    rb.span((x - 6.0 * s, y, z - 4.5 * s), (x + 6.0 * s, y + 6.0 * s, z + 4.5 * s), "cream")
+    rb.span((x - 6.2 * s, y + 5.6 * s, z - 4.7 * s), (x + 6.2 * s, y + 6.2 * s, z + 4.7 * s), "dark_wood")
+    rb.cyl((x, y + 9.4 * s, z), 7.6 * s, 6.4 * s, ("fur_golden", "fur_sand")[k % 2], r2=0.8 * s, segments=8)
+    rb.span((x - 1.0 * s, y, z - 4.7 * s), (x + 1.0 * s, y + 4.0 * s, z - 4.4 * s), "dark_wood")
+    lit.span((x + 2.6 * s, y + 2.4 * s, z - 4.7 * s), (x + 4.4 * s, y + 4.2 * s, z - 4.4 * s), "lamp_warm")
+
+
+def hay_bale(rb, f, x, z, s=1.0, leaf=None):
+    y = f.gy(x, z) - 0.3
+    rb.cyl((x, y + 1.6 * s, z), 1.6 * s, 2.6 * s, "fur_golden", axis="X", segments=10)
+
+
+def theme_medieval(f, P):
+    # green farm hills and woods round the castle, cottages and hay bales on the near ground, a windmill either
+    # side, a wizard's tower on a far hill and the great keep on the skyline past the far end
+    keep = (0.0, f.ez1 + 75.0)
+    mills = [(-(f.ex + 34.0), f.cz - 120.0, 1.0, 0.3), (f.ex + 36.0, f.cz + 60.0, 1.15, 0.9)]
+    wizard = (f.ex + 40.0, f.cz + 200.0, 1.0)
+    huts = [(-(f.ex + 30.0), f.cz + 20.0, 1.0), (-(f.ex + 44.0), f.cz + 44.0, 1.2), (f.ex + 30.0, f.cz - 150.0, 1.1),
+            (f.ex + 46.0, f.cz - 128.0, 1.0), (-(f.ex + 32.0), f.cz + 170.0, 1.1)]
+    clear = ([(keep[0], keep[1], 48.0), (wizard[0], wizard[1], 12.0)] + [(x, z, 14.0 * s) for x, z, s, _ in mills]
+             + [(x, z, 11.0 * s) for x, z, s in huts])
+
+    def taken(x, z, pad=0.0):
+        return any(math.hypot(x - cx, z - cz) < r + pad for cx, cz, r in clear)
+    near = [h for h in ring(f, 58.0, 40.0, (38.0, 26.0, 8.0, 16.0), 121)
+            if not any(_foot_in(h, (cx - r, cx + r, cz - r, cz + r)) for cx, cz, r in clear)]
+    far = ring(f, 185.0, 64.0, (64.0, 46.0, 24.0, 44.0), 122)
+    f.hills = near + far
+    for k, h in enumerate(near):
+        h.add(P["hills"], ("leaf_green", "leaf_green", "pastel_butter")[k % 3])              # a hay field now and then
+    for h in far:
+        h.add(P["far"], "leaf_dark")
+    rb, flowers, lit = P["rb"], P["flowers"], P["lit"]
+    on_hills(rb, f, near, 3, 123, 1.7)
+    on_hills(rb, f, far, 3, 124, 2.6, plant=far_tree)
+    for i, (x, z, nx, nz) in enumerate(f.around(14.0, 15.0, 125, wobble=7.0, shift=5.0)):
+        if f.out(x, z) < KEEP + 2 or taken(x, z, 3.0):
+            continue
+        r = _hash(i, 126)
+        if r < 0.4:
+            tree(rb, f, x, z, 1.1 + 0.5 * r, LEAVES[i % 3])
+        elif r < 0.6:
+            fir(rb, f, x, z, 1.0 + 0.6 * r)
+        elif r < 0.78:
+            bush(rb, f, x, z, 1.0 + r, LEAVES[(i + 1) % 3])
+        elif r < 0.9:
+            hay_bale(rb, f, x, z, 1.0 + 0.4 * r)
+        else:
+            tuft(rb, flowers, x, z, 0.7)
+    for k, (x, z, s) in enumerate(huts):
+        farm_hut(rb, lit, f, x, z, s, k)
+    for x, z, s, turn in mills:
+        windmill(rb, f, x, z, s, turn)
+    wizard_tower(rb, lit, f, *wizard)
+    far_keep(rb, lit, f, *keep)
+
+
+THEMES = {"park": theme_park, "forest": theme_forest, "houses": theme_houses, "city": theme_city, "works": theme_works,
+          "desert": theme_desert, "ruins": theme_ruins, "snowy": theme_snowy,
+          "funfair": theme_funfair, "medieval": theme_medieval}
+
+
+def builder(area, A, H, theme):
+    n = NAMES.get(area, f"CatCafe_{area}_Backdrop")
+    city = theme == "city"
+    _look(n + "_Ground", ASPHALT_RGB if city else GRASS_RGB, "Asphalt" if city else "Grass")
+    _look(n + "_Hills", FOREST_RGB if theme == "forest" else GRASS_RGB, "Grass")
+    _look(n + "_HillsFar", MOUNTAIN_RGB if theme == "forest" else PALE_RGB, "Rock" if theme == "forest" else "Grass")
+    if theme == "desert":                       # #2651: sand to the horizon, no grass (Derek2 2026-11-09)
+        _look(n + "_Ground", SAND_RGB, "Sand")
+        _look(n + "_Hills", SAND_RGB, "Sand")
+        _look(n + "_HillsFar", DUNE_RGB, "Sand")
+    elif theme == "ruins":                      # bare earth, jungle hills, grey cliffs
+        _look(n + "_Ground", EARTH_RGB, "Ground")
+        _look(n + "_Hills", STONY_RGB, "Ground")
+        _look(n + "_HillsFar", CLIFF_RGB, "Rock")
+    elif theme == "snowy":                      # #3997: snow to the horizon, grey rock peaks with snow caps
+        _look(n + "_Ground", SNOW_RGB, "Snow")
+        _look(n + "_Hills", DRIFT_RGB, "Snow")
+        _look(n + "_HillsFar", PEAK_RGB, "Rock")
+    _look(n + "_Snow", (240, 244, 248), "Snow")
+    _look(n + "_Road", ASPHALT_RGB if theme != "works" else (150, 150, 150), "Asphalt" if theme != "works" else "Concrete")
+
+    def build(mat):
+        f = Frame(A, H)
+        P = {k: RB() for k in ("rb", "ground", "hills", "far", "flowers", "lit", "road", "snow")}
+        THEMES[theme](f, P)
+        swatch = {"desert": "fur_oat", "ruins": "paving_grout", "snowy": "milk"}.get(theme, "fur_charcoal" if city else "leaf_green")
+        ground(f, P["ground"], swatch)                                         # after the rings: it ends under them
+        objs = [P["rb"].finalize(n, mat), P["ground"].finalize(n + "_Ground", mat)]
+        for key, suffix in (("hills", "_Hills"), ("far", "_HillsFar"), ("flowers", "_Flowers"), ("lit", "_Bulbs"),
+                            ("road", "_Road"), ("snow", "_Snow")):
+            if P[key].b.prims:
+                objs.append(P[key].finalize(n + suffix, mat))
+        return objs
+
+    return build
+
+
+ASSETS = {NAMES.get(area, f"CatCafe_{area}_Backdrop"): (builder(area, A, H, theme), 60000)
+          for area, (A, H, theme) in AREAS.items()}

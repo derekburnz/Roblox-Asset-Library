@@ -1,0 +1,541 @@
+--!strict
+-- Leaderboards (F98, leaderboards.md section 4; shared/Leaderboards for the values and store names).
+--   Writes: each player's five values (Index entries, minutes played all time and this week, best money per second
+--     all time and this week) go to one OrderedDataStore per list, keyed by user id, on join, every
+--     LeaderboardWriteSeconds, on a rank up and on leave, each only when it changed since this server last wrote it.
+--     Never in Studio or with Config.LeaderboardWrites off, so playtests never land on the live boards.
+--   Reads: every LeaderboardRefreshSeconds the top LeaderboardSize of every list, spread across the period (all at
+--     once on a server's first refresh, #2400, so a new server's boards are full from the start), names
+--     from UserService in batches (cached for the server's life), the hidden list (DataStore key
+--     CatCafe_LB_Hidden) dropped.
+--   Shown: each list as read with the players in this server put in at their values now (Leaderboards.withPresent,
+--     #941), worked out again on every refresh and every write, so a board shows the people playing at once, and in
+--     Studio too. Then every player gets LeaderboardSync with their own line, and the crowns are set: attribute
+--     Crown on the Player and on their cafe's name sign while they are in the top LeaderboardCrownRank of any
+--     all-time board. #3333: and each player's place 1 to 3 on any all-time board (owner left out) for the rank
+--     titles; `placeChanged` fires for a player here whose place changed, and CafePassService shows the new title.
+--   Owners (#3321, Derek2 2026-11-11: "clear [my account] off leaderboard since I am owner its unfair"): an account in
+--     Config.OwnerTestUserIds is never written, is dropped from every list as read and from the players put in, and
+--     on its join its entries come out of every list's store (RemoveAsync), so it never shows again.
+-- Every value comes from the server's own profile and clock; a client never sends one. Nothing here prints a user id
+-- or a name, since the CI logs are public.
+
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserService = game:GetService("UserService")
+
+local AfkCafe = require(ReplicatedStorage.Shared.AfkCafe)
+local ChatTags = require(ReplicatedStorage.Shared.ChatTags)
+local Config = require(ReplicatedStorage.Shared.Config)
+local DataService = require(script.Parent.DataService)
+local Leaderboards = require(ReplicatedStorage.Shared.Leaderboards)
+local Net = require(script.Parent.Net)
+local OwnerTest = require(ReplicatedStorage.Shared.OwnerTest)
+local PlotService = require(script.Parent.PlotService)
+local Types = require(ReplicatedStorage.Shared.Types)
+
+local LeaderboardService = {}
+
+local HIDDEN_STORE = "CatCafe_LB"
+local HIDDEN_KEY = "CatCafe_LB_Hidden"
+local NAME_BATCH = 100 -- ids per GetUserInfosByUserIdsAsync call (its limit is 200)
+
+type List = Leaderboards.List
+type Row = Types.LeaderboardRow
+
+local written: { [Player]: { [string]: number } } = {} -- store name -> the value this server last wrote
+-- store name -> os.clock() when this server last began a write of the player's entry (Leaderboards.mayWrite)
+local writeBegan: { [Player]: { [string]: number } } = {}
+local lists: { [List]: { Row } } = {} -- as last read from the stores
+local shown: { [List]: { Row } } = {} -- as read, with the players here at their values now (#941)
+local listWeek = 0 -- the week the weekly lists were read for
+local names: { [number]: string } = {}
+-- #3321: the owners are on the hidden list from the start, and stay on it whatever the store's list says
+local function withOwners(ids: { [number]: boolean }): { [number]: boolean }
+	for _, id in Config.OwnerTestUserIds do
+		ids[id] = true
+	end
+	return ids
+end
+local hidden: { [number]: boolean } = withOwners({})
+local crowned: { [number]: boolean } = {}
+local announced: { [number]: number } = {} -- #3466: userId -> os.clock() of their last join notice on this server
+local places: { [number]: number } = {} -- #3333: userId -> best place 1 to 3 on an all-time board
+local placeChanged = Instance.new("BindableEvent")
+-- #3333: (player) fired when a player here gains, changes or loses a top 3 place
+LeaderboardService.placeChanged = placeChanged.Event :: RBXScriptSignal
+-- For the Studio readout (#941): the last write and read per list, and whether the hidden list's last read worked.
+type Outcome = { ok: boolean, at: number, count: number? }
+local lastWrite: { [List]: Outcome } = {}
+local lastRead: { [List]: Outcome } = {}
+local hiddenRead: Outcome? = nil
+
+-- A list as shown: as last read with the players here put in (no rows before the first merge).
+local function listOf(list: List): { Row }
+	local rows = shown[list]
+	if rows == nil then
+		return {}
+	end
+	return rows
+end
+
+local function canWrite(): boolean
+	return Config.LeaderboardWrites and not RunService:IsStudio()
+end
+
+local function valuesOf(
+	player: Player,
+	profile: Types.PlayerProfile,
+	now: number
+): { [List]: number }
+	return Leaderboards.values(profile, DataService.joinedAt(player) or now, now)
+end
+
+-- Writes the lists whose value changed since this server last wrote them. Yields; `values` taken by the caller so a
+-- leave can write after the profile is gone. A store written less than Leaderboards.WRITE_GAP_SECONDS ago waits for
+-- the next write, unless the player is `leaving`.
+local function writeValues(
+	player: Player,
+	values: { [List]: number },
+	week: number,
+	leaving: boolean?
+)
+	if OwnerTest.isOwner(player.UserId) then
+		return -- #3321: an owner is never on the boards
+	end
+	local mine = written[player] or {}
+	written[player] = mine
+	local began = writeBegan[player] or {}
+	writeBegan[player] = began
+	for list, value in values do
+		local name = Leaderboards.storeName(list, week)
+		-- review N321: nothing on a list yet (a first join, under a minute played) is no entry, not a write of 0
+		if value <= 0 or mine[name] == value then
+			continue
+		end
+		local now = os.clock()
+		if not Leaderboards.mayWrite(began[name], now, leaving == true) then
+			continue -- written a moment ago (a rank up beside the timer): the next write carries this value
+		end
+		began[name] = now -- marked before the yield, so two calls at once cannot both write
+		local ok = pcall(function()
+			DataStoreService:GetOrderedDataStore(name):SetAsync(tostring(player.UserId), value)
+		end)
+		lastWrite[list] = { ok = ok, at = os.time() }
+		if ok then
+			mine[name] = value
+		else
+			warn("[LeaderboardService] a write failed; it is tried again next time")
+		end
+	end
+end
+
+-- The player's own line on each board: their rank on the list read (nil off it) and their value now.
+local function meOf(player: Player): { [string]: any }
+	local profile = DataService.get(player)
+	local me: { [string]: any } = {}
+	if profile == nil then
+		return me
+	end
+	local values = valuesOf(player, profile, os.time())
+	for _, board in Leaderboards.BOARDS do
+		local line: { [string]: any } = {
+			rank = Leaderboards.rankOf(listOf(board), player.UserId),
+			value = values[board],
+		}
+		local weekly = (board .. "_week") :: List
+		if values[weekly] ~= nil then
+			line.weekRank = Leaderboards.rankOf(listOf(weekly), player.UserId)
+			line.weekValue = values[weekly]
+		end
+		me[board] = line
+	end
+	return me
+end
+
+local function syncOf(player: Player): Types.LeaderboardSync
+	local boards: { [string]: { allTime: { Row }, week: { Row }? } } = {}
+	for _, board in Leaderboards.BOARDS do
+		local week: { Row }? = nil
+		if board ~= "index" then
+			week = listOf((board .. "_week") :: List)
+		end
+		boards[board] = { allTime = listOf(board), week = week }
+	end
+	return { boards = boards, me = meOf(player) :: any, week = listWeek }
+end
+
+local function send(player: Player)
+	if DataService.get(player) ~= nil then
+		Net.fire(player, "LeaderboardSync", syncOf(player))
+	end
+end
+
+local showPresent: () -> ()
+
+-- Writes the player's values now (join, the timer, a rank up) and sends them their own line.
+local function writeNow(player: Player)
+	local profile = DataService.get(player)
+	if profile == nil then
+		return
+	end
+	if canWrite() then
+		local now = os.time()
+		writeValues(player, valuesOf(player, profile, now), Leaderboards.week(now))
+	end
+	showPresent()
+	send(player)
+end
+
+-- Display names for ids not cached yet, in batches; a failed lookup leaves them to the next refresh.
+local function lookUpNames(ids: { number })
+	local missing: { number } = {}
+	for _, id in ids do
+		if names[id] == nil then
+			local here = Players:GetPlayerByUserId(id)
+			if here ~= nil then
+				names[id] = here.DisplayName
+			else
+				table.insert(missing, id)
+			end
+		end
+	end
+	for from = 1, #missing, NAME_BATCH do
+		local batch = table.move(missing, from, math.min(from + NAME_BATCH - 1, #missing), 1, {})
+		local ok, infos = pcall(function()
+			return UserService:GetUserInfosByUserIdsAsync(batch)
+		end)
+		if ok and type(infos) == "table" then
+			for _, info in infos :: { any } do
+				if
+					type(info) == "table"
+					and type(info.Id) == "number"
+					and type(info.DisplayName) == "string"
+				then
+					names[info.Id] = info.DisplayName
+				end
+			end
+		end
+	end
+end
+
+local function nameOf(userId: number): string
+	return names[userId] or "Player"
+end
+
+local function readHidden()
+	local ok, value = pcall(function()
+		return DataStoreService:GetDataStore(HIDDEN_STORE):GetAsync(HIDDEN_KEY)
+	end)
+	hiddenRead = { ok = ok, at = os.time() }
+	if not ok then
+		return -- keep the last list
+	end
+	local fresh: { [number]: boolean } = {}
+	if type(value) == "table" then
+		for _, id in value :: { any } do
+			if type(id) == "number" then
+				fresh[id] = true
+			end
+		end
+	end
+	hidden = withOwners(fresh)
+end
+
+-- #3321: an owner's entries come out of every list's store (all time and this week), once per join. Yields.
+local function removeOwner(player: Player)
+	if not canWrite() or not OwnerTest.isOwner(player.UserId) then
+		return
+	end
+	local week = Leaderboards.week(os.time())
+	for _, list in Leaderboards.LISTS do
+		local ok = pcall(function()
+			DataStoreService:GetOrderedDataStore(Leaderboards.storeName(list, week))
+				:RemoveAsync(tostring(player.UserId))
+		end)
+		if not ok then
+			warn(
+				"[LeaderboardService] an owner's entry could not be removed; it is tried again on their next join"
+			)
+		end
+	end
+end
+
+-- Reads one list's top LeaderboardSize; a failed read keeps the last one.
+local function readList(list: List, week: number)
+	local ok, entries = pcall(function()
+		local pages = DataStoreService:GetOrderedDataStore(Leaderboards.storeName(list, week))
+			:GetSortedAsync(false, Config.LeaderboardSize)
+		return pages:GetCurrentPage()
+	end)
+	local usable = ok and type(entries) == "table"
+	lastRead[list] =
+		{ ok = usable, at = os.time(), count = if usable then #(entries :: { any }) else nil }
+	if not usable then
+		return
+	end
+	local ids: { number } = {}
+	for _, entry in entries :: { any } do
+		local id = if type(entry) == "table" then tonumber(entry.key) else nil
+		if id ~= nil then
+			table.insert(ids, id)
+		end
+	end
+	lookUpNames(ids)
+	lists[list] = Leaderboards.rows(entries :: { any }, hidden, nameOf)
+end
+
+-- Crown on the player and on their cafe's name sign, from the last refresh's lists.
+local function wearCrown(player: Player)
+	local wears = crowned[player.UserId] == true
+	player:SetAttribute("Crown", wears)
+	local plot = PlotService.get(player)
+	local sign = if plot ~= nil then plot.sign:FindFirstAncestorWhichIsA("BasePart") else nil
+	if sign ~= nil then
+		sign:SetAttribute("Crown", wears)
+	end
+end
+
+-- The crown on every row and every player here: top LeaderboardCrownRank of any all-time board.
+local function crown()
+	local fresh: { [number]: boolean } = {}
+	for _, board in Leaderboards.BOARDS do
+		for _, row in listOf(board) do
+			if row.rank <= Config.LeaderboardCrownRank then
+				fresh[row.userId] = true
+			end
+		end
+	end
+	crowned = fresh
+	-- #3333: the rank titles from the same lists
+	local boards: { { Row } } = {}
+	for _, board in Leaderboards.BOARDS do
+		table.insert(boards, listOf(board))
+	end
+	local before = places
+	places = Leaderboards.topPlaces(boards, ChatTags.isOwner)
+	for _, player in Players:GetPlayers() do
+		if before[player.UserId] ~= places[player.UserId] then
+			placeChanged:Fire(player)
+		end
+	end
+	for _, list in Leaderboards.LISTS do
+		for _, row in listOf(list) do
+			row.crown = crowned[row.userId] == true
+		end
+	end
+	for _, player in Players:GetPlayers() do
+		wearCrown(player)
+	end
+end
+
+-- #3466: one gold chat line for everyone here when a top player joins, from the lists as last read (no store read
+-- on join; nothing before the first read). It rides the rare catch line's remote, whose Legendary colour is the gold.
+-- The line holds a display name only and is never printed.
+local function joinNotice(player: Player)
+	if not Config.LeaderboardJoinNotice or player.Parent == nil then
+		return
+	end
+	if player:GetAttribute(AfkCafe.REJOIN_ATTRIBUTE) == true then
+		return -- #3602: a rest's rejoin is the same visit carried on, not a join to announce
+	end
+	local rank, board =
+		Leaderboards.joinRank(lists, player.UserId, Config.LeaderboardJoinNoticeRank)
+	if rank == nil or board == nil then
+		return
+	end
+	local now = os.clock()
+	if
+		not Leaderboards.joinNoticeDue(
+			announced[player.UserId],
+			now,
+			Config.LeaderboardJoinNoticeRejoinSeconds
+		)
+	then
+		return
+	end
+	announced[player.UserId] = now
+	Net.fireAll(
+		"RareCatchChat",
+		Leaderboards.joinLine(player.DisplayName, rank, board),
+		"Legendary",
+		false
+	)
+end
+
+-- #3333: the player's best place 1 to 3 on an all-time board as of the last refresh, or nil.
+function LeaderboardService.place(player: Player): number?
+	return places[player.UserId]
+end
+
+-- Every list as shown: as last read with the players in this server put in at their values now, then the crowns.
+function showPresent()
+	local now = os.time()
+	local present: { [List]: { Leaderboards.Present } } = {}
+	for _, list in Leaderboards.LISTS do
+		present[list] = {}
+	end
+	for _, player in DataService.loadedPlayers() do
+		local profile = DataService.get(player)
+		if profile == nil then
+			continue
+		end
+		for list, value in valuesOf(player, profile, now) do
+			local into = present[list]
+			if into ~= nil then
+				table.insert(
+					into,
+					{ userId = player.UserId, name = player.DisplayName, value = value }
+				)
+			end
+		end
+	end
+	for _, list in Leaderboards.LISTS do
+		shown[list] = Leaderboards.withPresent(lists[list] or {}, present[list], hidden)
+	end
+	crown()
+end
+
+-- One refresh: the hidden list, then each list a step apart across LeaderboardRefreshSeconds (all at once on the
+-- server's first, #2400), then everyone's sync.
+local refreshed = false
+local function refresh()
+	readHidden()
+	local week = Leaderboards.week(os.time())
+	local step = Leaderboards.readGap(not refreshed)
+	if week ~= listWeek then
+		-- a new week: last week's lists are not this week's
+		lists.playtime_week = {}
+		lists.money_week = {}
+	end
+	for _, list in Leaderboards.LISTS do
+		readList(list, week)
+		if step > 0 then
+			task.wait(step)
+		end
+	end
+	refreshed = true
+	listWeek = week
+	showPresent()
+	for _, player in Players:GetPlayers() do
+		send(player)
+	end
+end
+
+-- Studio only (Debug.leaderboardHide): adds a user id to the hidden list, or takes it off with `show`. Writes the
+-- live DataStore when Studio has API access. Returns the list's size.
+function LeaderboardService.debugHide(userId: number, show: boolean?): number
+	assert(RunService:IsStudio(), "debugHide is Studio only")
+	local count = 0
+	DataStoreService:GetDataStore(HIDDEN_STORE):UpdateAsync(HIDDEN_KEY, function(old: any)
+		local ids: { number } = {}
+		if type(old) == "table" then
+			for _, id in old :: { any } do
+				if type(id) == "number" and id ~= userId then
+					table.insert(ids, id)
+				end
+			end
+		end
+		if not show then
+			table.insert(ids, userId)
+		end
+		count = #ids
+		return ids
+	end)
+	readHidden()
+	return count
+end
+
+-- Studio only (Debug.leaderboards, #941): why a board reads what it does, with no names or ids. For `player`:
+-- whether this server writes, the hidden list's size and last read, whether they are hidden, and per list their
+-- value now, the last write and read (ok, seconds ago, entries read), the rows as read and as shown, and their rank.
+function LeaderboardService.debugState(player: Player): { [string]: any }
+	assert(RunService:IsStudio(), "debugState is Studio only")
+	local now = os.time()
+	local function ago(outcome: Outcome?): { [string]: any }?
+		if outcome == nil then
+			return nil
+		end
+		return { ok = outcome.ok, secondsAgo = now - outcome.at, count = outcome.count }
+	end
+	local hiddenCount = 0
+	for _ in hidden do
+		hiddenCount += 1
+	end
+	local profile = DataService.get(player)
+	local values = if profile ~= nil then valuesOf(player, profile, now) else {}
+	local perList: { [string]: any } = {}
+	for _, list in Leaderboards.LISTS do
+		perList[list] = {
+			store = Leaderboards.storeName(list, Leaderboards.week(now)),
+			value = values[list],
+			lastWrite = ago(lastWrite[list]),
+			lastRead = ago(lastRead[list]),
+			rowsRead = #(lists[list] or {}),
+			rowsShown = #listOf(list),
+			rank = Leaderboards.rankOf(listOf(list), player.UserId),
+		}
+	end
+	return {
+		writes = canWrite(),
+		writesOff = if canWrite()
+			then nil
+			elseif not Config.LeaderboardWrites then "Config.LeaderboardWrites is false"
+			else "Studio never writes the live boards; the players here are shown at their values now",
+		week = Leaderboards.week(now),
+		listWeek = listWeek,
+		hidden = {
+			count = hiddenCount,
+			lastRead = ago(hiddenRead),
+			me = hidden[player.UserId] == true,
+		},
+		lists = perList,
+	}
+end
+
+-- A rank up writes at once (section 4).
+function LeaderboardService.rankedUp(player: Player)
+	task.spawn(writeNow, player)
+end
+
+function LeaderboardService.start()
+	DataService.onLoaded:Connect(function(player: Player)
+		wearCrown(player) -- review N322: a top player joining between refreshes wears it at once
+		task.spawn(writeNow, player)
+		task.spawn(removeOwner, player)
+		task.delay(Config.LeaderboardJoinNoticeDelay, joinNotice, player) -- #3466
+	end)
+	-- On leave: the values as they stand at the end of the session, written after the profile is gone.
+	DataService.beforeRelease(function(player: Player, profile: Types.PlayerProfile)
+		if not canWrite() then
+			return
+		end
+		local now = os.time()
+		local values = valuesOf(player, profile, now)
+		task.spawn(writeValues, player, values, Leaderboards.week(now), true)
+	end)
+	Players.PlayerRemoving:Connect(function(player: Player)
+		task.delay(30, function()
+			written[player] = nil -- after the leave's write had its turn
+			writeBegan[player] = nil
+		end)
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(Config.LeaderboardWriteSeconds)
+			for _, player in DataService.loadedPlayers() do
+				task.spawn(writeNow, player)
+			end
+		end
+	end)
+	task.spawn(function()
+		while true do
+			refresh()
+			task.wait(Leaderboards.readGap(false))
+		end
+	end)
+end
+
+return LeaderboardService

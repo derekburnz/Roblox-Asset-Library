@@ -1,0 +1,365 @@
+--!strict
+-- UI/Components/CannonLogic.luau: the Cat Cannon picker's cards and buttons, its notice, the name card and the hints (F84).
+return function()
+	local Client =
+		game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"):WaitForChild("Client")
+	local Components = Client:WaitForChild("UI"):WaitForChild("Components")
+	local CannonLogic = require(Components:WaitForChild("CannonLogic")) :: any
+	local Catalog =
+		require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Catalog"))
+
+	local function ids(list: { any }): string
+		local out = {}
+		for _, destination in list do
+			table.insert(out, destination.id)
+		end
+		return table.concat(out, ",")
+	end
+
+	describe("CannonLogic.destinations", function()
+		it("lists only the areas the tier has opened, the Alleyway from Tier 1", function()
+			expect(ids(CannonLogic.destinations(Catalog.areas, 1, "town"))).to.equal("alley")
+			expect(ids(CannonLogic.destinations(Catalog.areas, 2, "town"))).to.equal("alley,park")
+			expect(ids(CannonLogic.destinations(Catalog.areas, 5, "town"))).to.equal(
+				"alley,park,neighbourhood,woods,sewer"
+			)
+		end)
+
+		it("lists an area with launchFrom only on that camp's cannon (#4070)", function()
+			local areas = {
+				{ id = "alley", name = "Alleyway", tier = 1 },
+				{ id = "desert", name = "Desert", tier = 6 },
+				{ id = "waterpark", name = "Water Park", tier = 9, launchFrom = "desert" },
+			}
+			expect(ids(CannonLogic.destinations(areas, 9, "town"))).to.equal("alley,desert")
+			expect(ids(CannonLogic.destinations(areas, 9, "alley"))).to.equal("town,desert")
+			expect(ids(CannonLogic.destinations(areas, 9, "desert"))).to.equal(
+				"town,alley,waterpark"
+			)
+			-- #4364: shut, it is a coming-soon card on every cannon; open, only on the Desert's
+			expect(ids(CannonLogic.cards(areas, 1, "town"))).to.equal("alley,desert,waterpark")
+			expect(ids(CannonLogic.cards(areas, 9, "town"))).to.equal("alley,desert")
+			expect(ids(CannonLogic.cards(areas, 1, "desert"))).to.equal("town,alley,waterpark")
+		end)
+
+		it("puts Town Square first from a camp and leaves out the camp's own area", function()
+			expect(ids(CannonLogic.destinations(Catalog.areas, 3, "park"))).to.equal(
+				"town,alley,neighbourhood"
+			)
+			expect(ids(CannonLogic.destinations(Catalog.areas, 1, "alley"))).to.equal("town")
+			local town = CannonLogic.destinations(Catalog.areas, 1, "alley")[1]
+			expect(town.name).to.equal("Town Square")
+		end)
+
+		it("sorts by tier and keeps the catalog order within a tier", function()
+			local areas = {
+				{ id = "b", name = "B", tier = 3 },
+				{ id = "a", name = "A", tier = 2 },
+				{ id = "c", name = "C", tier = 2 },
+			}
+			expect(ids(CannonLogic.destinations(areas, 5, "town"))).to.equal("a,c,b")
+		end)
+	end)
+
+	describe("CannonLogic.unlocked (#3884)", function()
+		local areas = {
+			{ id = "town", name = "Town", tier = 0 },
+			{ id = "a", name = "A", tier = 1 },
+			{ id = "c", name = "C", tier = 3 },
+			{ id = "b", name = "B", tier = 2 },
+			{ id = "d", name = "D", tier = 3 },
+		}
+		it("names the areas a rank up opened, in tier order", function()
+			expect(table.concat(CannonLogic.unlocked(areas, 1, 2), ",")).to.equal("b")
+			expect(table.concat(CannonLogic.unlocked(areas, 1, 3), ",")).to.equal("b,c,d")
+			expect(table.concat(CannonLogic.unlocked(areas, 2, 3), ",")).to.equal("c,d")
+		end)
+		it("names none when the tier did not go up", function()
+			expect(#CannonLogic.unlocked(areas, 2, 2)).to.equal(0)
+			expect(#CannonLogic.unlocked(areas, 3, 2)).to.equal(0)
+		end)
+	end)
+
+	describe("CannonLogic.cards", function()
+		local areas = {
+			{ id = "a", name = "A", tier = 1 },
+			{ id = "c", name = "C", tier = 3 },
+			{ id = "b", name = "B", tier = 2 },
+			{ id = "d", name = "D", tier = 3 },
+		}
+
+		it("lists the opened areas, then every locked one in tier order (#2682)", function()
+			local list = CannonLogic.cards(areas, 1, "town")
+			expect(ids(list)).to.equal("a,b,c,d")
+			expect(list[1].locked).to.equal(nil)
+			expect(list[2].locked).to.equal(true)
+			expect(list[2].tier).to.equal(2)
+			expect(list[4].locked).to.equal(true)
+		end)
+
+		it("keeps Town Square first from a camp and never lists the camp's own area", function()
+			local list = CannonLogic.cards(areas, 2, "b")
+			expect(ids(list)).to.equal("town,a,c,d")
+			expect(list[3].locked).to.equal(true)
+		end)
+
+		it("locks nothing once every area is open", function()
+			for _, card in CannonLogic.cards(areas, 3, "town") do
+				expect(card.locked).to.equal(nil)
+			end
+		end)
+	end)
+
+	describe("CannonLogic.moreToOpen", function()
+		it("is true until the last area is open", function()
+			expect(CannonLogic.moreToOpen(Catalog.areas, 1)).to.equal(true)
+			expect(CannonLogic.moreToOpen(Catalog.areas, 4)).to.equal(true)
+			expect(CannonLogic.moreToOpen(Catalog.areas, 5)).to.equal(true) -- #2651: the Desert and the Ruins
+			expect(CannonLogic.moreToOpen(Catalog.areas, 7)).to.equal(true) -- #3997: the Snowy Mountain
+			expect(CannonLogic.moreToOpen(Catalog.areas, 8)).to.equal(true) -- #4070: the Water Park
+			expect(CannonLogic.moreToOpen(Catalog.areas, 9)).to.equal(true) -- #4184: the Medieval Castle
+			expect(CannonLogic.moreToOpen(Catalog.areas, 10)).to.equal(false)
+		end)
+	end)
+
+	describe("CannonLogic.button", function()
+		it("shuts every card while carrying", function()
+			expect(CannonLogic.button("park", false, false, true)).to.equal("carrying")
+			expect(CannonLogic.button("town", true, false, true)).to.equal("carrying")
+		end)
+
+		it("shuts the areas at dusk and at night but never Town Square", function()
+			expect(CannonLogic.button("park", false, false, false)).to.equal("launch")
+			expect(CannonLogic.button("park", false, true, false)).to.equal("dusk")
+			expect(CannonLogic.button("park", true, false, false)).to.equal("night")
+			expect(CannonLogic.button("town", true, false, false)).to.equal("launch")
+			expect(CannonLogic.button("town", false, true, false)).to.equal("launch")
+		end)
+
+		it("keeps a locked area shut whatever else holds (#2682)", function()
+			expect(CannonLogic.button("park", false, false, false, true)).to.equal("locked")
+			expect(CannonLogic.button("park", true, false, true, true)).to.equal("locked")
+			expect(CannonLogic.button("park", false, false, false, false)).to.equal("launch")
+		end)
+	end)
+
+	describe("CannonLogic.notice", function()
+		it("says why Launch is off", function()
+			expect(CannonLogic.notice(false, false, true, nil)).to.equal(
+				"Bring your cat to the camp first"
+			)
+			expect(CannonLogic.notice(false, true, false, 12)).to.equal(
+				"Night is coming. Launch opens again at sunrise."
+			)
+			expect(CannonLogic.notice(false, false, false, nil)).to.equal(nil)
+		end)
+
+		it("counts down to sunrise at night", function()
+			expect(CannonLogic.notice(true, false, false, 160)).to.equal(
+				"Closed until sunrise · 2m 40s"
+			)
+			expect(CannonLogic.notice(true, false, false, 159.2)).to.equal(
+				"Closed until sunrise · 2m 40s"
+			)
+			expect(CannonLogic.notice(true, false, false, 45)).to.equal(
+				"Closed until sunrise · 45s"
+			)
+			expect(CannonLogic.notice(true, false, false, -2)).to.equal(
+				"Closed until sunrise · 0s"
+			)
+			expect(CannonLogic.notice(true, false, false, nil)).to.equal("Closed until sunrise")
+		end)
+	end)
+
+	describe("CannonLogic name card", function()
+		it("names the destination", function()
+			expect(CannonLogic.cardTitle("woods", "Woods")).to.equal("To the Woods!")
+			expect(CannonLogic.cardTitle("town", "Town Square")).to.equal("To Town Square!")
+		end)
+
+		it("pops in under the clouds and is gone before they part", function()
+			expect(CannonLogic.cardPhase(0)).to.equal("waiting")
+			expect(CannonLogic.cardPhase(1.59)).to.equal("waiting")
+			expect(CannonLogic.cardPhase(1.6)).to.equal("in")
+			expect(CannonLogic.cardPhase(2.1)).to.equal("wobble")
+			expect(CannonLogic.cardPhase(2.45)).to.equal("out")
+			expect(CannonLogic.cardPhase(2.6)).to.equal("gone")
+		end)
+
+		it("holds a shorter card for the intro's staged flight", function()
+			local inAt, wobbleAt, outAt, goneAt = CannonLogic.cardTimes(0.4)
+			expect(inAt).to.equal(1.6)
+			expect(math.abs(wobbleAt - 1.8) < 1e-9).to.equal(true)
+			expect(math.abs(outAt - 2.0) < 1e-9).to.equal(true)
+			expect(math.abs(goneAt - 2.2) < 1e-9).to.equal(true)
+			expect(CannonLogic.cardPhase(1.9, 0.4)).to.equal("wobble")
+			expect(CannonLogic.cardPhase(2.1, 0.4)).to.equal("out")
+			expect(CannonLogic.cardPhase(2.2, 0.4)).to.equal("gone")
+		end)
+
+		it(
+			"pops in at once on a player's own flight and stays 2 s longer than before (#1163, #1444)",
+			function()
+				local inAt, wobbleAt, outAt, goneAt =
+					CannonLogic.cardTimes(CannonLogic.CHOSEN_HOLD, CannonLogic.CHOSEN_IN)
+				expect(inAt).to.equal(0)
+				expect(math.abs(wobbleAt - 1.25) < 1e-9).to.equal(true)
+				expect(math.abs(outAt - 2.5) < 1e-9).to.equal(true)
+				expect(math.abs(goneAt - 2.7) < 1e-9).to.equal(true)
+				local hold, from = CannonLogic.CHOSEN_HOLD, CannonLogic.CHOSEN_IN
+				expect(CannonLogic.cardPhase(0, hold, from)).to.equal("in")
+				expect(CannonLogic.cardPhase(1.3, hold, from)).to.equal("wobble")
+				expect(CannonLogic.cardPhase(2.6, hold, from)).to.equal("out")
+				expect(CannonLogic.cardPhase(2.71, hold, from)).to.equal("gone")
+			end
+		)
+
+		it(
+			"is gone as the body comes back down (cannonPose drop 3.0; 2.6 plus its 0.2 s zip)",
+			function()
+				local _, _, outAt, goneAt =
+					CannonLogic.cardTimes(CannonLogic.CHOSEN_HOLD, CannonLogic.CHOSEN_IN)
+				expect(outAt <= 2.6).to.equal(true)
+				expect(goneAt <= 2.8).to.equal(true)
+			end
+		)
+	end)
+
+	describe("CannonLogic.hint", function()
+		local function view(changes: { [string]: any }): any
+			local out: { [string]: any } = {
+				on = true,
+				wild = false,
+				intro = false,
+				launched = false,
+				tier = 1,
+				tutorialStep = 0,
+				told = true,
+				opened = nil,
+				first = "Alleyway",
+			}
+			for key, value in changes do
+				out[key] = value
+			end
+			return out
+		end
+
+		it("sends a Tier 1 player to the Alleyway until the first flight", function()
+			expect(CannonLogic.hint(view({}))).to.equal(
+				"Hop in the cannon: wild cats wait in the Alleyway!"
+			)
+			expect(CannonLogic.hint(view({ launched = true }))).to.equal(nil)
+			expect(CannonLogic.hint(view({ tier = 3 }))).to.equal(nil)
+		end)
+
+		it("says nothing before the save's first sync (#4967)", function()
+			expect(CannonLogic.hint(view({ loaded = false }))).to.equal(nil)
+			expect(CannonLogic.hint(view({ loaded = false, bowlFirst = true, told = false }))).to.equal(
+				nil
+			)
+			expect(CannonLogic.hint(view({ loaded = true }))).to.equal(
+				"Hop in the cannon: wild cats wait in the Alleyway!"
+			)
+		end)
+
+		it("waits for the bowl and has no wrap-up line under bowl first (#4674)", function()
+			expect(CannonLogic.hint(view({ bowlPending = true }))).to.equal(nil)
+			expect(CannonLogic.hint(view({ bowlPending = false }))).to.equal(
+				"Hop in the cannon: wild cats wait in the Alleyway!"
+			)
+			expect(CannonLogic.hint(view({ tutorialStep = 5, wrapUp = true, bowlFirst = true }))).to.equal(
+				nil
+			)
+			expect(CannonLogic.hint(view({ tutorialStep = 5, wrapUp = true }))).to.equal(
+				CannonLogic.WRAP_UP_HINT
+			)
+		end)
+
+		it(
+			"points at the cannon after the bowl part until the first Launch under bowl first (#4674)",
+			function()
+				local quiet = { bowlFirst = true, tutorialStep = 5, told = false }
+				expect(CannonLogic.hint(view(quiet))).to.equal(
+					"Hop in the cannon: wild cats wait in the Alleyway!"
+				)
+				expect(CannonLogic.hint(view({ bowlFirst = true, tutorialStep = 5, told = true }))).to.equal(
+					nil
+				)
+				expect(
+					CannonLogic.hint(
+						view({ bowlFirst = true, tutorialStep = 5, told = false, launched = true })
+					)
+				).to.equal(nil)
+				expect(
+					CannonLogic.hint(
+						view({ bowlFirst = true, tutorialStep = 5, told = false, tier = 2 })
+					)
+				).to.equal(nil)
+				expect(CannonLogic.hint(view({ tutorialStep = 5, told = false }))).to.equal(nil)
+			end
+		)
+
+		it("shows only in town, outside the intro, with the cannon live", function()
+			expect(CannonLogic.hint(view({ wild = true }))).to.equal(nil)
+			expect(CannonLogic.hint(view({ intro = true }))).to.equal(nil)
+			expect(CannonLogic.hint(view({ on = false }))).to.equal(nil)
+		end)
+
+		it("names the area the rank up to Tier 2 opened", function()
+			expect(
+				CannonLogic.hint(view({ tier = 2, launched = true, opened = "Park", told = false }))
+			).to.equal("The Park is open! Hop in the cannon to fly there.")
+		end)
+
+		it("lets the onboarding line come first after the first catch", function()
+			expect(CannonLogic.hint(view({ tutorialStep = 4 }))).to.equal(nil)
+			expect(CannonLogic.hint(view({ tutorialStep = 4, told = false }))).to.equal(
+				"Hop in the cannon: wild cats wait in the Alleyway!"
+			)
+			expect(CannonLogic.hint(view({ tutorialStep = 1 }))).to.equal(
+				"Hop in the cannon: wild cats wait in the Alleyway!"
+			)
+		end)
+
+		it("stops the first-flight hint for good once the walk-through is done (#2411)", function()
+			expect(CannonLogic.WALKTHROUGH_STEP).to.equal(5)
+			local done = CannonLogic.WALKTHROUGH_STEP
+			expect(CannonLogic.hint(view({ tutorialStep = done - 1, told = false }))).to.equal(
+				"Hop in the cannon: wild cats wait in the Alleyway!"
+			)
+			expect(CannonLogic.hint(view({ tutorialStep = done, told = false }))).to.equal(nil)
+			expect(CannonLogic.hint(view({ tutorialStep = done + 3, told = false }))).to.equal(nil)
+			-- a rank up's "is open!" hint still shows after it
+			expect(
+				CannonLogic.hint(
+					view({ tier = 2, tutorialStep = done, opened = "Park", told = false })
+				)
+			).to.equal("The Park is open! Hop in the cannon to fly there.")
+		end)
+
+		it(
+			"points at the cannon once the walk-through ends this session, until a flight (#2477)",
+			function()
+				local done = CannonLogic.WALKTHROUGH_STEP
+				local line = "Hop in the cannon: catch more cats to rank up!"
+				expect(CannonLogic.WRAP_UP_HINT).to.equal(line)
+				expect(CannonLogic.hint(view({ tutorialStep = done, wrapUp = true }))).to.equal(
+					line
+				)
+				expect(CannonLogic.hint(view({ tutorialStep = done, wrapUp = true, tier = 3 }))).to.equal(
+					line
+				)
+				expect(
+					CannonLogic.hint(view({ tutorialStep = done, wrapUp = true, launched = true }))
+				).to.equal(nil)
+				expect(CannonLogic.hint(view({ tutorialStep = done, wrapUp = true, wild = true }))).to.equal(
+					nil
+				)
+				expect(CannonLogic.hint(view({ tutorialStep = done, wrapUp = true, intro = true }))).to.equal(
+					nil
+				)
+				expect(CannonLogic.hint(view({ tutorialStep = done }))).to.equal(nil)
+			end
+		)
+	end)
+end

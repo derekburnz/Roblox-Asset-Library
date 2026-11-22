@@ -1,0 +1,1535 @@
+--!strict
+-- The potion bag (F64, data-model section 12b; the quest potions of F73 join it, quests.md section 4). Opened from
+-- the Potions tile (key P) or a tap on a HUD potion timer. One row per potion the player has or is drinking (Derek
+-- 2026-11-03: "it only shows use on potions you have and disappear when used"), kept brief (Derek 2026-10-28: "keep
+-- the info brief and simple"): a round tile in the potion's colour with how many are in the bag,
+-- the name, one short line on what it does and for how long, the time left while it runs ("8:12 left"), and a Use
+-- button. A running potion with none left in the bag has no Use. Use reads "Full" when another would take the timer
+-- past PotionMaxMinutes (60). #3190 (Derek2: "... delays on using potions too fast"): a pressed Use counts at once, as
+-- if the server said yes (one fewer in the bag, its minutes on the timer, PotionLogic.ahead), and presses queue and go
+-- SEND_GAP apart under the server's 2 a second, so the button never reads "..."; the server's answer is the next
+-- ProfileSync, and a refusal is the server's toast (the press stops counting after PENDING_SECONDS). The drink sound plays when the bag's count drops, which is the server accepting.
+-- #1600: beside Use, "Use x4" drinks as many as fit under PotionMaxMinutes in one press (UsePotion with a count);
+-- it shows only while two or more would fit.
+-- #3326 (Derek2: "add a use all potions in inventory button right below potions button in bag when that section is
+-- open"): on the Potions tab, a "Use all potions" button heads the list, right under the Potions tab button, while
+-- any potion in the bag would take (PotionLogic.allPlan). A press asks first on a small card ("Tip x4, Swift x2 ..."
+-- with Drink all and Not now), since some potions are kept for a moment and a drink can't be undone; Drink all sends
+-- one UsePotionAll and the rows count it at once, as a Use press does.
+-- Timers pause while the player is away, so a rejoin shows what was left. Rows and sums: Components/PotionLogic.
+--
+-- The Bag (corner-shop-v2.md section 3, #1181): this window is the Bag, with two tabs. Potions is the potion bag
+-- above; Cat Food lists each food the player has (picture, name, "+2,000 XP", "x3" and a green Feed). Feed shows the
+-- player's cats, highest level first ("Level 23 · 1,400 XP to 24"); a tap feeds that cat one (FeedCat) and the
+-- server's FeedResult toasts the XP. Nothing opens on buy any more. Words and lists: Components/BagLogic.
+-- #1281 (corner-shop-v2.md section 1b) adds a third tab, Bait: each bowl food the player has (its picture with the
+-- grade badge, name and count). It has no Use, since bait goes in at the bowl.
+-- #1771 (Derek2: "bag has a lot of the old ui images/buttons"): the tabs draw the HUD's own Potions and Bait pictures
+-- and the Market's treat, and the chosen tab is gold, as in the Store and the Fish Market. #1773 (Derek2: the blue
+-- feeding list should "show what cat is being fed much easier"): Feed's cat list is a card per cat with its head in
+-- its rarity's colour, its gold or rainbow coat on the edge and name, "Epic · Level 24" and a bar toward the next
+-- level, and a green Feed.
+-- Derek2 11-11 ("add a title area maybe inside bag with all titles unlocked instead of having it inside pass"): a
+-- fourth tab, Titles, lists every chat title (Components/TitlesLogic): No title, the ones the player has with Equip
+-- (PassSetTag), then the rest greyed with where they come from. The Cafe Pass no longer has its Chat tag button.
+
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local BagLogic = require(script.Parent.Parent.Components.BagLogic)
+local Button = require(script.Parent.Parent.Components.Button)
+local CatPortrait = require(script.Parent.Parent.Components.CatPortrait)
+local CatVariant = require(script.Parent.Parent.Components.CatVariant)
+local CornerShopLogic = require(script.Parent.Parent.Components.CornerShopLogic)
+local Create = require(script.Parent.Parent.Components.Create)
+local FitText = require(script.Parent.Parent.Components.FitText)
+local HarvestLogic = require(script.Parent.Parent.Components.HarvestLogic)
+local IconArt = require(script.Parent.Parent.Components.IconArt)
+local ItemIcon = require(script.Parent.Parent.Components.ItemIcon)
+local MenuFamily = require(script.Parent.Parent.Components.MenuFamily)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local Panel = require(script.Parent.Parent.Components.Panel)
+local PotionLogic = require(script.Parent.Parent.Components.PotionLogic)
+local Rainbow = require(script.Parent.Parent.Components.Rainbow)
+local ShopIcons = require(script.Parent.Parent.Components.ShopIcons)
+local Sound = require(script.Parent.Parent.Components.Sound)
+local Theme = require(script.Parent.Parent.Theme)
+local TitlesLogic = require(script.Parent.Parent.Components.TitlesLogic)
+local Types = require(script.Parent.Parent.Types)
+
+-- the dark window palette (#1028), in place of Theme.modal
+local PAL = MenuFamily.pal
+local CARD = MenuFamily.card -- #3558: what sits on a picture card (cream in the family look)
+
+export type Callbacks = {
+	use: (potionId: string, count: number?) -> (), -- count: #1600's Use all, nil for one
+	useEvery: (() -> ())?, -- #3326: "Use all potions", confirmed (UsePotionAll)
+	feed: ((foodId: string, catUid: string) -> ())?, -- #1181: one food to one cat (FeedCat)
+	setTitle: ((pick: string) -> ())?, -- the Titles tab's Equip: a ChatTags id or "off" (PassSetTag)
+	close: () -> (),
+}
+
+export type Tab = "Potions" | "Food" | "Bait" | "Titles"
+
+export type Potions = {
+	frame: Frame,
+	setCatalog: (self: Potions, catalog: Types.Catalog) -> (),
+	render: (self: Potions, state: Types.PlayerState) -> (),
+	showTab: (self: Potions, tab: Tab) -> (),
+	setPassView: (self: Potions, view: Types.CafePassView?) -> (), -- the Titles tab's titles (CafePassState)
+	destroy: (self: Potions) -> (),
+}
+
+local ROW_H = 76
+local TILE = 56
+local TAB_H = 40
+local ALL_W = 188 -- #3326: "Use all potions"
+local ALL_H = 42 -- over the 36 px a mouse needs (the UI gate's tap check)
+local ASK_H = 150 -- its confirm card
+-- #3961 (Derek 2026-11-13: "easy to navigate on phone and pc"): the four tabs share the whole row, a bigger tap than
+-- the 104 px they had, and line up with the list under them
+local TAB_SIZE = UDim2.new(0.25, -math.ceil(Theme.sizes.gap * 3 / 4), 0, TAB_H - 4)
+local EQUIP_W = 104 -- the Titles tab's Equip button
+-- #3961 (batch 4 mock, Bag): the potions as picture cards two to a row, the bottle at the left, the name and what it
+-- does beside it, and Use (and Use xN) along the bottom right with the time left at the bottom left
+local POTION_H = 124
+local POTION_USE_W = 84
+local FOOD_W = 104 -- the Feed button
+local PENDING_SECONDS = 3 -- a sent Use with no answer stops counting on its row after this long (#3190)
+local SEND_GAP = 0.55 -- UsePotion is 2 a second on the server (Net.luau); queued presses go this far apart
+local CAT_CARD_H = 68 -- #1773: a cat card in Feed's list
+local CAT_HEAD = 56 -- its head picture on the rarity's colour
+local CAT_FEED_W = 92
+local CAT_TITLE_H = 36 -- the cat list's heading; its drawn height over this is the window's UI scale
+local CAT_BUFFER = 4 -- #2196: cards made past each edge of the list, so a flick finds them ready
+local CAT_VIEW = 520 -- the list's height while it has none yet (the window's MaxSize)
+
+-- #2196: one card of Feed's cat list. Only the cards in view are made (Derek2 11-07: "it should only render as you
+-- scroll"), and a card scrolled out is kept to show the next cat scrolled in: `key` is what it shows now (food, cat,
+-- variant, level, XP), so an unchanged card is left alone, and `look` the head in its portrait (cat and coat), so a
+-- card passed to another cat of the same kind keeps its 3D head.
+type CatCard = {
+	frame: Frame,
+	portrait: CatPortrait.CatPortrait,
+	feed: Button.Button,
+	edge: UIStroke,
+	edgeBands: UIGradient?,
+	head: Frame,
+	name: TextLabel,
+	nameBands: UIGradient?,
+	level: TextLabel,
+	fill: Frame,
+	key: string,
+	look: string?,
+	uid: string,
+	foodId: string,
+	open: boolean,
+}
+
+-- one cat in Feed's list, in order, whether its card is made or not
+type CatEntry = {
+	cat: { uid: string, catId: string, name: string?, level: number },
+	def: Types.CatDef?,
+	variant: string?,
+	xp: number,
+	key: string,
+}
+
+type Row = {
+	frame: Frame,
+	tile: Frame,
+	count: TextLabel,
+	name: TextLabel,
+	effect: TextLabel,
+	left: TextLabel,
+	use: Button.Button,
+	useAll: Button.Button, -- #1600
+}
+
+local Potions = {}
+Potions.__index = Potions
+
+local function text(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.body,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = CARD.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	return Create("TextLabel", merged)
+end
+
+function Potions.new(callbacks: Callbacks): Potions
+	local self = setmetatable({}, Potions) :: any
+	self._callbacks = callbacks
+	self._catalog = nil :: Types.Catalog?
+	self._state = nil :: Types.PlayerState?
+	self._rows = {} :: { [string]: Row }
+	self._counts = nil :: { [string]: number }? -- the bag at the last render, to hear a drink land
+	-- #3190: Use presses not sent yet, in order, and the sent ones still waiting for the bag's count to drop
+	self._queue = {} :: { { id: string, n: number } }
+	self._sent = {} :: { { id: string, n: number, at: number } }
+	self._lastSent = 0
+	self._pumping = false
+	self._alive = true
+	self._fits = {} :: { [string]: number } -- #1600: potion id -> how many Use all drinks now
+
+	local panel = Panel.new({
+		dark = true, -- #1028
+		name = "Potions",
+		title = "Bag",
+		subtitle = "Potions, cat food and bait",
+		color = Theme.colors.berry,
+		icon = Theme.icons.potion,
+		image = ShopIcons.hud("Bag"), -- #2588: the HUD Bag tile's backpack, not a potion
+		size = UDim2.fromScale(1, 1),
+		onClose = callbacks.close,
+	})
+	Create("UISizeConstraint", { MaxSize = Vector2.new(600, 520), Parent = panel.frame })
+	self._panel = panel
+	self.frame = panel.frame
+
+	self._tab = "Potions" :: Tab
+	self._foodRows = {} :: { [string]: { frame: Frame, count: TextLabel, feed: Button.Button } }
+	self._catRows = {} :: { [string]: CatCard } -- the cards made, by cat uid
+	self._catSpare = {} :: { CatCard } -- #2196: cards scrolled out, hidden, for the next cats scrolled in
+	self._catOrder = {} :: { CatEntry } -- every cat in the list, highest level first
+	self._catFood = "" -- the food the list feeds
+	self._baitRows = {} :: { [string]: { frame: Frame, icon: ItemIcon.ItemIcon, count: TextLabel } }
+	self._titleRows = {} :: { [string]: { frame: Frame, how: TextLabel, equip: Button.Button } }
+	self._passView = nil :: Types.CafePassView?
+	self._feeding = nil :: string? -- the food whose cat list shows
+	local tabs: Frame = Create("Frame", {
+		Name = "Tabs",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, TAB_H),
+		Parent = panel.content,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, Theme.sizes.gap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	self._tabButtons = {
+		Potions = Button.new({
+			name = "PotionsTab",
+			text = "Potions",
+			icon = Theme.icons.potion,
+			image = ShopIcons.hud("Potion"), -- #1771: the HUD's Potions picture; the glyph shows until it loads
+			style = "gold",
+			size = TAB_SIZE,
+			textSize = Theme.sizes.textBody,
+			layoutOrder = 1,
+			parent = tabs,
+			sound = "uiTab",
+			onClick = function()
+				self:showTab("Potions")
+			end,
+		}),
+		Food = Button.new({
+			name = "FoodTab",
+			text = "Cat Food",
+			icon = ShopIcons.SNACK_GLYPH,
+			image = ShopIcons.market("Treats"), -- #1771: the Fish Market's treat
+			style = "ghost",
+			size = TAB_SIZE,
+			textSize = Theme.sizes.textBody,
+			layoutOrder = 2,
+			parent = tabs,
+			sound = "uiTab",
+			onClick = function()
+				self:showTab("Food")
+			end,
+		}),
+		Bait = Button.new({
+			name = "BaitTab",
+			text = "Bait",
+			icon = Theme.icons.food,
+			image = ShopIcons.hud("Bowl"), -- #1771: the HUD's Bowl picture
+			style = "ghost",
+			size = TAB_SIZE,
+			textSize = Theme.sizes.textBody,
+			layoutOrder = 3,
+			parent = tabs,
+			sound = "uiTab",
+			onClick = function()
+				self:showTab("Bait")
+			end,
+		}),
+		-- Derek2 11-11: every title in one place, in place of the Cafe Pass's Chat tag button
+		Titles = Button.new({
+			name = "TitlesTab",
+			text = "Titles",
+			icon = Theme.icons.tag,
+			style = "ghost",
+			size = TAB_SIZE,
+			textSize = Theme.sizes.textBody,
+			layoutOrder = 4,
+			parent = tabs,
+			sound = "uiTab",
+			onClick = function()
+				self:showTab("Titles")
+			end,
+		}),
+	}
+
+	self._list = Create("ScrollingFrame", {
+		Name = "List",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, TAB_H + 6),
+		Size = UDim2.new(1, 0, 1, -(TAB_H + 6)),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = PAL.caramel,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		Parent = panel.content,
+	}, {
+		Create("UIListLayout", {
+			Padding = UDim.new(0, Theme.sizes.gap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		Outline.listPadding(8, 8), -- #2294: room for the cards' outlines
+	})
+	-- #3326: "Use all potions" heads the Potions list, under the Potions tab button, while any potion would take
+	self._plan = {} :: { PotionLogic.Drink }
+	self._allRow = Create("Frame", {
+		Name = "UseAllRow",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, ALL_H),
+		LayoutOrder = 0,
+		Visible = false,
+		Parent = self._list,
+	})
+	self._allButton = Button.new({
+		name = "UseAllPotions",
+		text = "Use all potions",
+		icon = Theme.icons.potion,
+		style = "teal",
+		size = UDim2.fromOffset(ALL_W, ALL_H),
+		anchorPoint = Vector2.new(0, 0.5),
+		position = UDim2.new(0, 0, 0.5, 0),
+		textSize = Theme.sizes.textBody,
+		parent = self._allRow,
+		onClick = function()
+			self:_askAll()
+		end,
+	})
+	-- its confirm card, over the window
+	self._allAsk = Create("TextButton", {
+		Name = "UseAllConfirm",
+		AutoButtonColor = false,
+		Text = "",
+		BackgroundColor3 = Theme.colors.ink,
+		BackgroundTransparency = 0.35,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 20,
+		Visible = false,
+		Parent = panel.content,
+	})
+	local ask: Frame = Create("Frame", {
+		Name = "Card",
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, -24, 0, ASK_H),
+		ZIndex = 21,
+		Parent = self._allAsk,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIStroke", { Color = CARD.cardStroke, Thickness = Theme.sizes.stroke }),
+		Create("UISizeConstraint", { MaxSize = Vector2.new(420, ASK_H) }),
+	})
+	self._allTitle = text({
+		Name = "Title",
+		Position = UDim2.fromOffset(12, 10),
+		Size = UDim2.new(1, -24, 0, 28),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 3,
+		Text = "Drink all of these?",
+		ZIndex = 22,
+		Parent = ask,
+	})
+	self._allLine = text({
+		Name = "Line",
+		Position = UDim2.fromOffset(12, 42),
+		Size = UDim2.new(1, -24, 0, 44),
+		TextSize = Theme.sizes.textSmall + 1,
+		TextColor3 = CARD.subtext,
+		TextWrapped = true,
+		TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 22,
+		Parent = ask,
+	})
+	FitText.shrink(self._allLine)
+	self._allYes = Button.new({
+		name = "DrinkAll",
+		text = "Drink all",
+		style = "primary",
+		size = UDim2.new(0.5, -18, 0, 42),
+		anchorPoint = Vector2.new(0, 1),
+		position = UDim2.new(0, 12, 1, -12),
+		textSize = Theme.sizes.textBody,
+		zIndex = 22,
+		parent = ask,
+		onClick = function()
+			self:_drinkAll()
+		end,
+	})
+	self._allNo = Button.new({
+		name = "NotNow",
+		text = "Not now",
+		style = "ghost",
+		size = UDim2.new(0.5, -18, 0, 42),
+		anchorPoint = Vector2.new(1, 1),
+		position = UDim2.new(1, -12, 1, -12),
+		textSize = Theme.sizes.textBody,
+		zIndex = 22,
+		parent = ask,
+		onClick = function()
+			self._allAsk.Visible = false
+		end,
+	})
+
+	-- with an empty bag, one line on where potions come from, under the rows
+	-- #3961: the potion cards' grid, under Use all potions
+	self._potionGrid = Create("Frame", {
+		Name = "PotionGrid",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 1,
+		Parent = self._list,
+	}, {
+		Create("UIGridLayout", {
+			CellSize = UDim2.new(0.5, -math.ceil(Theme.sizes.gap / 2), 0, POTION_H),
+			CellPadding = UDim2.fromOffset(Theme.sizes.gap, Theme.sizes.gap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	self._hint = text({
+		Name = "Hint",
+		Size = UDim2.new(1, 0, 0, 40),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = PAL.subtext,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = true,
+		Text = "No potions yet. Mystery visitors, gifts and codes give them.",
+		LayoutOrder = 1000,
+		Visible = false,
+		Parent = self._list,
+	})
+
+	self._foodList = (self._list :: ScrollingFrame):Clone()
+	self._foodList.Name = "FoodList"
+	for _, child in self._foodList:GetChildren() do
+		if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+			child:Destroy()
+		end
+	end
+	self._foodList.Visible = false
+	self._foodList.Parent = panel.content
+	self._foodHint = text({
+		Name = "Hint",
+		Size = UDim2.new(1, 0, 0, 40),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = PAL.subtext,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = true,
+		Text = "Cat food comes from the Daily Treat, rescues, catches and the Corner Shop.",
+		LayoutOrder = 1000,
+		Visible = false,
+		Parent = self._foodList,
+	})
+	-- #1281: the Bait tab's list
+	self._baitList = (self._list :: ScrollingFrame):Clone()
+	self._baitList.Name = "BaitList"
+	for _, child in self._baitList:GetChildren() do
+		if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+			child:Destroy()
+		end
+	end
+	self._baitList.Visible = false
+	self._baitList.Parent = panel.content
+	self._baitHint = text({
+		Name = "Hint",
+		Size = UDim2.new(1, 0, 0, 40),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = PAL.subtext,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = true,
+		Text = "No bait yet. Kibble, Tuna and Salmon are at the Corner Shop.",
+		LayoutOrder = 1000,
+		Visible = false,
+		Parent = self._baitList,
+	})
+	-- the Titles tab's list: No title, the titles the player has, then the rest greyed (TitlesLogic)
+	self._titleList = (self._list :: ScrollingFrame):Clone()
+	self._titleList.Name = "TitleList"
+	for _, child in self._titleList:GetChildren() do
+		if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+			child:Destroy()
+		end
+	end
+	self._titleList.Visible = false
+	self._titleList.Parent = panel.content
+	-- Feed's cat list: a heading with Back, then a row per cat
+	self._catList = (self._list :: ScrollingFrame):Clone()
+	self._catList.Name = "CatList"
+	for _, child in self._catList:GetChildren() do
+		if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+			child:Destroy()
+		end
+	end
+	self._catList.Visible = false
+	self._catList.Parent = panel.content
+	self._catTitle = text({
+		Name = "Title",
+		Size = UDim2.new(1, -110, 0, 36),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 2,
+		LayoutOrder = 0,
+		TextColor3 = PAL.text,
+		Parent = self._catList,
+	})
+	self._back = Button.new({
+		name = "Back",
+		text = "Back",
+		style = "ghost",
+		size = UDim2.fromOffset(100, 42), -- over the 36 px a mouse needs (the UI gate's tap check)
+		textSize = Theme.sizes.textBody,
+		layoutOrder = 0,
+		parent = self._catList,
+		onClick = function()
+			self:_pickFood(nil)
+		end,
+	})
+	-- #2196: the cats above and below the made cards hold their room as two plain spacers, so the scroll bar and
+	-- the canvas are as tall as every card would make them
+	self._catAbove = Create("Frame", {
+		Name = "CardsAbove",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		LayoutOrder = 1,
+		Parent = self._catList,
+	})
+	self._catBelow = Create("Frame", {
+		Name = "CardsBelow",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, 0),
+		LayoutOrder = 2,
+		Parent = self._catList,
+	})
+	local function scrolled()
+		if self._catList.Visible then
+			self:_windowCats()
+		end
+	end
+	self._catScroll = {
+		self._catList:GetPropertyChangedSignal("CanvasPosition"):Connect(scrolled),
+		self._catList:GetPropertyChangedSignal("AbsoluteWindowSize"):Connect(scrolled),
+	}
+
+	-- once a second while open, so the times left count down
+	local clock = 0
+	self._tick = RunService.Heartbeat:Connect(function(dt: number)
+		clock += dt
+		if clock < 1 then
+			return
+		end
+		clock = 0
+		if self.frame.Visible then
+			self:_refresh()
+		end
+	end)
+	return self :: Potions
+end
+
+function Potions.setCatalog(self: any, catalog: Types.Catalog)
+	self._catalog = catalog
+	self:_refresh()
+end
+
+function Potions.render(self: any, state: Types.PlayerState)
+	-- #5025 (harvest-hollow-spec 3): pumpkins are kept after Harvest Hollow closes and show here, not on the HUD
+	local pumpkins = HarvestLogic.pumpkins(state)
+	local subtitle = if pumpkins > 0
+		then ("Potions, food and bait · %s %d"):format(HarvestLogic.PUMPKIN, pumpkins)
+		else "Potions, cat food and bait"
+	if subtitle ~= self._subtitle then
+		self._subtitle = subtitle
+		self._panel:setTitle("Bag", subtitle)
+	end
+	-- a count that dropped is the server taking a UsePotion: the drink sound (sound list 5.11)
+	local counts: { [string]: number } = state.potions or {}
+	local before: { [string]: number }? = self._counts
+	if before then
+		-- every potion whose count dropped answers its presses (one sync can answer two kinds); one drink sound
+		local drank = false
+		for id, count in before do
+			local drop = count - (counts[id] or 0)
+			if drop > 0 then
+				drank = true
+				self:_answered(id, drop)
+			end
+		end
+		if drank then
+			Sound.play("potionDrink")
+		end
+	end
+	self._counts = table.clone(counts)
+	self._state = state
+	self:_refresh()
+end
+
+function Potions.showTab(self: any, tab: Tab)
+	self._tab = tab
+	self._feeding = nil
+	self._allAsk.Visible = false -- #3326: the confirm card belongs to the Potions tab
+	for name, button in self._tabButtons do
+		button:setStyle(if name == tab then "gold" else "ghost") -- #1771: as the Store's and the Market's tabs
+	end
+	self:_refreshFood()
+end
+
+-- Feed on a food row: the cat list for that food; nil goes back to the foods.
+function Potions._pickFood(self: any, foodId: string?)
+	self._feeding = foodId
+	self:_refreshFood()
+end
+
+function Potions._refreshFood(self: any)
+	local food = self._tab == "Food"
+	local bait = self._tab == "Bait"
+	self._list.Visible = self._tab == "Potions"
+	self._foodList.Visible = food and self._feeding == nil
+	self._catList.Visible = food and self._feeding ~= nil
+	self._baitList.Visible = bait
+	self._titleList.Visible = self._tab == "Titles"
+	if self._tab == "Titles" then
+		self:_refreshTitles()
+	end
+	local state: Types.PlayerState? = self._state
+	if state ~= nil and bait then
+		self:_refreshBait(state)
+	end
+	if state == nil or not food then
+		return
+	end
+	local catalog: any = self._catalog
+	local foods = BagLogic.foods(if catalog then catalog.catFood else nil, (state :: any).catFood)
+	local shown: { [string]: boolean } = {}
+	local feeding: BagLogic.Food? = nil
+	for order, entry in foods do
+		shown[entry.id] = true
+		if entry.id == self._feeding then
+			feeding = entry
+		end
+		local row = self._foodRows[entry.id] or self:_foodRow(entry)
+		self._foodRows[entry.id] = row
+		row.frame.LayoutOrder = order
+		row.count.Text = "x" .. entry.count
+	end
+	for id, row in self._foodRows do
+		if not shown[id] then
+			row.feed:destroy()
+			row.frame:Destroy()
+			self._foodRows[id] = nil
+		end
+	end
+	self._foodHint.Visible = #foods == 0
+	if self._feeding ~= nil and feeding == nil then
+		-- the last of that food went: back to the foods
+		self._feeding = nil
+		self._foodList.Visible = true
+		self._catList.Visible = false
+		return
+	end
+	if feeding then
+		self:_renderCats(feeding)
+	end
+end
+
+-- #1281: a row per bait food the player has; the count follows the state.
+function Potions._refreshBait(self: any, state: Types.PlayerState)
+	local catalog: any = self._catalog
+	local baits = BagLogic.baits(if catalog then catalog.lures else nil, state.lures)
+	local shown: { [string]: boolean } = {}
+	for order, entry in baits do
+		shown[entry.id] = true
+		local row = self._baitRows[entry.id] or self:_baitRow(entry)
+		self._baitRows[entry.id] = row
+		row.frame.LayoutOrder = order
+		row.count.Text = "x" .. entry.count
+	end
+	for id, row in self._baitRows do
+		if not shown[id] then
+			row.frame:Destroy()
+			self._baitRows[id] = nil
+		end
+	end
+	self._baitHint.Visible = #baits == 0
+end
+
+-- The Titles tab's titles follow the last CafePassState.
+function Potions.setPassView(self: any, view: Types.CafePassView?)
+	self._passView = view
+	if self._tab == "Titles" then
+		self:_refreshTitles()
+	end
+end
+
+-- One row per title (TitlesLogic.rows); a row is made once and its words and button follow the pass state.
+function Potions._refreshTitles(self: any)
+	for order, entry in TitlesLogic.rows(self._passView) do
+		local row = self._titleRows[entry.id] or self:_titleRow(entry)
+		self._titleRows[entry.id] = row
+		row.frame.LayoutOrder = order
+		row.frame.BackgroundTransparency = if entry.owned then 0 else 0.45
+		row.how.Text = entry.how
+		row.equip.instance.Visible = entry.owned
+		row.equip:setText(if entry.equipped then "Equipped" else "Equip")
+		row.equip:setStyle(if entry.equipped then "ghost" else "gold")
+		row.equip:setEnabled(not entry.equipped)
+	end
+end
+
+function Potions._titleRow(self: any, entry: TitlesLogic.Row)
+	local frame: Frame = Create("Frame", {
+		Name = entry.id,
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, ROW_H),
+		Parent = self._titleList,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIStroke", { Color = CARD.cardStroke, Thickness = Theme.sizes.stroke }),
+	})
+	local textLeft = 16
+	local name = text({
+		Name = "TitleName",
+		Position = UDim2.fromOffset(textLeft, 12),
+		Size = UDim2.new(1, -(textLeft + EQUIP_W + 24), 0, 26),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 3,
+		TextColor3 = if entry.color then Color3.fromHex(entry.color) else CARD.text,
+		Text = entry.text,
+		Parent = frame,
+	})
+	if entry.color then
+		Outline.text(name, 2) -- a title's own bright colour keeps its outline on the cream card too
+	end
+	local how = text({
+		Name = "How",
+		Position = UDim2.fromOffset(textLeft, 40),
+		Size = UDim2.new(1, -(textLeft + EQUIP_W + 24), 0, 22),
+		TextSize = Theme.sizes.textSmall + 1,
+		TextColor3 = CARD.subtext,
+		Parent = frame,
+	})
+	local equip = Button.new({
+		name = "Equip",
+		text = "Equip",
+		style = "gold",
+		size = UDim2.fromOffset(EQUIP_W, 42),
+		anchorPoint = Vector2.new(1, 0.5),
+		position = UDim2.new(1, -12, 0.5, 0),
+		textSize = Theme.sizes.textBody,
+		parent = frame,
+		onClick = function()
+			local callback: ((string) -> ())? = self._callbacks.setTitle
+			if callback then
+				callback(entry.id)
+			end
+		end,
+	})
+	return { frame = frame, how = how, equip = equip }
+end
+
+function Potions._baitRow(self: any, entry: BagLogic.Bait)
+	local frame: Frame = Create("Frame", {
+		Name = entry.id,
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, ROW_H),
+		Parent = self._baitList,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIStroke", { Color = CARD.cardStroke, Thickness = Theme.sizes.stroke }),
+	})
+	local icon = ItemIcon.new({
+		parent = frame,
+		size = UDim2.fromOffset(TILE, TILE),
+		anchorPoint = Vector2.new(0, 0.5),
+		position = UDim2.new(0, 10, 0.5, 0),
+		badge = "gem",
+	})
+	icon:setFood(entry.def, entry.id)
+	local textLeft = TILE + 24
+	local countW = 80
+	text({
+		Name = "BaitName",
+		Position = UDim2.fromOffset(textLeft, 12),
+		Size = UDim2.new(1, -(textLeft + countW + 20), 0, 26),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 3,
+		Text = entry.name,
+		Parent = frame,
+	})
+	text({
+		Name = "Where",
+		Position = UDim2.fromOffset(textLeft, 40),
+		Size = UDim2.new(1, -(textLeft + countW + 20), 0, 22),
+		TextSize = Theme.sizes.textSmall + 1,
+		TextColor3 = CARD.subtext,
+		Text = "Goes in at your bait bowl",
+		Parent = frame,
+	})
+	local count = text({
+		Name = "Count",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -16, 0.5, 0),
+		Size = UDim2.fromOffset(countW, 30),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textLarge,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Parent = frame,
+	})
+	MenuFamily.outline(count, 2)
+	return { frame = frame, icon = icon, count = count }
+end
+
+function Potions._foodRow(self: any, entry: BagLogic.Food)
+	local frame: Frame = Create("Frame", {
+		Name = entry.id,
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, ROW_H),
+		Parent = self._foodList,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIStroke", { Color = CARD.cardStroke, Thickness = Theme.sizes.stroke }),
+	})
+	local tile: Frame = Create("Frame", {
+		Name = "Tile",
+		BackgroundColor3 = Theme.colors.cream,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 10, 0.5, 0),
+		Size = UDim2.fromOffset(TILE, TILE),
+		Parent = frame,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Outline.border(tile, 2)
+	local glyph = text({
+		Name = "Glyph",
+		Size = UDim2.fromScale(1, 1),
+		TextSize = 28,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = ShopIcons.snackGlyph(entry.id), -- #1616: each size its own
+		Parent = tile,
+	})
+	local picture = ShopIcons.catFood(entry.id)
+	if picture then
+		IconArt.setImage(glyph, picture, 0.92)
+	end
+	local count = text({
+		Name = "Count",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, 6, 1, 4),
+		Size = UDim2.fromOffset(0, 20),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.colors.ink,
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = Theme.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 2,
+		Parent = tile,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = count })
+	Create(
+		"UIPadding",
+		{ PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), Parent = count }
+	)
+	local textLeft = TILE + 24
+	local textRight = FOOD_W + 20
+	text({
+		Name = "FoodName",
+		Position = UDim2.fromOffset(textLeft, 12),
+		Size = UDim2.new(1, -(textLeft + textRight), 0, 26),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 3,
+		Text = entry.name,
+		Parent = frame,
+	})
+	text({
+		Name = "Xp",
+		Position = UDim2.fromOffset(textLeft, 40),
+		Size = UDim2.new(1, -(textLeft + textRight), 0, 22),
+		TextSize = Theme.sizes.textSmall + 1,
+		TextColor3 = CARD.good,
+		Text = BagLogic.xpLine(entry.xp) .. " for one cat",
+		Parent = frame,
+	})
+	local feed = Button.new({
+		name = "Feed",
+		text = "Feed",
+		style = "primary",
+		size = UDim2.fromOffset(FOOD_W, 38),
+		anchorPoint = Vector2.new(1, 0.5),
+		position = UDim2.new(1, -10, 0.5, 0),
+		textSize = Theme.sizes.textBody + 1,
+		parent = frame,
+		onClick = function()
+			self:_pickFood(entry.id)
+		end,
+	})
+	return { frame = frame, count = count, feed = feed }
+end
+
+-- The cats to feed `food` to, highest level first; a tap feeds that cat one. #2196 (playtester Tyrell via Derek2:
+-- "going into the feed menu lags his game", then Derek2 11-07: "Lags the game so bad I am wondering if it renders all
+-- your cats it should only render as you scroll"): this runs on every state update and once a second, and a card
+-- holds a 3D head (a cloned model in a ViewportFrame), so a card per cat cost hundreds of models on a big save. Now
+-- only the cards in view (and CAT_BUFFER each side) are made, a card scrolled out shows the next cat scrolled in, and
+-- a card is filled again only when what it shows changed.
+function Potions._renderCats(self: any, food: BagLogic.Food)
+	local state: any = self._state
+	self._catTitle.Text = ("Feed a %s (x%d) · %s"):format(
+		food.name,
+		food.count,
+		BagLogic.xpLine(food.xp)
+	)
+	local catalog: any = self._catalog
+	local names: { [string]: string } = {}
+	local byId: { [string]: any } = {}
+	local defs: { any } = (if catalog then catalog.cats else nil) or {}
+	for _, def in defs do
+		if type(def) == "table" and def.id and def.name then
+			names[def.id] = def.name
+			byId[def.id] = def
+		end
+	end
+	local order: { CatEntry } = {}
+	for _, cat in CornerShopLogic.catsByLevel(state.cats, names) do
+		local instance = (state.cats or {})[cat.uid]
+		local xp = if type(instance) == "table" and type(instance.xp) == "number"
+			then instance.xp
+			else 0
+		local variant = if type(instance) == "table" then instance.variant else nil
+		local key = table.concat({
+			food.id,
+			cat.catId,
+			tostring(variant),
+			tostring(cat.name),
+			tostring(cat.level),
+			tostring(xp),
+			if byId[cat.catId] then "def" else "",
+		}, "|")
+		table.insert(
+			order,
+			{ cat = cat, def = byId[cat.catId], variant = variant, xp = xp, key = key }
+		)
+	end
+	self._catOrder = order
+	self._catFood = food.id
+	self:_windowCats()
+end
+
+-- #2196: makes the cards for the cats in view and frees the rest, from where the list is scrolled to.
+function Potions._windowCats(self: any)
+	local order: { CatEntry } = self._catOrder
+	local list: ScrollingFrame = self._catList
+	local pitch = CAT_CARD_H + Theme.sizes.gap
+	-- Absolute sizes are drawn pixels, after the window's UI scale; the heading's height gives that scale.
+	local scale = self._catTitle.AbsoluteSize.Y / CAT_TITLE_H
+	if scale <= 0 then
+		scale = 1
+	end
+	local above = (list.AbsolutePosition.Y - self._catAbove.AbsolutePosition.Y) / scale
+	local view = list.AbsoluteWindowSize.Y / scale
+	if view <= 0 then
+		view = CAT_VIEW
+	end
+	local first, last = BagLogic.feedWindow(#order, above, view, pitch, CAT_BUFFER)
+	local wanted: { [string]: CatEntry } = {}
+	for index = first, last do
+		wanted[order[index].cat.uid] = order[index]
+	end
+	-- cards whose cat scrolled out (or left) are hidden for the next ones, or kept where they still show their cat
+	for uid, card in self._catRows do
+		local entry = wanted[uid]
+		if entry == nil or entry.key ~= card.key then
+			card.frame.Visible = false
+			card.frame.Name = "Spare"
+			card.key = ""
+			table.insert(self._catSpare, card)
+			self._catRows[uid] = nil
+		end
+	end
+	for index = first, last do
+		local entry = order[index]
+		local card: CatCard? = self._catRows[entry.cat.uid]
+		if card == nil then
+			local made = self:_spareCard(entry) or self:_catCard()
+			self:_fillCard(made, entry)
+			self._catRows[entry.cat.uid] = made
+			card = made
+		end
+		(card :: CatCard).frame.LayoutOrder = 2 + index
+	end
+	self._catAbove.Size = UDim2.new(1, 0, 0, math.max(0, first - 1) * pitch)
+	self._catBelow.Size = UDim2.new(1, 0, 0, math.max(0, #order - last) * pitch)
+	self._catBelow.LayoutOrder = 3 + #order
+end
+
+-- A hidden card for `entry`, the one already holding that cat's head if there is one (so no model is cloned).
+function Potions._spareCard(self: any, entry: CatEntry): CatCard?
+	local spare: { CatCard } = self._catSpare
+	if #spare == 0 then
+		return nil
+	end
+	local look = Potions._look(entry)
+	local pick = #spare
+	for index, card in spare do
+		if card.look == look then
+			pick = index
+			break
+		end
+	end
+	return table.remove(spare, pick)
+end
+
+function Potions._look(entry: CatEntry): string
+	return (if entry.def then entry.def.id else "?")
+		.. "|"
+		.. tostring(CatVariant.isGold(entry.variant))
+end
+
+-- #1773: one card in Feed's list, empty until _fillCard: the cat's head on its rarity's colour, the name ("Gold
+-- Comet" in gold, a rainbow one in the turning bands, as its edge), "Epic · Level 24 · 2,303 XP to 25" over a bar
+-- toward the next level, and Feed, which feeds this cat one (Max at the top level, off).
+function Potions._catCard(self: any): CatCard
+	local frame: Frame = Create("Frame", {
+		Name = "Spare",
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, CAT_CARD_H),
+		Parent = self._catList,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }) })
+	local edge: UIStroke = Create("UIStroke", {
+		Thickness = 2,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = frame,
+	})
+	local head: Frame = Create("Frame", {
+		Name = "Head",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 6, 0.5, 0),
+		Size = UDim2.fromOffset(CAT_HEAD, CAT_HEAD),
+		Parent = frame,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }) })
+	local portrait = CatPortrait.new({
+		parent = head,
+		size = UDim2.fromScale(1, 1),
+		still = true,
+		head = true,
+	})
+	local left = CAT_HEAD + 16
+	local right = CAT_FEED_W + 16
+	local name = text({
+		Name = "CatName",
+		Position = UDim2.fromOffset(left, 6),
+		Size = UDim2.new(1, -(left + right), 0, 24),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 2,
+		Parent = frame,
+	})
+	local level = text({
+		Name = "Level",
+		Position = UDim2.fromOffset(left, 30),
+		Size = UDim2.new(1, -(left + right), 0, 18),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = CARD.subtext,
+		RichText = true,
+		Parent = frame,
+	})
+	local track: Frame = Create("Frame", {
+		Name = "XpBar",
+		BackgroundColor3 = Theme.colors.cocoa,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(left, 52),
+		Size = UDim2.new(1, -(left + right), 0, 8),
+		Parent = frame,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local fill: Frame = Create("Frame", {
+		Name = "Fill",
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(0, 1),
+		Parent = track,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local card: CatCard
+	local feed = Button.new({
+		name = "Feed",
+		text = "Feed",
+		style = "primary",
+		size = UDim2.fromOffset(CAT_FEED_W, 40),
+		anchorPoint = Vector2.new(1, 0.5),
+		position = UDim2.new(1, -8, 0.5, 0),
+		textSize = Theme.sizes.textBody + 1,
+		parent = frame,
+		onClick = function()
+			local feedCat: ((string, string) -> ())? = self._callbacks.feed
+			if card.open and feedCat then
+				feedCat(card.foodId, card.uid)
+			end
+		end,
+	})
+	card = {
+		frame = frame,
+		portrait = portrait,
+		feed = feed,
+		edge = edge,
+		edgeBands = nil :: UIGradient?,
+		head = head,
+		name = name,
+		nameBands = nil :: UIGradient?,
+		level = level,
+		fill = fill,
+		key = "",
+		look = nil :: string?,
+		uid = "",
+		foodId = "",
+		open = false,
+	}
+	return card
+end
+
+-- Shows `entry`'s cat on `card`; its 3D head is set again only when the cat or coat changed.
+function Potions._fillCard(self: any, card: CatCard, entry: CatEntry)
+	local cat, def, variant, xp = entry.cat, entry.def, entry.variant, entry.xp
+	local open = BagLogic.canFeed(cat.level)
+	local rarity: string = if def then def.rarity else "Common"
+	local gold = CatVariant.isGold(variant)
+	local rainbow = CatVariant.isRainbow(variant)
+	card.key = entry.key
+	card.uid = cat.uid
+	card.foodId = self._catFood
+	card.open = open
+	card.frame.Name = cat.uid
+	card.frame.Visible = true
+	if rainbow and card.edgeBands == nil then
+		card.edgeBands = Rainbow.stroke(card.edge)
+	end
+	if card.edgeBands then
+		card.edgeBands.Enabled = rainbow
+	end
+	card.edge.Color = if rainbow
+		then Theme.colors.white
+		elseif gold then Theme.colors.gold
+		else Theme.rarityColor(rarity)
+	card.edge.Thickness = if gold or rainbow then 3 else 2
+	card.head.BackgroundColor3 = Theme.rarityColor(rarity)
+	local look = Potions._look(entry)
+	if card.look ~= look then
+		card.portrait:set(def, gold)
+		card.look = look
+	end
+	if rainbow and card.nameBands == nil then
+		card.nameBands = Rainbow.text(card.name)
+	end
+	if card.nameBands then
+		card.nameBands.Enabled = rainbow
+	end
+	card.name.TextColor3 = if rainbow
+		then Theme.colors.white
+		elseif gold then Theme.colors.gold
+		else CARD.text
+	card.name.Text = CatVariant.word(variant) .. (cat.name or cat.catId)
+	card.level.Text = ('<font color="#%s">%s</font> · %s'):format(
+		MenuFamily.rarity(rarity):ToHex(),
+		rarity,
+		BagLogic.catLine(cat.level, xp)
+	)
+	card.fill.BackgroundColor3 = if open then CARD.good else Theme.colors.gold
+	card.fill.Size = UDim2.fromScale(BagLogic.xpFraction(cat.level, xp), 1)
+	card.feed:setText(if open then "Feed" else "Max")
+	card.feed:setEnabled(open)
+end
+
+function Potions._row(self: any, potionId: string): Row
+	local frame: Frame = Create("Frame", {
+		Name = potionId,
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, POTION_H), -- the grid's cell
+		Parent = self._potionGrid,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIStroke", { Color = CARD.cardStroke, Thickness = Theme.sizes.stroke }),
+	})
+	local tile: Frame = Create("Frame", {
+		Name = "Tile",
+		BackgroundColor3 = Theme.potionColor(potionId),
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(10, 10),
+		Size = UDim2.fromOffset(TILE, TILE),
+		Parent = frame,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Outline.border(tile, 2)
+	local glyph = text({
+		Name = "Glyph",
+		Size = UDim2.fromScale(1, 1),
+		TextSize = 28,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = Theme.icons.potion,
+		Parent = tile,
+	})
+	-- the potion's own bottle (Model-Agent's icons), else the drawn potion glyph
+	local bottles = ShopIcons.potionAll(potionId)
+	if #bottles > 0 then
+		IconArt.setImages(glyph, bottles, 0.92)
+	else
+		IconArt.set(glyph, Theme.icons.potion, 0.8)
+	end
+	-- how many are in the bag, a small dark pill on the tile's corner
+	local count = text({
+		Name = "Count",
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, 6, 1, 4),
+		Size = UDim2.fromOffset(0, 20),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.colors.ink,
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = Theme.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextTruncate = Enum.TextTruncate.None,
+		ZIndex = 2,
+		Parent = tile,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = count })
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, 6),
+		PaddingRight = UDim.new(0, 6),
+		Parent = count,
+	})
+	local textLeft = TILE + 20
+	local name = text({
+		Name = "PotionName",
+		Position = UDim2.fromOffset(textLeft, 10),
+		Size = UDim2.new(1, -(textLeft + 10), 0, 24),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 2,
+		Parent = frame,
+	})
+	FitText.shrink(name)
+	-- what it does and for how long, on two lines in the card's half width ("Luck +50% and double gold on bait  ·
+	-- 10 min")
+	local effect = text({
+		Name = "Effect",
+		Position = UDim2.fromOffset(textLeft, 36),
+		Size = UDim2.new(1, -(textLeft + 10), 0, 34),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = CARD.subtext,
+		TextWrapped = true,
+		TextTruncate = Enum.TextTruncate.None,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = frame,
+	})
+	-- "8:12 left" at the bottom left, level with the Use button, while it runs
+	local left = text({
+		Name = "Left",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 12, 1, -29),
+		Size = UDim2.new(1, -(POTION_USE_W + 32), 0, 18),
+		FontFace = Theme.fonts.bodyBold,
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = CARD.good,
+		Visible = false,
+		Parent = frame,
+	})
+	-- one press: Use drinks one, Use all (#1600) as many as fit; the server cuts the count to what fits again
+	local function press(count: number?)
+		self:_press(potionId, count)
+	end
+	local use = Button.new({
+		name = "Use",
+		text = "Use",
+		style = "primary",
+		size = UDim2.fromOffset(POTION_USE_W, 38),
+		anchorPoint = Vector2.new(1, 1),
+		position = UDim2.new(1, -10, 1, -10),
+		textSize = Theme.sizes.textBody + 1,
+		parent = frame,
+		onClick = function()
+			press(nil)
+		end,
+	})
+	local useAll = Button.new({
+		name = "UseAll",
+		text = "Use all",
+		style = "teal",
+		size = UDim2.fromOffset(POTION_USE_W, 38),
+		anchorPoint = Vector2.new(1, 1),
+		position = UDim2.new(1, -(POTION_USE_W + 16), 1, -10),
+		textSize = Theme.sizes.textBody + 1,
+		parent = frame,
+		onClick = function()
+			local view = self._fits[potionId]
+			if view and view >= 2 then
+				press(view)
+			end
+		end,
+	})
+	useAll.instance.Visible = false
+	return {
+		frame = frame,
+		tile = tile,
+		count = count,
+		name = name,
+		effect = effect,
+		left = left,
+		use = use,
+		useAll = useAll,
+	}
+end
+
+function Potions._refresh(self: any)
+	local state: Types.PlayerState? = self._state
+	if state == nil then
+		return
+	end
+	-- only what the player has or is drinking (Derek 2026-11-03); a row goes when its last one is used and runs out
+	local now = Workspace:GetServerTimeNow()
+	local shownState = PotionLogic.ahead(self._catalog, state, self:_extra(), now) -- #3190: presses on their way
+	local rows = PotionLogic.owned(self._catalog, shownState, now)
+	local shown: { [string]: boolean } = {}
+	local any = false
+	for order, view in rows do
+		local potion = view.potion
+		shown[potion.id] = true
+		local row: Row = self._rows[potion.id] or self:_row(potion.id)
+		self._rows[potion.id] = row
+		row.frame.LayoutOrder = order
+		row.name.Text = potion.name
+		local line: { string } = {}
+		if potion.effect ~= "" then
+			table.insert(line, potion.effect)
+		end
+		if potion.minutes > 0 then
+			table.insert(line, ("%d min"):format(potion.minutes))
+		end
+		row.effect.Text = table.concat(line, "  ·  ")
+		row.count.Text = "x" .. view.count
+		row.count.Visible = view.count > 0
+		local running = view.secondsLeft > 0
+		row.left.Visible = running
+		row.left.Text = PotionLogic.clock(view.secondsLeft) .. " left"
+		local full = view.count > 0 and not view.canUse
+		row.use:setText(if full then "Full" else "Use")
+		row.use:setEnabled(view.canUse)
+		-- a running potion with none left in the bag: no Use, just its time left
+		row.use.instance.Visible = view.count > 0
+		-- #1600: Use all while two or more fit, its count on the button; the words make room for it
+		self._fits[potion.id] = view.fit
+		local many = view.count > 0 and view.fit >= 2
+		row.useAll.instance.Visible = many
+		row.useAll:setText(("Use x%d"):format(view.fit))
+		row.useAll:setEnabled(many)
+		-- the time left keeps clear of the buttons beside it
+		local buttonsW = if many then 2 * POTION_USE_W + 6 else POTION_USE_W
+		row.left.Size = UDim2.new(1, -(buttonsW + 32), 0, 18)
+		any = true
+	end
+	for id, row in self._rows do
+		if not shown[id] then
+			row.use:destroy()
+			row.useAll:destroy()
+			self._fits[id] = nil
+			row.frame:Destroy()
+			self._rows[id] = nil
+		end
+	end
+	self._hint.Visible = not any
+	-- #3326: "Use all potions" while any potion in the bag would take
+	self._plan = PotionLogic.allPlan(self._catalog, shownState, now)
+	local can = #self._plan > 0 and self._callbacks.useEvery ~= nil
+	self._allRow.Visible = can
+	if not can then
+		self._allAsk.Visible = false
+	elseif self._allAsk.Visible then
+		self._allLine.Text = (PotionLogic.allLine(self._plan))
+	end
+	self:_refreshFood()
+end
+
+-- #3326: "Use all potions" pressed: the confirm card with what one press drinks.
+function Potions._askAll(self: any)
+	if #self._plan == 0 then
+		return
+	end
+	local line, total = PotionLogic.allLine(self._plan)
+	self._allTitle.Text = if total == 1
+		then "Drink this potion?"
+		else ("Drink these %d potions?"):format(total)
+	self._allLine.Text = line
+	self._allAsk.Visible = true
+end
+
+-- #3326: Drink all on the confirm card: one UsePotionAll, and each kind counts on its row at once as sent presses do
+-- (#3190) until the bag's count drops.
+function Potions._drinkAll(self: any)
+	self._allAsk.Visible = false
+	local useEvery: (() -> ())? = (self._callbacks :: Callbacks).useEvery
+	if useEvery == nil or #self._plan == 0 then
+		return
+	end
+	local at = os.clock()
+	for _, drink in self._plan do
+		table.insert(self._sent, { id = drink.potion.id, n = drink.n, at = at })
+	end
+	useEvery()
+	self:_refresh()
+	task.delay(PENDING_SECONDS + 0.1, function()
+		if self._alive then
+			self:_refresh()
+		end
+	end)
+end
+
+-- #3190: potion id -> Use presses queued or sent within PENDING_SECONDS, not yet seen in the bag's count.
+function Potions._extra(self: any): { [string]: number }
+	local extra: { [string]: number } = {}
+	for _, each in self._queue do
+		extra[each.id] = (extra[each.id] or 0) + each.n
+	end
+	local now = os.clock()
+	for _, sent in self._sent do
+		if now - sent.at < PENDING_SECONDS then
+			extra[sent.id] = (extra[sent.id] or 0) + sent.n
+		end
+	end
+	return extra
+end
+
+-- #3190: the bag's count of `id` dropped by `drop`: that many sent presses are answered, oldest first.
+function Potions._answered(self: any, id: string, drop: number)
+	local left = drop
+	local keep: { { id: string, n: number, at: number } } = {}
+	for _, sent in self._sent do
+		if sent.id == id and left > 0 then
+			local used = math.min(left, sent.n)
+			left -= used
+			if sent.n > used then
+				table.insert(keep, { id = id, n = sent.n - used, at = sent.at })
+			end
+		elseif os.clock() - sent.at < PENDING_SECONDS then
+			table.insert(keep, sent)
+		end
+	end
+	self._sent = keep
+end
+
+-- #3190: one press of Use (count nil) or Use all (count): counts on its row at once and joins the queue. A press the
+-- row as shown no longer allows (none left, or the timer full) does nothing.
+function Potions._press(self: any, id: string, count: number?)
+	local state: Types.PlayerState? = self._state
+	if state == nil then
+		return
+	end
+	local now = Workspace:GetServerTimeNow()
+	local shownState = PotionLogic.ahead(self._catalog, state, self:_extra(), now)
+	for _, view in PotionLogic.rows(self._catalog, shownState, now) do
+		if view.potion.id == id then
+			local n = if count then math.min(count, view.fit) else (if view.canUse then 1 else 0)
+			if n <= 0 then
+				return
+			end
+			table.insert(self._queue, { id = id, n = n })
+			self:_refresh()
+			self:_pump()
+			return
+		end
+	end
+end
+
+-- #3190: sends the queue in order, SEND_GAP apart; each sent press stops counting after PENDING_SECONDS.
+function Potions._pump(self: any)
+	if self._pumping then
+		return
+	end
+	self._pumping = true
+	task.spawn(function()
+		while self._alive and #self._queue > 0 do
+			local wait = self._lastSent + SEND_GAP - os.clock()
+			if wait > 0 then
+				task.wait(wait)
+			end
+			if not self._alive then
+				break
+			end
+			local entry = table.remove(self._queue, 1) :: { id: string, n: number }?
+			if entry then
+				self._lastSent = os.clock()
+				table.insert(self._sent, { id = entry.id, n = entry.n, at = self._lastSent })
+				self._callbacks.use(entry.id, if entry.n > 1 then entry.n else nil)
+				task.delay(PENDING_SECONDS + 0.1, function()
+					if self._alive then
+						self:_refresh()
+					end
+				end)
+			end
+		end
+		self._pumping = false
+	end)
+end
+
+function Potions.destroy(self: any)
+	self._alive = false
+	self._tick:Disconnect()
+	for _, row in self._foodRows do
+		row.feed:destroy()
+	end
+	for _, row in self._titleRows do
+		row.equip:destroy()
+	end
+	for _, connection in self._catScroll do
+		connection:Disconnect()
+	end
+	for _, cards in { self._catRows, self._catSpare } do
+		for _, card: CatCard in cards do
+			card.feed:destroy()
+			card.portrait:destroy()
+		end
+	end
+	for _, button in self._tabButtons do
+		button:destroy()
+	end
+	self._back:destroy()
+	self._allButton:destroy()
+	self._allYes:destroy()
+	self._allNo:destroy()
+	for _, row in self._rows do
+		row.use:destroy()
+		row.useAll:destroy()
+	end
+	table.clear(self._rows)
+	self._panel:destroy()
+end
+
+return Potions

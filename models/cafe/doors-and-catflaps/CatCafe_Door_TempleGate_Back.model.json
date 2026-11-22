@@ -1,0 +1,2276 @@
+{
+ "className": "Model",
+ "attributes": {
+  "Rojo_Target_PrimaryPart": "CatCafe_Door_TempleGate_Back/0",
+  "PartBuilt": true
+ },
+ "children": [
+  {
+   "name": "CatCafe_Door_TempleGate_Back",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -3.215,
+       3.975,
+       0.66
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.47,
+     7.95,
+     0.32
+    ],
+    "Color": [
+     0.5882,
+     0.5686,
+     0.549
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth",
+    "PivotOffset": {
+     "CFrame": {
+      "position": [
+       3.215,
+       -3.975,
+       -0.66
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "attributes": {
+    "Rojo_Id": "CatCafe_Door_TempleGate_Back/0"
+   }
+  },
+  {
+   "name": "CatCafe_Door_TempleGate_Back",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.0,
+       0.04,
+       0.01
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     5.98,
+     0.08,
+     0.98
+    ],
+    "Color": [
+     0.3843,
+     0.3647,
+     0.349
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Door_TempleGate_Back",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       3.215,
+       3.975,
+       0.66
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.47,
+     7.95,
+     0.32
+    ],
+    "Color": [
+     0.5882,
+     0.5686,
+     0.549
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Door_TempleGate_Back",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.0,
+       7.73,
+       0.66
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     5.96,
+     0.44,
+     0.32
+    ],
+    "Color": [
+     0.5882,
+     0.5686,
+     0.549
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Door_TempleGate_Back/1"
+   },
+   "children": [
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         4.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.85,
+       5.1,
+       0.3
+      ],
+      "Color": [
+       0.5882,
+       0.5686,
+       0.549
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         -2.925,
+         -4.9,
+         0.15
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Door_TempleGate_Back/1"
+     },
+     "children": [
+      {
+       "name": "CatFlap",
+       "className": "Attachment",
+       "properties": {
+        "CFrame": {
+         "CFrame": {
+          "position": [
+           -0.045,
+           -4.68,
+           0.15
+          ],
+          "orientation": [
+           [
+            -1.0,
+            0.0,
+            0.0
+           ],
+           [
+            0.0,
+            1.0,
+            0.0
+           ],
+           [
+            0.0,
+            0.0,
+            -1.0
+           ]
+          ]
+         }
+        }
+       }
+      }
+     ]
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         0.335,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.85,
+       0.23,
+       0.3
+      ],
+      "Color": [
+       0.5882,
+       0.5686,
+       0.549
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.89,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.98,
+       1.9,
+       0.3
+      ],
+      "Color": [
+       0.5882,
+       0.5686,
+       0.549
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.935,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       2.07,
+       1.9,
+       0.3
+      ],
+      "Color": [
+       0.5882,
+       0.5686,
+       0.549
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.68,
+         3.835,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.16,
+       6.99,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.77,
+         3.835,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.16,
+       6.99,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         7.25,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.29,
+       0.16,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.06,
+         0.42,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.08,
+       0.16,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.105,
+         0.42,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.17,
+       0.16,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.68,
+         3.835,
+         0.1
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.16,
+       6.99,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.77,
+         3.835,
+         0.1
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.16,
+       6.99,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         7.25,
+         0.1
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.29,
+       0.16,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.06,
+         0.42,
+         0.1
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.08,
+       0.16,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.105,
+         0.42,
+         0.1
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.17,
+       0.16,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         6.9,
+         -0.2275
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.25,
+       0.05,
+       0.015
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         4.43,
+         -0.2275
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.25,
+       0.05,
+       0.015
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         5.525,
+         -0.255
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.1,
+       0.85,
+       0.07
+      ],
+      "Color": [
+       0.6471,
+       0.6471,
+       0.6667
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.305,
+         5.97,
+         -0.255
+        ],
+        "orientation": [
+         [
+          -0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.36,
+       0.36,
+       0.06
+      ],
+      "Color": [
+       0.6471,
+       0.6471,
+       0.6667
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.175,
+         5.6,
+         -0.305
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.2,
+       0.14,
+       0.03
+      ],
+      "Color": [
+       0.1804,
+       0.6196,
+       0.4196
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.555,
+         5.26,
+         -0.2425
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.03,
+       0.035
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.555,
+         5.4,
+         -0.2425
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.03,
+       0.035
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.395,
+         5.97,
+         -0.255
+        ],
+        "orientation": [
+         [
+          -0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.36,
+       0.36,
+       0.06
+      ],
+      "Color": [
+       0.6471,
+       0.6471,
+       0.6667
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.265,
+         5.6,
+         -0.305
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.2,
+       0.14,
+       0.03
+      ],
+      "Color": [
+       0.1804,
+       0.6196,
+       0.4196
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.645,
+         5.26,
+         -0.2425
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.03,
+       0.035
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.645,
+         5.4,
+         -0.2425
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.03,
+       0.035
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         5.4,
+         -0.305
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.14,
+       0.1,
+       0.03
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.47,
+         3.4,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.24,
+       0.32,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.47,
+         3.34,
+         -0.28
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.06,
+       0.1859,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.3356,
+         3.2844,
+         -0.28
+        ],
+        "orientation": [
+         [
+          0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.7071,
+          -0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.06,
+       0.1859,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.28,
+         3.15,
+         -0.28
+        ],
+        "orientation": [
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          -1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.06,
+       0.1859,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.3356,
+         3.0156,
+         -0.28
+        ],
+        "orientation": [
+         [
+          0.7071,
+          -0.7071,
+          0.0
+         ],
+         [
+          -0.7071,
+          -0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.06,
+       0.1859,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.47,
+         2.96,
+         -0.28
+        ],
+        "orientation": [
+         [
+          0.0,
+          -1.0,
+          0.0
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.06,
+       0.1859,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.6044,
+         3.0156,
+         -0.28
+        ],
+        "orientation": [
+         [
+          -0.7071,
+          -0.7071,
+          0.0
+         ],
+         [
+          -0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.06,
+       0.1859,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.66,
+         3.15,
+         -0.28
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.06,
+       0.1859,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.6044,
+         3.2844,
+         -0.28
+        ],
+        "orientation": [
+         [
+          -0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.06,
+       0.1859,
+       0.04
+      ],
+      "Color": [
+       0.949,
+       0.7569,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.295,
+         3.4,
+         0.14
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.45,
+       0.12,
+       0.12
+      ],
+      "Color": [
+       0.6471,
+       0.6471,
+       0.6667
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.88,
+         0.95,
+         -0.22
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.42,
+       0.18,
+       0.18
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "Shape": "Cylinder"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.88,
+         3.835,
+         -0.22
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.42,
+       0.18,
+       0.18
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "Shape": "Cylinder"
+     }
+    },
+    {
+     "name": "CatCafe_Door_TempleGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.88,
+         6.85,
+         -0.22
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.42,
+       0.18,
+       0.18
+      ],
+      "Color": [
+       0.3843,
+       0.3647,
+       0.349
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "Shape": "Cylinder"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       2.88,
+       0.0,
+       -0.22
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Door_TempleGate_Back_Leaf"
+  }
+ ],
+ "properties": {
+  "WorldPivotData": {
+   "OptionalCFrame": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "orientation": [
+     [
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      1.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ]
+   }
+  }
+ }
+}

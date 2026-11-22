@@ -1,0 +1,80 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#1d1714;font-family:"Fredoka",Arial,sans-serif;color:#fff;padding:20px;width:1700px}
+h2{margin:6px 0 10px;font-size:22px;color:#f3e6da}
+.win{background:#3a2c26;border:4px solid #111;border-radius:16px;padding:12px;position:relative}
+.bar{display:flex;gap:10px;align-items:center}
+.search{flex:1;background:#2a201c;border:3px solid #5a463c;border-radius:12px;padding:10px 14px;color:#a89282;font-size:16px}
+.phone .role{padding:5px 6px;font-size:15px}
+.role{display:flex;align-items:center;gap:6px;background:#2a201c;border:3px solid #5a463c;border-radius:12px;padding:6px 10px;font-size:18px}
+.role .n{background:#3aa55a;border-radius:10px;padding:1px 8px;font-size:15px}
+.role.open{border-color:#ffd45c}
+.comp{display:flex;align-items:center;gap:8px;background:#f2b632;color:#2b1a10;border:3px solid #111;border-radius:12px;padding:5px 12px;font-weight:bold;box-shadow:0 3px 0 #111}
+.av{width:38px;height:38px;border-radius:50%;border:3px solid #111;background:#e8a0d8}
+.small{font-size:12px;font-weight:normal}
+.pop{position:absolute;background:#2a201c;border:3px solid #ffd45c;border-radius:12px;padding:8px;display:flex;gap:6px;align-items:center}
+.cats{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-top:12px}
+.card{background:#4a382f;border:3px solid #111;border-radius:12px;height:110px}
+.pick{display:grid;gap:10px}
+.pc{background:#4a382f;border:3px solid #111;border-radius:12px;padding:8px;text-align:center;font-size:13px}
+.pc .av{width:56px;height:56px;margin:0 auto 4px}
+.pc b{display:block;font-size:14px}
+.pc .m{color:#ffd45c}.pc .l{color:#7fe08a}
+.pc.sel{border-color:#ffd45c;box-shadow:0 0 0 3px #ffd45c}
+.btn{display:inline-block;margin-top:4px;background:#4cc35a;border:2px solid #111;border-radius:8px;padding:2px 10px;font-weight:bold;color:#fff}
+.btn.on{background:#777}
+.phone{width:390px}
+.note{font-size:15px;color:#f3e6da;line-height:1.35;margin-top:8px}
+</style></head><body>
+<div style="display:flex;gap:24px;align-items:flex-start">
+<div style="width:1000px">
+<h2>PC: Cats window top row</h2>
+<div class="win" style="height:330px">
+ <div class="bar">
+  <div class="search">🔍 Search your cats</div>
+  <div class="role">☕ <span class="n">3/3</span></div>
+  <div class="role open">🍰 <span class="n">5/5</span></div>
+  <div class="role">👋 <span class="n">2/2</span></div>
+  <div class="role">🎈 <span class="n">2/2</span></div>
+  <div class="comp"><div class="av"></div><div>Companion<div class="small">+12% Money · +0.20 Luck</div></div></div>
+ </div>
+ <div class="pop" style="top:66px;left:470px">Waiters: <div class="av" style="background:#b08ae0"></div><div class="av" style="background:#8a8a9a"></div><div class="av" style="background:#f2b632"></div><div class="av" style="background:#5aa8ff"></div><div class="av" style="background:#b08ae0"></div><span class="small" style="color:#a89282">+1 at Tier 8</span></div>
+ <div class="cats" style="margin-top:70px"><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div><div class="card"></div></div>
+</div>
+<div class="note">The companion square leaves the search bar. The four role rows become four symbols with counts. Tapping one opens a strip of who works that role, with the "+1 at Tier N" note, and tapping again or anywhere else closes it. The freed row holds the gold Companion button, which shows the companion's picture and both boosts.</div>
+<h2 style="margin-top:18px">Companion picker (PC)</h2>
+<div class="win">
+ <div style="font-size:18px;margin-bottom:8px">Pick your Companion <span class="small" style="color:#a89282">They follow you and boost Money and Luck, and they keep their cafe job.</span></div>
+ <div class="pick" style="grid-template-columns:repeat(6,1fr)">
+  <div class="pc sel"><div class="av" style="background:#e8a0d8"></div><b>Sugar Plum</b>Legendary<br><span class="m">+12% Money</span><br><span class="l">+0.20 Luck</span><br><span class="btn on">Following</span></div>
+  <div class="pc"><div class="av" style="background:#f2b632"></div><b>Biscuit ✨gold</b>Epic<br><span class="m">+10% Money</span><br><span class="l">+0.19 Luck</span><br><span class="btn">Follow</span></div>
+  <div class="pc"><div class="av" style="background:#b08ae0"></div><b>Plum</b>Epic<br><span class="m">+8% Money</span><br><span class="l">+0.15 Luck</span><br><span class="btn">Follow</span></div>
+  <div class="pc"><div class="av" style="background:#5aa8ff"></div><b>Skye</b>Rare<br><span class="m">+5% Money</span><br><span class="l">+0.10 Luck</span><br><span class="btn">Follow</span></div>
+  <div class="pc"><div class="av" style="background:#5aa8ff"></div><b>Pebble</b>Rare<br><span class="m">+5% Money</span><br><span class="l">+0.10 Luck</span><br><span class="btn">Follow</span></div>
+  <div class="pc"><div class="av" style="background:#8a8a9a"></div><b>Tabby</b>Common<br><span class="m">+3% Money</span><br><span class="l">+0.05 Luck</span><br><span class="btn">Follow</span></div>
+ </div>
+ <div class="small" style="margin-top:8px;color:#a89282">Sorted best first. Stop sends the companion home.</div>
+</div>
+</div>
+<div class="phone">
+<h2>Phone</h2>
+<div class="win">
+ <div class="bar"><div class="search" style="padding:8px 10px">🔍 Search</div><div class="comp" style="padding:4px 8px"><div class="av" style="width:30px;height:30px"></div><div class="small" style="font-weight:bold">+12% · +0.20</div></div></div>
+ <div class="bar" style="margin-top:8px;justify-content:space-between;gap:4px;font-size:15px">
+  <div class="role">☕ <span class="n">3/3</span></div><div class="role open">🍰 <span class="n">5/5</span></div><div class="role">👋 <span class="n">2/2</span></div><div class="role">🎈 <span class="n">2/2</span></div>
+ </div>
+ <div class="pop" style="position:static;margin-top:6px;flex-wrap:wrap">Waiters: <div class="av" style="width:30px;height:30px;background:#b08ae0"></div><div class="av" style="width:30px;height:30px;background:#8a8a9a"></div><div class="av" style="width:30px;height:30px;background:#f2b632"></div><div class="av" style="width:30px;height:30px;background:#5aa8ff"></div><div class="av" style="width:30px;height:30px;background:#b08ae0"></div></div>
+ <div class="cats" style="grid-template-columns:repeat(3,1fr)"><div class="card"></div><div class="card"></div><div class="card"></div></div>
+</div>
+<h2 style="margin-top:18px">Phone picker</h2>
+<div class="win">
+ <div style="font-size:16px;margin-bottom:6px">Pick your Companion</div>
+ <div class="pick" style="grid-template-columns:repeat(3,1fr)">
+  <div class="pc sel"><div class="av" style="width:44px;height:44px;background:#e8a0d8"></div><b>Sugar Plum</b><span class="m">+12% Money</span><br><span class="l">+0.20 Luck</span><br><span class="btn on">Following</span></div>
+  <div class="pc"><div class="av" style="width:44px;height:44px;background:#f2b632"></div><b>Biscuit</b><span class="m">+10% Money</span><br><span class="l">+0.19 Luck</span><br><span class="btn">Follow</span></div>
+  <div class="pc"><div class="av" style="width:44px;height:44px;background:#b08ae0"></div><b>Plum</b><span class="m">+8% Money</span><br><span class="l">+0.15 Luck</span><br><span class="btn">Follow</span></div>
+ </div>
+</div>
+<div class="note">On phone, Search and Companion share the first row, and the four role symbols take the second. The Companion button shows only the two numbers. Buttons are at least 44 px tall.</div>
+</div>
+</div>
+</body></html>

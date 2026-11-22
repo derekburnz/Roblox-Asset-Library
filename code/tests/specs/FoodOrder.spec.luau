@@ -1,0 +1,130 @@
+--!strict
+-- UI/Components/FoodOrder.luau: every food list in rarity order (F97 section 3).
+return function()
+	local Client =
+		game:GetService("StarterPlayer"):WaitForChild("StarterPlayerScripts"):WaitForChild("Client")
+	local FoodOrder = require(
+		Client:WaitForChild("UI"):WaitForChild("Components"):WaitForChild("FoodOrder")
+	) :: any
+	local Catalog = require(
+		game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Catalog")
+	) :: any
+
+	local function ids(list: { any }): string
+		local out: { string } = {}
+		for _, item in list do
+			table.insert(out, item.id)
+		end
+		return table.concat(out, ",")
+	end
+
+	describe("FoodOrder", function()
+		it("puts the catalog's foods in the section 3 order, shop and dealer together", function()
+			expect(ids(FoodOrder.defs(Catalog.lures))).to.equal(
+				"kibble,tuna,sardines,salmon,caviar,moon_milk,star_treat,honey_cream,comet_treat,eclipse_treat"
+			)
+		end)
+
+		it("turns round for the bowl and the Bag's Bait tab, rarest first (#1609)", function()
+			expect(ids(FoodOrder.defs(Catalog.lures, true))).to.equal(
+				"eclipse_treat,comet_treat,honey_cream,star_treat,moon_milk,caviar,salmon,sardines,tuna,kibble"
+			)
+		end)
+
+		it("#3462: leaves a Day Cart food off the list while the cart's shelf is shut", function()
+			local honey = Catalog.getLure("honey_cream")
+			expect(FoodOrder.listed(honey, 0, false)).to.equal(false)
+			expect(FoodOrder.listed(honey, nil, false)).to.equal(false)
+			expect(FoodOrder.listed(honey, 2, false)).to.equal(true) -- one in the bag still shows
+			expect(FoodOrder.listed(honey, 0, true)).to.equal(true)
+			for _, lure in Catalog.lures do
+				if lure.source ~= "cart" then
+					expect(FoodOrder.listed(lure, 0, false)).to.equal(true)
+				end
+			end
+			expect(FoodOrder.listed(nil, 0, false)).to.equal(true)
+		end)
+
+		it("puts the foods the player has first in the bowl, rarest at the top (#2323)", function()
+			local rarest = FoodOrder.defs(Catalog.lures, true)
+			-- a new player in the tutorial: Kibble alone, so it leads instead of trailing the list
+			expect(ids(FoodOrder.ownedFirst(rarest, { kibble = 3 }))).to.equal(
+				"kibble,eclipse_treat,comet_treat,honey_cream,star_treat,moon_milk,caviar,salmon,sardines,tuna"
+			)
+			expect(ids(FoodOrder.ownedFirst(rarest, { kibble = 3, salmon = 1, tuna = 0 }))).to.equal(
+				"salmon,kibble,eclipse_treat,comet_treat,honey_cream,star_treat,moon_milk,caviar,sardines,tuna"
+			)
+			-- an empty bag keeps the rarest first order
+			expect(ids(FoodOrder.ownedFirst(rarest, {}))).to.equal(ids(rarest))
+		end)
+
+		it("picks the rarest food the player has for the bowl's Refill (#3008)", function()
+			local rarest = FoodOrder.defs(Catalog.lures, true)
+			expect(FoodOrder.best(rarest, { kibble = 3 }).id).to.equal("kibble")
+			expect(FoodOrder.best(rarest, { kibble = 3, salmon = 1, tuna = 9 }).id).to.equal(
+				"salmon"
+			)
+			expect(FoodOrder.best(rarest, { kibble = 1, star_treat = 1, moon_milk = 2 }).id).to.equal(
+				"star_treat"
+			)
+			-- a food at 0 is not in the bag, and neither is a count that is not a number
+			expect(FoodOrder.best(rarest, { star_treat = 0, tuna = 2 }).id).to.equal("tuna")
+			expect(FoodOrder.best(rarest, { star_treat = 0 / 0, caviar = -1, kibble = 1 }).id).to.equal(
+				"kibble"
+			)
+			expect(FoodOrder.best(rarest, { star_treat = "9" } :: any)).to.equal(nil)
+			-- an empty bag, or a food the catalog does not have
+			expect(FoodOrder.best(rarest, {})).to.equal(nil)
+			expect(FoodOrder.best(rarest, { mystery = 5 })).to.equal(nil)
+			expect(FoodOrder.best({}, { kibble = 1 })).to.equal(nil)
+		end)
+
+		it("leaves the catalog's own list alone", function()
+			local before = ids(Catalog.lures)
+			FoodOrder.defs(Catalog.lures)
+			expect(ids(Catalog.lures)).to.equal(before)
+		end)
+
+		it("follows the catalog's sortOrder once it has one", function()
+			local foods = {
+				{ id = "kibble", cost = 100, rarity = "Common", sortOrder = 3 },
+				{ id = "tuna", cost = 500, rarity = "Rare", sortOrder = 1 },
+				{ id = "salmon", cost = 2500, rarity = "Epic", sortOrder = 2 },
+			}
+			expect(ids(FoodOrder.defs(foods :: any))).to.equal("tuna,salmon,kibble")
+		end)
+
+		-- #5264: with foodByRarity on, rarity comes before sortOrder (Derek's bowl list mixed the Coin Cart's foods)
+		it("puts rarity before sortOrder with foodByRarity on", function()
+			local foods = {
+				{ id = "star_treat", cost = 1, rarity = "Mythical", sortOrder = 7 },
+				{ id = "honey_cream", cost = 1, rarity = "Legendary", sortOrder = 8 },
+				{ id = "comet_treat", cost = 1, rarity = "Mythical", sortOrder = 9 },
+				{ id = "eclipse_treat", cost = 1, rarity = "Secret", sortOrder = 10 },
+				{ id = "moon_milk", cost = 1, rarity = "Legendary", sortOrder = 6 },
+			}
+			expect(ids(FoodOrder.defs(foods :: any, true))).to.equal(
+				"eclipse_treat,comet_treat,honey_cream,star_treat,moon_milk"
+			)
+			FoodOrder.setByRarity(true)
+			local sorted = ids(FoodOrder.defs(foods :: any, true))
+			FoodOrder.setByRarity(false)
+			expect(sorted).to.equal("eclipse_treat,comet_treat,star_treat,honey_cream,moon_milk")
+		end)
+
+		it("orders by grade, then price, then the design's list for bare ids", function()
+			local foods = {
+				{ id = "b", cost = 900, rarity = "Rare" },
+				{ id = "a", cost = 50, rarity = "Epic" },
+				{ id = "c", cost = 10, rarity = "Rare" },
+			}
+			expect(ids(FoodOrder.defs(foods :: any))).to.equal("c,b,a")
+			local bare =
+				{ { id = "star_treat" }, { id = "sardines" }, { id = "tuna" }, { id = "kibble" } }
+			FoodOrder.sort(bare, function(entry: any): (string, any)
+				return entry.id, nil
+			end)
+			expect(ids(bare)).to.equal("kibble,tuna,sardines,star_treat")
+		end)
+	end)
+end

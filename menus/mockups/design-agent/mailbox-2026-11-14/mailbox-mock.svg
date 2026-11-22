@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080" font-family="DejaVu Sans, Arial, sans-serif" xmlns:c2pa="http://c2pa.org/manifest">
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fc6ef"/><stop offset="1" stop-color="#cfe8d0"/></linearGradient>
+<g id="env"><rect x="-26" y="-18" width="52" height="36" rx="5" fill="#fff6e8" stroke="#2a1c15" stroke-width="3"/><path d="M-26 -16 L0 4 L26 -16" fill="none" stroke="#2a1c15" stroke-width="3"/><circle cx="0" cy="4" r="6" fill="#f0524f" stroke="#2a1c15" stroke-width="2"/></g>
+<g id="tile"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#5fa8ff"/></g>
+</defs>
+<rect width="1600" height="1080" fill="#241c19"/>
+<text x="40" y="58" font-size="40" font-weight="bold" fill="#ffc94d">Mailbox (mockup, #4249)</text>
+<text x="40" y="94" font-size="21" fill="#d9c8b4">Feedback moves into the Menu list. The Mailbox takes its tile. Letters from Derek hold a gift and a Claim button.</text>
+
+<!-- Panel 1: HUD top right before / after -->
+<g transform="translate(40,124)">
+<rect width="700" height="432" rx="22" fill="#2e2522" stroke="#5e4c42" stroke-width="3"/>
+<text x="24" y="44" font-size="26" font-weight="bold" fill="#ffffff">1. Top right of the screen</text>
+<text x="24" y="92" font-size="19" fill="#d9c8b4">Now</text>
+<g transform="translate(24,108)">
+<rect width="652" height="120" rx="12" fill="url(#sky)"/>
+<g font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff" stroke="#2a1c15" stroke-width="3" paint-order="stroke">
+<g transform="translate(232,52)"><use href="#tile" fill="#ffc94d"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#ffc94d"/><text y="8" font-size="34">?</text><text y="38">Tutorial</text></g>
+<g transform="translate(322,52)"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#3fa868"/><text y="8" font-size="30">🎁</text><text y="38">Rewards</text></g>
+<g transform="translate(412,52)"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#5fa8ff"/><text y="8" font-size="30">⇄</text><text y="38">Trade</text></g>
+<g transform="translate(502,52)"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#c07cff"/><text y="8" font-size="30">💬</text><text y="38">Feedback</text></g>
+<g transform="translate(592,52)"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#8e97b2"/><text y="8" font-size="30">☰</text><text y="38">Menu</text></g>
+</g>
+</g>
+<text x="24" y="262" font-size="19" fill="#d9c8b4">With the switch on</text>
+<g transform="translate(24,278)">
+<rect width="652" height="120" rx="12" fill="url(#sky)"/>
+<g font-size="13" font-weight="bold" text-anchor="middle" fill="#ffffff" stroke="#2a1c15" stroke-width="3" paint-order="stroke">
+<g transform="translate(232,52)"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#ffc94d"/><text y="8" font-size="34">?</text><text y="38">Tutorial</text></g>
+<g transform="translate(322,52)"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#3fa868"/><text y="8" font-size="30">🎁</text><text y="38">Rewards</text></g>
+<g transform="translate(412,52)"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#5fa8ff"/><text y="8" font-size="30">⇄</text><text y="38">Trade</text></g>
+<g transform="translate(502,52)"><rect x="-44" y="-44" width="88" height="100" rx="16" fill="none" stroke="#ffc94d" stroke-width="4"/><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#f2679e"/><g transform="translate(0,-4) scale(0.8)"><use href="#env"/></g><text y="38">Mailbox</text>
+<circle cx="32" cy="-36" r="15" fill="#f0524f" stroke="#ffffff" stroke-width="3"/><text x="32" y="-30" font-size="16" stroke="none" fill="#ffffff">2</text></g>
+<g transform="translate(592,52)"><rect x="-40" y="-40" width="80" height="92" rx="14" fill="#2a1c15"/><rect x="-36" y="-40" width="72" height="84" rx="12" fill="#8e97b2"/><text y="8" font-size="30">☰</text><text y="38">Menu</text></g>
+</g>
+</g>
+<text x="24" y="420" font-size="16" fill="#d9c8b4">Same size and spot as Feedback. Red number = unclaimed letters.</text>
+</g>
+
+<!-- Panel 2: Menu list -->
+<g transform="translate(40,568)">
+<rect width="700" height="470" rx="22" fill="#2e2522" stroke="#5e4c42" stroke-width="3"/>
+<text x="24" y="44" font-size="26" font-weight="bold" fill="#ffffff">2. Feedback moves into the Menu list</text>
+<g transform="translate(400,72)">
+<rect width="260" height="232" rx="16" fill="#2e2522" stroke="#5e4c42" stroke-width="3"/>
+<g font-size="20" font-weight="bold" fill="#ffffff" stroke="#2a1c15" stroke-width="3" paint-order="stroke">
+<rect x="12" y="12" width="236" height="62" rx="12" fill="#8e97b2" stroke="none"/><text x="34" y="51">⚙  Settings</text>
+<rect x="12" y="86" width="236" height="62" rx="12" fill="#5fa8ff" stroke="none"/><text x="34" y="125">✉  Invite</text>
+<rect x="8" y="156" width="244" height="70" rx="14" fill="none" stroke="#ffc94d" stroke-width="4"/>
+<rect x="12" y="160" width="236" height="62" rx="12" fill="#c07cff" stroke="none"/><text x="34" y="199">💬  Feedback</text>
+</g>
+</g>
+<g font-size="19" fill="#fff6e8">
+<text x="24" y="104">Tap Menu, then Feedback.</text>
+<text x="24" y="136">Opens the same Feedback window</text>
+<text x="24" y="162">as today (faces, Bug, Stuck, Idea).</text>
+<text x="24" y="206">Settings keeps its Feedback row</text>
+<text x="24" y="232">at the top too.</text>
+<text x="24" y="276">The map theme bubble that sat</text>
+<text x="24" y="302">under Feedback points at Menu.</text>
+</g>
+<rect x="24" y="336" width="652" height="110" rx="14" fill="#3f332e" stroke="#5e4c42" stroke-width="2"/>
+<text x="44" y="372" font-size="20" font-weight="bold" fill="#ffc94d">Sending (Derek only)</text>
+<text x="44" y="402" font-size="17" fill="#fff6e8">Chat command or a GitHub button: to everyone or named players,</text>
+<text x="44" y="428" font-size="17" fill="#fff6e8">a note, a gift and an end date. No Robux items. Pays once each.</text>
+</g>
+
+<!-- Panel 3: Mailbox window -->
+<g transform="translate(780,124)">
+<rect width="780" height="914" rx="26" fill="#2e2522" stroke="#2a1c15" stroke-width="5"/>
+<rect x="0" y="0" width="780" height="92" rx="26" fill="#3f332e"/><rect x="0" y="60" width="780" height="32" fill="#3f332e"/>
+<circle cx="64" cy="46" r="38" fill="#f2679e" stroke="#2a1c15" stroke-width="4"/><g transform="translate(64,46) scale(0.9)"><use href="#env"/></g>
+<text x="118" y="60" font-size="38" font-weight="bold" fill="#ffffff" stroke="#2a1c15" stroke-width="4" paint-order="stroke">Mailbox</text>
+<rect x="696" y="18" width="62" height="58" rx="14" fill="#f0524f" stroke="#2a1c15" stroke-width="3"/><text x="727" y="60" font-size="34" font-weight="bold" text-anchor="middle" fill="#ffffff">×</text>
+<text x="32" y="132" font-size="20" fill="#d9c8b4">Gifts from the Catch a Cat Cafe team. 2 to claim.</text>
+
+<!-- letter 1 -->
+<g transform="translate(24,152)">
+<rect width="732" height="218" rx="18" fill="#fff6e8" stroke="#2a1c15" stroke-width="3"/>
+<g transform="translate(52,54)"><use href="#env"/></g>
+<text x="96" y="46" font-size="24" font-weight="bold" fill="#2c1642">Thanks for playing!</text>
+<text x="96" y="74" font-size="17" fill="#6a4e7e">From Derek · ends in 3 days</text>
+<text x="24" y="114" font-size="18" fill="#2c1642">Thanks for being one of our first players. Here</text>
+<text x="24" y="140" font-size="18" fill="#2c1642">is a little something for your cafe.</text>
+<rect x="24" y="158" width="210" height="46" rx="12" fill="#ffe296" stroke="#8f5a00" stroke-width="2"/>
+<text x="129" y="189" font-size="19" font-weight="bold" text-anchor="middle" fill="#8f5a00">🐟 250 Golden Fish</text>
+<rect x="540" y="150" width="172" height="58" rx="14" fill="#2b7f4c"/><rect x="540" y="146" width="172" height="56" rx="14" fill="#3fa868" stroke="#2a1c15" stroke-width="3"/>
+<text x="626" y="183" font-size="24" font-weight="bold" text-anchor="middle" fill="#ffffff" stroke="#2a1c15" stroke-width="3" paint-order="stroke">Claim</text>
+<circle cx="716" cy="16" r="12" fill="#f0524f" stroke="#ffffff" stroke-width="3"/>
+</g>
+
+<!-- letter 2: crates, with odds -->
+<g transform="translate(24,386)">
+<rect width="732" height="240" rx="18" fill="#fff6e8" stroke="#2a1c15" stroke-width="3"/>
+<g transform="translate(52,54)"><use href="#env"/></g>
+<text x="96" y="46" font-size="24" font-weight="bold" fill="#2c1642">Giveaway: 3 New Worlds</text>
+<text x="96" y="74" font-size="17" fill="#6a4e7e">From Derek · ends Mon</text>
+<text x="24" y="114" font-size="18" fill="#2c1642">Snowy Mountain, Water Park and Castle are open.</text>
+<text x="24" y="140" font-size="18" fill="#2c1642">Good luck out there!</text>
+<rect x="24" y="158" width="250" height="46" rx="12" fill="#ffe296" stroke="#8f5a00" stroke-width="2"/>
+<text x="149" y="189" font-size="19" font-weight="bold" text-anchor="middle" fill="#8f5a00">📦 3 Golden Crates</text>
+<text x="24" y="228" font-size="15" fill="#6a4e7e">Odds: Epic 70%, Legendary 24%, Mythical 6%</text>
+<rect x="540" y="160" width="172" height="58" rx="14" fill="#2b7f4c"/><rect x="540" y="156" width="172" height="56" rx="14" fill="#3fa868" stroke="#2a1c15" stroke-width="3"/>
+<text x="626" y="193" font-size="24" font-weight="bold" text-anchor="middle" fill="#ffffff" stroke="#2a1c15" stroke-width="3" paint-order="stroke">Claim</text>
+<circle cx="716" cy="16" r="12" fill="#f0524f" stroke="#ffffff" stroke-width="3"/>
+</g>
+
+<!-- letter 3: claimed -->
+<g transform="translate(24,642)" opacity="0.7">
+<rect width="732" height="150" rx="18" fill="#3f332e" stroke="#5e4c42" stroke-width="3"/>
+<g transform="translate(52,50)"><use href="#env"/></g>
+<text x="96" y="44" font-size="22" font-weight="bold" fill="#ffffff">Welcome to the cafe</text>
+<text x="96" y="72" font-size="17" fill="#d9c8b4">From Derek · Nov 12</text>
+<rect x="24" y="92" width="190" height="42" rx="12" fill="#5c4a33"/>
+<text x="119" y="120" font-size="18" font-weight="bold" text-anchor="middle" fill="#ffc94d">🪙 5,000 coins</text>
+<text x="700" y="120" font-size="22" font-weight="bold" text-anchor="end" fill="#7bda8f">✓ Claimed</text>
+</g>
+
+<text x="390" y="836" font-size="18" text-anchor="middle" fill="#d9c8b4">Claimed letters stay 7 days, then go.</text>
+<text x="390" y="864" font-size="18" text-anchor="middle" fill="#d9c8b4">Empty: "No letters yet. Gifts from Derek land here."</text>
+<text x="390" y="892" font-size="16" text-anchor="middle" fill="#a8968a">Phone: same window, full height, one letter per row, Claim under the gift.</text>
+</g>
+<metadata><c2pa:manifest>AAAWgmp1bWIAAAAeanVtZGMycGEAEQAQgAAAqgA4m3EDYzJwYQAAABZcanVtYgAAAEdqdW1kYzJtYQARABCAAACqADibcQN1cm46YzJwYTpkMDAzNThiNi0xMDU3LTRmYjctOTg1NS0xNThjZTE5ODJhMDQAAAADl2p1bWIAAAApanVtZGMyYXMAEQAQgAAAqgA4m3EDYzJwYS5hc3NlcnRpb25zAAAAALxqdW1iAAAARGp1bWRjYm9yABEAEIAAAKoAOJtxE2MycGEuaW5ncmVkaWVudC52MwAAAAAYYzJzaNq/ptVhI4pEEACF3NUmOrgAAABwY2JvcqNpZGM6Zm9ybWF0bWltYWdlL3N2Zyt4bWxqaW5zdGFuY2VJRHgseG1wOmlpZDo1NGJiYTYzYy02ZmI0LTQ0NzYtYmEyOC1jZjFkNWVhYWMzMDNscmVsYXRpb25zaGlwaHBhcmVudE9mAAAB4mp1bWIAAABBanVtZGNib3IAEQAQgAAAqgA4m3ETYzJwYS5hY3Rpb25zLnYyAAAAABhjMnNo7SL9gPTuQ6AvS7E/WcezSQAAAZljYm9yomdhY3Rpb25zgqJmYWN0aW9ua2MycGEub3BlbmVkanBhcmFtZXRlcnOha2luZ3JlZGllbnRzgaJjdXJseC1zZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmluZ3JlZGllbnQudjNkaGFzaFggZhuJubuBYkwFZdyLGiy7vAMR1XhbN1jt2GmJriu4iJqkZmFjdGlvbngdY29tLmFudGhyb3BpYy5jbGF1ZGUucHJvdmlkZWRqcGFyYW1ldGVyc6F4H2NvbS5hbnRocm9waWMub3JpZ2luLWNvbmZpZGVuY2VndW5rbm93bmtkZXNjcmlwdGlvbnhmQ2xhdWRlIHByb3ZpZGVkIHRoaXMgZmlsZSBhdCB0aGUgcmVxdWVzdCBvZiBhIHVzZXIgYW5kIG1heSBoYXZlIGNyZWF0ZWQgb3IgbW9kaWZpZWQgdGhlIGZpbGUgY29udGVudHMubXNvZnR3YXJlQWdlbnShZG5hbWVmQ2xhdWRlcmFsbEFjdGlvbnNJbmNsdWRlZPUAAADIanVtYgAAAEBqdW1kY2JvcgARABCAAACqADibcRNjMnBhLmhhc2guZGF0YQAAAAAYYzJzaHQjl5KxhovzE0WQY9MtWAYAAACAY2JvcqVjYWxnZnNoYTI1NmNwYWRMAAAAAAAAAAAAAAAAZGhhc2hYICXWB7nqrZgCqn3sFJOVNmlfkJNCxlwmU5a3FbmiY/IVZG5hbWVuanVtYmYgbWFuaWZlc3RqZXhjbHVzaW9uc4GiZXN0YXJ0GSujZmxlbmd0aBkeBAAAAj5qdW1iAAAAJ2p1bWRjMmNsABEAEIAAAKoAOJtxA2MycGEuY2xhaW0udjIAAAACD2Nib3KlY2FsZ2ZzaGEyNTZpc2lnbmF0dXJleE1zZWxmI2p1bWJmPS9jMnBhL3VybjpjMnBhOmQwMDM1OGI2LTEwNTctNGZiNy05ODU1LTE1OGNlMTk4MmEwNC9jMnBhLnNpZ25hdHVyZWppbnN0YW5jZUlEeCx4bXA6aWlkOmRlYzgyMzZmLWYxOWMtNDNkOC1iZDM3LWUxYjlmMWI5MmM3Y3JjcmVhdGVkX2Fzc2VydGlvbnODomN1cmx4LXNlbGYjanVtYmY9YzJwYS5hc3NlcnRpb25zL2MycGEuaW5ncmVkaWVudC52M2RoYXNoWCBmG4m5u4FiTAVl3IsaLLu8AxHVeFs3WO3YaYmuK7iImqJjdXJseCpzZWxmI2p1bWJmPWMycGEuYXNzZXJ0aW9ucy9jMnBhLmFjdGlvbnMudjJkaGFzaFggsgbvEivFFOFp3FL4HZhAIneugZgtfYoeik7jiGgLppKiY3VybHgpc2VsZiNqdW1iZj1jMnBhLmFzc2VydGlvbnMvYzJwYS5oYXNoLmRhdGFkaGFzaFggr8evMYVUODygHmGuvQM+2IUJ9/wPAfJXAuZKr0ErnB90Y2xhaW1fZ2VuZXJhdG9yX2luZm+jZG5hbWVvQW50aHJvcGljIEZpbGVzZ3ZlcnNpb25lMS4wLjBrc3BlY1ZlcnNpb25lMi40LjAAABA4anVtYgAAAChqdW1kYzJjcwARABCAAACqADibcQNjMnBhLnNpZ25hdHVyZQAAABAIY2JvctKEWQISogEmGCFZAgowggIGMIIBjaADAgECAhRA5aAK7sI50L64g/oGQgU9Z1UTADAKBggqhkjOPQQDAzBJMRcwFQYDVQQKEw5BbnRocm9waWMsIFBCQzEuMCwGA1UEAxMlQW50aHJvcGljIENvbnRlbnQgQ3JlZGVudGlhbHMgUm9vdCBDQTAeFw0yNjA4MDcxODQzNTZaFw0yODA4MDYxOTQzNTZaMEQxFzAVBgNVBAoTDkFudGhyb3BpYywgUEJDMSkwJwYDVQQDEyBBbnRocm9waWMgQ2xhdWRlIENvbnRlbnQgU2lnbmluZzBZMBMGByqGSM49AgEGCCqGSM49AwEHA0IABJh6CmvLUBgFFNU0vUKlOVtE6djd17L5SuwX0LemFisBM3dkd/3cyjxFA3Qo5S46fX0/ihY0VZ7mfb9KF703t5OjWDBWMA4GA1UdDwEB/wQEAwIHgDAVBgNVHSUEDjAMBgorBgEEAYPoXgIBMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUzlHiBIFOZFsj+OPEz5o+nMHXXMIwCgYIKoZIzj0EAwMDZwAwZAIwMXMdFJ4BetLLVY7ORuE9noqbbAZOZn/aArXyTwFAZfKrPzxF2vPoJNf1+UCdg1XGAjBwX1zd9WGqYkqmL5SFqw1QySjr1zJfpJM9+1rdDwSPLMOPOjKuiXjoU/pUUeG9RwmhY3BhZFkNngAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPZYQPJ/Otm6kGAk9su8zIuCuUuwcfSETKRGX0tjyPcA5wJZsm/q17fs6dnwtorkgQYH0rFrVH0QYvnh7D4eLDkmX30=</c2pa:manifest></metadata></svg>

@@ -1,0 +1,1630 @@
+--!strict
+-- Spin Wheel window (F49, data-model section 11c, areas-and-stations B3), like Pet Simulator 99's wheel: the
+-- "Spin" prompt on the plaza's wheel station opens it. On the left the wheel: a bright wedge per slice (#1500: eight,
+-- the two 0.5% jackpots narrow gold ones, as on the world wheel), each with the prize's picture and what it pays
+-- ("$1,200", "x3"), split by spokes, with the paw pointer at the top
+-- and rim lights that blink while it turns. On the right "Spins: n", the countdown to the next free spin, a big Spin
+-- button and an Odds button. Derek 2026-10-28: "odds menu should be hidden until it is clicked and also the wheel
+-- pictures should reflect whats possible", so the chances live only behind Odds.
+--
+-- Spin fires events.spinWheel. The server picks the slice and pays at once, then UI.spin.result(slice, amount)
+-- turns the wheel for SpinCooldownSeconds and stops it in the middle of that slice with a burst. It slows at a
+-- steady rate, so it is still moving briskly when it crosses into the prize's slice and never crawls past a bigger
+-- prize or stops on an edge (reviewer N127). Slice 0 means refused, and the line under the button says why. The
+-- button stays off until the wheel has landed, except as a free Skip while it turns (Derek 2026-10-30), and then
+-- until the server's cooldown has passed. Walking out of range closes the window (N132); a prize that lands
+-- while it is closed comes up as a toast. Spins are free only: nothing here mentions Robux (monetization-policy,
+-- N126). The sums live in Components/SpinLogic. F69 (round 4 Q11): the Odds button opens a list of the slices
+-- likeliest first, each with its prize picture, a bar and its chance, and the food prizes wear their grade gems.
+--
+-- The wheel turns by moving the tiles round the hub and turning each spoke about its own middle, so the prizes stay
+-- upright and readable while it spins.
+
+local CollectionService = game:GetService("CollectionService")
+local GuiService = game:GetService("GuiService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local Button = require(script.Parent.Parent.Components.Button)
+local CatPortrait = require(script.Parent.Parent.Components.CatPortrait)
+local CrateLogic = require(script.Parent.Parent.Components.CrateLogic)
+local Create = require(script.Parent.Parent.Components.Create)
+local FishCoin = require(script.Parent.Parent.Components.FishCoin)
+local Format = require(script.Parent.Parent.Components.Format)
+local ItemIcon = require(script.Parent.Parent.Components.ItemIcon)
+local LateBuild = require(script.Parent.Parent.Components.LateBuild)
+local MenuFamily = require(script.Parent.Parent.Components.MenuFamily)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local Panel = require(script.Parent.Parent.Components.Panel)
+local PrizeChips = require(script.Parent.Parent.Components.PrizeChips)
+local Scale = require(script.Parent.Parent.Scale)
+local ShopIcons = require(script.Parent.Parent.Components.ShopIcons)
+local SkipFocus = require(script.Parent.Parent.Components.SkipFocus) -- #5624
+local SkipKeys = require(script.Parent.Parent.Components.SkipKeys)
+local Sound = require(script.Parent.Parent.Components.Sound)
+local SpinLogic = require(script.Parent.Parent.Components.SpinLogic)
+local Theme = require(script.Parent.Parent.Theme)
+local TipJarLogic = require(script.Parent.Parent.Components.TipJarLogic)
+local Tween = require(script.Parent.Parent.Components.Tween)
+local Types = require(script.Parent.Parent.Types)
+
+-- the dark window palette (#1028), in place of Theme.modal
+local PAL = MenuFamily.pal
+local CARD = MenuFamily.card -- #3558: what sits on a picture card (cream in the family look)
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")) :: any
+local DragonKeep =
+	require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("DragonKeep")) :: any
+local SharedCatalog =
+	require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Catalog")) :: any
+local Spin = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Spin")) :: any
+
+export type Callbacks = {
+	spin: () -> (),
+	-- #1078 Use all: spends every saved spin in one go (SpinAll); no button without it
+	spinAll: (() -> ())?,
+	toast: (text: string) -> (), -- a prize that lands while the window is closed
+	close: () -> (),
+}
+
+export type SpinWheel = {
+	frame: Frame,
+	setCatalog: (self: SpinWheel, catalog: Types.Catalog) -> (),
+	setNight: (self: SpinWheel, night: boolean) -> (),
+	render: (self: SpinWheel, state: Types.PlayerState) -> (),
+	result: (self: SpinWheel, slice: number, amount: number) -> (),
+	allResult: (
+		self: SpinWheel,
+		rolls: { { slice: number, amount: number } },
+		totals: { SpinLogic.Total }
+	) -> (),
+	destroy: (self: SpinWheel) -> (),
+}
+
+type Tile = {
+	holder: Frame,
+	stroke: UIStroke?, -- an Odds row's edge
+	pill: Frame?, -- a wheel tile's amount pill: gold while it is the prize just won (#1816, in place of a ring)
+	icon: ItemIcon.ItemIcon,
+	row: Types.SpinRow,
+	crate: string?, -- the crate a crate slice shows now ("highest" resolved for the player's tier)
+	prize: TextLabel?, -- a row of the Odds list: its prize text, kept current with the day rate
+	amount: TextLabel?, -- a wheel tile: what it pays ("$1,200", "x3"), kept current with the day rate
+	portrait: any?, -- #5171: a cat slice's picture (CatPortrait), the dark shape until the player owns that cat
+}
+
+type Turn = {
+	from: number,
+	to: number,
+	start: number,
+	duration: number,
+	index: number,
+	amount: number,
+	skippable: boolean, -- past SpinLogic.SKIP_AFTER, so the button is a Skip
+}
+
+local WHEEL_SHARE = 0.6 -- of the window's width (#1816 v3); the side holds only the title, spins, Spin, Use all, Odds
+local FACE = 0.88 -- the turning face inside the rim
+local TILE = 0.3 -- a prize's picture and amount, of the face, at most: each tile is cut to TILE_FILL of the gap between
+-- its wedge's edges at its radius, so tiles never touch (#1280: the $ bag crowded the x3 pill and the Epic gem sat on it)
+local TILE_FILL = 0.92
+local RADIUS = 0.32 -- prize middles from the hub, of the face
+local NARROW_RADIUS = 0.39 -- #1500: a jackpot's narrow wedge holds its prize further out, where it is widest
+local SPOKE = 5 -- the white divider between two wedges
+-- The wedges (the user, 2026-11-04: "make the menu ui of the spin section much more satisfying and clean looking"): a
+-- classic prize wheel, each slice a bright wedge. Roblox UI has no pie shape, so a wedge is a fan of thin bars from
+-- the hub to the edge, WEDGE_STEP degrees apart. Each bar's long side lies on a ray and the bar reaches into its own
+-- wedge (clockwise in the first half, back in the second), so no bar crosses a divider: a bar centred on its ray
+-- would spill past it near the hub (Review-Agent, #1109). Its far side could only cross the wedge's other edge inside
+-- 2 bar widths of the middle, under the hub.
+local WEDGE_STEP = 4
+-- The look of the wheel in the Town Square (assets/cat-cafe/blender/spinwheel.py; the user, 11-04: "make it look like
+-- the wheel model that you can see in game"): a gold frame with warm bulbs, a gold hub with a pink cap, a pink pointer
+local RIM_COLOR = Color3.fromHex("FFC94D") -- rarity_legend
+local RIM_LIGHT_COLOR = Color3.fromHex("FFF4B0") -- sparkle, the lit bulbs
+local HUB_COLOR = Color3.fromHex("FFC94D")
+local LIGHT_OFF_COLOR = Color3.fromHex("D9A23A") -- a bulb between flashes, darker than the frame
+local CAP_COLOR = Color3.fromHex("FF6B81") -- neon_pink, the hub's cap and the pointer
+local RIM_LIGHTS = 16
+local SPIN_HEIGHT = 64
+-- #1816 v3: every slice's amount pill is the same size, of the face, and every pill's text the same size, set by the
+-- longest label (a FredokaOne glyph is about LABEL_EM of its size wide)
+local PILL_W = 0.25
+local PILL_H = 0.075
+local LABEL_EM = 0.56
+local LABEL_MIN = 12 -- 9 px or more after a phone's UI scale
+local LABEL_MAX = 18
+local JACKPOT_EDGE = Color3.fromHex("E0A82E") -- the jackpot wedges' thin gold edge (#1816 v3), on their spokes
+local SIDE_PAD = 12 -- inside the side card on every edge, so no button's outline or lip is clipped (#965)
+local ODDS_ROW = 64
+local ODDS_ICON = 48
+local ODDS_CHANCE = 84 -- the chance column's width
+local BACK_WIDTH = 96
+local TURNS = 5
+local SPIN_SECONDS: number = Config.SpinCooldownSeconds or 4 -- the server's cooldown is the animation's length
+local CALM_SECONDS = 1.5 -- with Reduced Motion on: a shorter spin, two turns
+local CALM_TURNS = 2
+local PENDING_SECONDS = 5 -- a pressed Spin waits this long for SpinResult before it can be pressed again
+local RANGE: number = Config.SpinStationRange or 14
+local CLOSE_SLACK = 2 -- studs past the server's range before the window closes
+local NIGHT_SHARE: number = Config.NightIncomeMultiplier or 0.6
+local COIN_GLYPH = "💰"
+local TAG = "SpinWheel"
+
+-- The model's slices in wheel order (spinwheel.py SLICES, #1500): butter, mint, lilac, sky, blush, galaxy blue, and the
+-- jackpots in gold_mid and gold_light
+local SLICE_COLORS = {
+	Color3.fromHex("F6DFA0"),
+	Color3.fromHex("8FD3C1"),
+	Color3.fromHex("C9B8E8"),
+	Color3.fromHex("A8D8F0"),
+	Color3.fromHex("E8A0A0"),
+	Color3.fromHex("3B4C8C"),
+}
+local JACKPOT_COLORS = { Color3.fromHex("F2C14E"), Color3.fromHex("FBE49A") }
+
+local SpinWheel = {}
+SpinWheel.__index = SpinWheel
+
+local function text(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.body,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = CARD.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	return Create("TextLabel", merged)
+end
+
+local function circle(props: { [string]: any }): Frame
+	local frame: Frame = Create("Frame", props)
+	Create("UICorner", { CornerRadius = UDim.new(1, 0), Parent = frame })
+	return frame
+end
+
+-- Studs from the player's character to the nearest wheel station, or nil when either is missing.
+local function stationDistance(): number?
+	local character = Players.LocalPlayer and Players.LocalPlayer.Character
+	local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+	if not root or not root:IsA("BasePart") then
+		return nil
+	end
+	local from = (root :: BasePart).Position
+	local best: number? = nil
+	for _, station in CollectionService:GetTagged(TAG) do
+		if station:IsA("Model") or station:IsA("BasePart") then
+			local distance = ((station :: PVInstance):GetPivot().Position - from).Magnitude
+			if best == nil or distance < best then
+				best = distance
+			end
+		end
+	end
+	return best
+end
+
+function SpinWheel.new(callbacks: Callbacks): SpinWheel
+	local self = setmetatable({}, SpinWheel) :: any
+	self._callbacks = callbacks
+	self._rows = {} :: { Types.SpinRow }
+	self._lureById = {} :: { [string]: Types.LureDef }
+	self._crates = {} :: { [string]: CrateLogic.Crate }
+	self._areas = {} :: { CrateLogic.Area }
+	self._tier = 1
+	self._spin = nil :: Types.SpinState?
+	self._income = 0
+	self._night = false
+	self._tiles = {} :: { Tile }
+	self._oddsTiles = {} :: { Tile }
+	self._spokes = {} :: { Frame }
+	self._angle = 0
+	self._slot = 1
+	self._turn = nil :: Turn?
+	self._landed = nil :: number?
+	-- #3157: a Use all chain playing: its rolls, the next one to turn, and the totals card's prize
+	self._chain = nil :: {
+		rolls: { { slice: number, amount: number } },
+		next: number,
+		prize: Types.IndexPrize,
+	}?
+	self._pressedAt = nil :: number? -- os.clock() of a Spin press still waiting for SpinResult
+	self._readyAt = 0 -- os.clock() when the server's cooldown has passed (a calm spin lands before it)
+
+	local panel = Panel.new({
+		dark = true, -- #1028
+		name = "SpinWheel",
+		title = "Spin Wheel", -- #1816 v3: no subtitle
+		color = Theme.colors.berry,
+		icon = Theme.icons.spin,
+		size = UDim2.fromScale(1, 1),
+		onClose = callbacks.close,
+	})
+	Create("UISizeConstraint", { MaxSize = Vector2.new(700, 470), Parent = panel.frame })
+	self._panel = panel
+	self.frame = panel.frame
+
+	-- the wheel: a caramel rim with lights, the turning face, the hub and the pointer
+	local holder: Frame = Create("Frame", {
+		Name = "Wheel",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(WHEEL_SHARE, 1),
+		Parent = panel.content,
+	})
+	local rim = circle({
+		Name = "Rim",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 8),
+		Size = UDim2.new(1, -12, 1, -24),
+		BackgroundColor3 = RIM_COLOR,
+		BorderSizePixel = 0,
+		Parent = holder,
+	})
+	Create("UIAspectRatioConstraint", { AspectRatio = 1, Parent = rim })
+	Outline.border(rim, Theme.sizes.outline, Theme.colors.outline)
+	self._lights = {} :: { Frame }
+	for index = 1, RIM_LIGHTS do
+		local theta = math.rad((index - 0.5) * 360 / RIM_LIGHTS)
+		table.insert(
+			self._lights,
+			circle({
+				Name = "Light" .. index,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(
+					0.5 + 0.475 * math.sin(theta),
+					0.5 - 0.475 * math.cos(theta)
+				),
+				Size = UDim2.fromScale(0.04, 0.04),
+				BackgroundColor3 = RIM_LIGHT_COLOR,
+				BorderSizePixel = 0,
+				Parent = rim,
+			})
+		)
+	end
+	local face = circle({
+		Name = "Face",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(FACE, FACE),
+		BackgroundColor3 = Theme.colors.white,
+		BorderSizePixel = 0,
+		Parent = rim,
+	})
+	Outline.border(face, Theme.sizes.outline, Theme.colors.outline)
+	self._face = face
+	-- #2246 (Derek2 11-07: "Add the ability to skip spins"): while it turns a tap on the wheel skips it, as Skip, Space
+	-- and Enter do, and "Tap to skip" sits on the rim's foot
+	local skipTap: TextButton = Create("TextButton", {
+		Name = "SkipTap",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 20,
+		Visible = false,
+		Parent = rim,
+	})
+	skipTap.Activated:Connect(function()
+		self:_press()
+	end)
+	self._skipTap = skipTap
+	local skipHint: TextLabel = Create("TextLabel", {
+		Name = "SkipHint",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -2), -- on the rim's foot, inside the window's edge
+		Size = UDim2.fromOffset(120, 24),
+		BackgroundColor3 = Theme.colors.outline,
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		FontFace = Theme.fonts.bodyBold,
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = Theme.colors.white,
+		Text = SpinLogic.SKIP_HINT,
+		ZIndex = 21,
+		Visible = false,
+		Parent = rim,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	self._skipHint = skipHint
+	self._skipKeys = SkipKeys.connect(function()
+		local turn: Turn? = self._turn
+		local open: boolean = self.frame.Visible
+		return open and turn ~= nil and turn.skippable
+	end, function()
+		self:_press()
+	end)
+	-- the wedges turn with the wheel: one frame holds them all and takes the wheel's angle (_setAngle)
+	self._bars = {} :: { { frame: Frame, base: number, side: number, width: number } }
+	self._spans = {} :: { number } -- each slot's degrees (SpinLogic.spans)
+	self._centres = {} :: { number } -- each slot's middle, from slot 1's
+	self._radii = {} :: { number } -- each tile's distance from the hub, of the face
+	self._wedges = Create("Frame", {
+		Name = "Wedges",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 1,
+		Parent = face,
+	})
+	local hub = circle({
+		Name = "Hub",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.19, 0.19),
+		BackgroundColor3 = HUB_COLOR,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+		Parent = face,
+	})
+	Outline.border(hub, Theme.sizes.outline, Theme.colors.outline)
+	local cap = circle({
+		Name = "Cap",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.66, 0.66),
+		BackgroundColor3 = CAP_COLOR,
+		BorderSizePixel = 0,
+		ZIndex = 3,
+		Parent = hub,
+	})
+	Outline.border(cap, 2, Theme.colors.outline)
+	text({
+		Name = "Paw",
+		Size = UDim2.fromScale(1, 1),
+		TextScaled = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Text = "🐾",
+		ZIndex = 4,
+		Parent = hub,
+	})
+	local pointer = text({
+		Name = "Pointer",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.02),
+		Size = UDim2.fromOffset(44, 44),
+		FontFace = Theme.fonts.display,
+		TextSize = 40,
+		TextColor3 = CAP_COLOR,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextTruncate = Enum.TextTruncate.None,
+		Text = "▼",
+		ZIndex = 5,
+		Parent = rim,
+	})
+	Outline.text(pointer, Theme.sizes.textOutline)
+
+	-- the side (#965, Derek: "the right side of spin menu is very plain", "buttons ... get cut off"): a card with the
+	-- spins count in a big gold badge, the free spin line as a chip, Spin, Odds and the result line. Padded on every
+	-- edge, as the scroller clips: buttons' outlines and lips once reached past its right and bottom edges.
+	local side: ScrollingFrame = Create("ScrollingFrame", {
+		Name = "Side",
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		Position = UDim2.new(WHEEL_SHARE, Theme.sizes.gap, 0, 0),
+		Size = UDim2.new(1 - WHEEL_SHARE, -Theme.sizes.gap, 1, 0),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = PAL.caramel,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		Parent = panel.content,
+	}, {
+		Create("UIListLayout", {
+			Padding = UDim.new(0, 10),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+		}),
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIStroke", { Color = CARD.cardStroke, Thickness = Theme.sizes.stroke }),
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, SIDE_PAD),
+			PaddingBottom = UDim.new(0, SIDE_PAD + Theme.sizes.buttonDepth),
+			PaddingLeft = UDim.new(0, SIDE_PAD),
+			PaddingRight = UDim.new(0, SIDE_PAD + 6),
+		}),
+	})
+	-- #3961 (Derek: "the spin the wheel is still on the old menu"): in the family look the count is a violet chip
+	-- ("3 SPINS"), Spin the big green button, Use all gold and Odds blue, all the side's width (batch 2 mock)
+	local chip: Frame = Create("Frame", {
+		Name = "SpinsChip",
+		LayoutOrder = 1,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, 36),
+		BackgroundColor3 = PAL.panel,
+		Parent = side,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+		Create("UIStroke", { Color = PAL.cardStroke, Thickness = 2 }),
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14) }),
+	})
+	self._spinsLabel = text({
+		Name = "Spins",
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromScale(0, 1),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textLarge,
+		TextColor3 = Theme.colors.white,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextTruncate = Enum.TextTruncate.None,
+		Parent = chip,
+	})
+	Outline.text(self._spinsLabel)
+	self._button = Button.new({
+		name = "Spin",
+		text = "SPIN!",
+		icon = Theme.icons.spin,
+		style = "primary",
+		size = UDim2.new(1, 0, 0, Scale.tapHeight(SPIN_HEIGHT, Theme.sizes.buttonDepth)),
+		textSize = Theme.sizes.textLarge + 2,
+		layoutOrder = 3,
+		parent = side,
+		onClick = function()
+			self:_press()
+		end,
+	})
+	-- #1816 v3: Use all (2 or more spins) and Odds are small text buttons under Spin; Spin is the only big button
+	local linkH = Scale.tapHeight(Theme.sizes.touchMin, Theme.sizes.buttonDepth)
+	local linkW = UDim.new(1, 0)
+	local linkText = Theme.sizes.textBody + 2
+	self._allPending = nil :: number? -- os.clock() of a Use all press still waiting for SpinAllResult
+	self._allButton = Button.new({
+		name = "UseAll",
+		text = "Use all",
+		style = "gold",
+		size = UDim2.new(linkW.Scale, linkW.Offset, 0, linkH),
+		textSize = linkText,
+		layoutOrder = 4,
+		parent = side,
+		onClick = function()
+			self:_pressAll()
+		end,
+	})
+	self._allButton.instance.Visible = false
+	self._oddsButton = Button.new({
+		name = "Odds",
+		text = "ODDS",
+		style = "sky",
+		size = UDim2.new(linkW.Scale, linkW.Offset, 0, linkH),
+		textSize = linkText,
+		layoutOrder = 7,
+		parent = side,
+		onClick = function()
+			self:_showOdds(true)
+		end,
+	})
+	self._message = text({
+		Name = "Message",
+		LayoutOrder = 6,
+		Size = UDim2.new(1, 0, 0, 40),
+		Visible = false,
+		FontFace = Theme.fonts.bodyBold,
+		TextSize = Theme.sizes.textBody,
+		TextWrapped = true,
+		TextTruncate = Enum.TextTruncate.None,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		Parent = side,
+	})
+
+	-- the Odds list (F69), over the whole window until Back
+	local backHeight = Scale.tapHeight(Theme.sizes.touchMin, Theme.sizes.buttonDepth)
+	local odds: Frame = Create("Frame", {
+		Name = "OddsList",
+		BackgroundColor3 = PAL.panel,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 10,
+		Visible = false,
+		Parent = panel.content,
+	})
+	self._odds = odds
+	text({
+		Name = "Title",
+		Position = UDim2.fromOffset(4, 2),
+		Size = UDim2.new(1, -(BACK_WIDTH + 16), 0, 26),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textLarge,
+		TextColor3 = PAL.text, -- on the window's body, not on a card
+		Text = "Spin odds",
+		Parent = odds,
+	})
+	self._oddsBack = Button.new({
+		name = "Back",
+		text = "Back",
+		style = "ghost",
+		size = UDim2.fromOffset(BACK_WIDTH, backHeight),
+		anchorPoint = Vector2.new(1, 0),
+		position = UDim2.new(1, -4, 0, 2),
+		textSize = Theme.sizes.textBody,
+		parent = odds,
+		onClick = function()
+			self:_showOdds(false)
+		end,
+	})
+	self._oddsList = Create("ScrollingFrame", {
+		Name = "Rows",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, backHeight + 10),
+		Size = UDim2.new(1, 0, 1, -(backHeight + 10)),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = PAL.caramel,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		Parent = odds,
+	}, {
+		Create("UIListLayout", {
+			Padding = UDim.new(0, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 2),
+			PaddingRight = UDim.new(0, 10),
+			PaddingTop = UDim.new(0, 2),
+			PaddingBottom = UDim.new(0, 6),
+		}),
+	})
+	-- closing the window puts the list away, so the wheel is what opens next time
+	self.frame:GetPropertyChangedSignal("Visible"):Connect(function()
+		if not self.frame.Visible then
+			self._odds.Visible = false
+		end
+	end)
+
+	-- every frame while turning; four times a second the range check; once a second the counts and the dot
+	local rangeClock, clock = 0, 1
+	self._tick = RunService.Heartbeat:Connect(function(dt: number)
+		if self._turn then
+			self:_step()
+		end
+		rangeClock += dt
+		if rangeClock >= 0.25 then
+			rangeClock = 0
+			self:_checkRange()
+		end
+		clock += dt
+		if clock >= 1 then
+			clock = 0
+			self:_refresh()
+		end
+	end)
+
+	return self :: SpinWheel
+end
+
+SpinWheel.BUILD_AFTER = 10 -- #3722: seconds after the catalog arrives
+
+function SpinWheel.setCatalog(self: any, catalog: Types.Catalog)
+	table.clear(self._lureById)
+	for _, lure in catalog.lures do
+		self._lureById[lure.id] = lure
+	end
+	self._catalog = catalog
+	self._crates = CrateLogic.byId(catalog.crates)
+	self._areas = (catalog.areas or {}) :: any
+	self._rows = catalog.spinWheel or {}
+	self._wheelSeen = self._rows
+	-- #3722: the wheel's tiles and odds rows are built after start-up, or at once when the window opens first
+	self._lateBuild = self._lateBuild
+		or LateBuild.new(SpinWheel.BUILD_AFTER, function()
+			self:_build()
+		end)
+	self._lateBuild:queue()
+end
+
+function SpinWheel.setNight(self: any, night: boolean)
+	self._night = night
+	self:_refresh()
+end
+
+function SpinWheel.render(self: any, state: Types.PlayerState)
+	if self.frame.Visible and self._lateBuild ~= nil then
+		self._lateBuild:ensure()
+	end
+	self._spin = state.spin
+	self:_followWheel(state.collection)
+	-- the Dragon Keep's Lucky Spin: the Odds list shows the odds the server picks with
+	local cardLuck: any = (state :: any).cardLuck
+	local spinLuck = if type(cardLuck) == "table" and type(cardLuck.spin) == "number"
+		then cardLuck.spin
+		else 0
+	if spinLuck ~= (self._spinLuck or 0) then
+		self._spinLuck = spinLuck
+		if #self._oddsTiles > 0 then
+			self:_buildOdds()
+		end
+	end
+	self._income = state.incomePerSecond
+	self._prizeRate = state.prizeRate -- #2539
+	if state.tier ~= self._tier then
+		self._tier = state.tier
+		for _, tile: Tile in self._tiles do
+			self:_paintCrate(tile)
+		end
+		for _, tile: Tile in self._oddsTiles do
+			self:_paintCrate(tile)
+		end
+	end
+	self:_refresh()
+end
+
+-- #5171 (switch spinCat, shared/SpinCat): the wheel gains or loses its cat slice when the switch flips (Spin.wheel()
+-- is a new table then), so the tiles and the Odds list are drawn again, but never mid-turn; and the cat's picture
+-- turns from its dark shape to the cat once the player owns one.
+function SpinWheel._followWheel(self: any, collection: { [string]: number }?)
+	local wheel = Spin.wheel()
+	if
+		self._catalog ~= nil
+		and wheel ~= self._wheelSeen
+		and self._turn == nil
+		and self._chain == nil
+	then
+		self._wheelSeen = wheel
+		self._rows = wheel
+		if #self._tiles > 0 then
+			self:_build()
+		end
+	end
+	self._collection = collection
+	local row = Spin.catRow
+	local owned = row ~= nil
+		and row.catId ~= nil
+		and collection ~= nil
+		and collection[row.catId] ~= nil
+	if owned ~= self._catOwned then
+		self._catOwned = owned
+		for _, tile: Tile in self._tiles do
+			self:_paintCat(tile)
+		end
+		for _, tile: Tile in self._oddsTiles do
+			self:_paintCat(tile)
+		end
+	end
+end
+
+-- A cat slice's picture: the cat's model, black with a "?" until the player owns that cat (secret cats dark shape
+-- rule), on the wheel and in the Odds list alike.
+function SpinWheel._paintCat(self: any, tile: Tile)
+	if tile.row.kind ~= "cat" then
+		return
+	end
+	local def = if tile.row.catId then SharedCatalog.getCat(tile.row.catId) else nil
+	local portrait = tile.portrait
+	if portrait == nil then
+		local frame = tile.icon.frame
+		portrait = CatPortrait.new({
+			parent = frame.Parent :: Instance,
+			size = frame.Size,
+			position = frame.Position,
+			anchorPoint = frame.AnchorPoint,
+			zIndex = frame.ZIndex + 1,
+			still = true,
+		})
+		tile.portrait = portrait
+	end
+	local shown: any = portrait
+	shown:set(def)
+	shown:setSilhouette(self._catOwned ~= true)
+end
+
+-- The crate id a crate slice pays this player now (F54: "highest" is the crate of their highest open area).
+function SpinWheel._crateOf(self: any, row: Types.SpinRow): string
+	return CrateLogic.resolve(
+		row.crate or CrateLogic.HIGHEST,
+		self._crates,
+		self._areas,
+		self._tier
+	)
+end
+
+-- A crate slice's picture, again whenever a new area changes which crate it pays.
+function SpinWheel._paintCrate(self: any, tile: Tile)
+	if tile.row.kind ~= "crate" then
+		return
+	end
+	local id = self:_crateOf(tile.row)
+	if id == tile.crate then
+		return
+	end
+	tile.crate = id
+	local crate: CrateLogic.Crate? = self._crates[id]
+	-- #1816 (Derek: the "?" box "just looks a little off"): the picture of the crate it pays, as in the Market and the
+	-- Bag; the clean crate symbol only if that crate has no picture, the crate's model if neither (#1242)
+	tile.icon:set(
+		if crate then crate.asset else nil,
+		Theme.icons.crate,
+		if CrateLogic.isGolden(id, crate) then "Legendary" else "Rare",
+		ShopIcons.crate(id) or ShopIcons.clean("Crate")
+	)
+end
+
+-- SpinResult from the server: turn to `slice` and show what `amount` paid, or say why a 0 was refused.
+-- Use all (#1078): one SpinAll; the button reads "..." until SpinAllResult or PENDING_SECONDS.
+function SpinWheel._pressAll(self: any)
+	if self._chain then
+		self:_skipAll() -- #3157: during the chain this button reads Skip all
+		return
+	end
+	local spinAll: (() -> ())? = self._callbacks.spinAll
+	if spinAll == nil or self._turn ~= nil or self._pressedAt ~= nil then
+		return
+	end
+	if self._allPending and os.clock() - self._allPending < PENDING_SECONDS then
+		return
+	end
+	self._allPending = os.clock()
+	self:_say("", CARD.text)
+	spinAll()
+	self:_refresh()
+end
+
+-- SpinAllResult(rolls, totals): the server has paid every roll already. #3157 (Derek2): the wheel plays them one after
+-- another, each landing on its slice with "Spin 3 of 8" above Spin, faster as they go (SpinLogic.chainSeconds), then
+-- one card sums every prize. Skip lands the turning roll, Skip all goes straight to the card. Empty lists mean
+-- refused (out of range, cooldown, no spins); the window says why as for one spin.
+function SpinWheel.allResult(
+	self: any,
+	rolls: { { slice: number, amount: number } },
+	totals: { SpinLogic.Total }
+)
+	self._allPending = nil
+	if #rolls == 0 then
+		self:result(0, 0)
+		return
+	end
+	self._pressedAt = nil
+	self:_light(nil)
+	self:_say("", CARD.text)
+	self._chain = {
+		rolls = rolls,
+		next = 1,
+		prize = SpinLogic.totalsPrize(totals),
+	}
+	self:_chainNext()
+end
+
+-- Starts the chain's next roll turning, or ends the chain when none is left (a slice this catalog does not know is
+-- passed over: it is paid all the same and shows in the card).
+function SpinWheel._chainNext(self: any)
+	local chain = self._chain
+	if chain == nil then
+		return
+	end
+	while chain.next <= #chain.rolls do
+		local position = chain.next
+		local roll = chain.rolls[position]
+		chain.next += 1
+		local index = SpinLogic.indexOf(self._rows, roll.slice)
+		if index ~= nil then
+			local calm = GuiService.ReducedMotionEnabled
+			self:_turnTo(
+				index,
+				roll.amount,
+				SpinLogic.chainSeconds(position, calm),
+				SpinLogic.chainTurns(position, calm)
+			)
+			return
+		end
+	end
+	self:_endChain()
+end
+
+-- The chain is done (or skipped): the totals card after a short beat, so the last prize is seen landing.
+function SpinWheel._endChain(self: any)
+	local chain = self._chain
+	if chain == nil then
+		return
+	end
+	self._chain = nil
+	self:_refresh()
+	task.delay(0.5, function()
+		if self._tick.Connected then
+			self:_showAllCard(#chain.rolls, chain.prize)
+		end
+	end)
+end
+
+-- Skip all: the wheel rests on the last roll's slice and the card shows now.
+function SpinWheel._skipAll(self: any)
+	local chain = self._chain
+	if chain == nil then
+		return
+	end
+	self._chain = nil
+	self._turn = nil
+	local last = chain.rolls[#chain.rolls]
+	local index = SpinLogic.indexOf(self._rows, last.slice)
+	if index ~= nil then
+		self:_land({
+			from = self._angle,
+			to = SpinLogic.landing(self._angle, index, self._spans, 0),
+			start = os.clock(),
+			duration = 0,
+			index = index,
+			amount = last.amount,
+			skippable = true,
+		})
+	end
+	self._chain = chain
+	self:_endChain()
+end
+
+-- The one results card over the window: "5 spins used", every prize as pictures with amounts, and Nice!.
+function SpinWheel._showAllCard(self: any, count: number, prize: Types.IndexPrize)
+	if self._allCard == nil then
+		local cover: Frame = Create("Frame", {
+			Name = "AllCard",
+			Active = true,
+			BackgroundColor3 = Theme.modal.backdrop,
+			BackgroundTransparency = 0.4,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 20,
+			Visible = false,
+			Parent = self._panel.content,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }) })
+		local card: Frame = Create("Frame", {
+			Name = "Card",
+			BackgroundColor3 = CARD.card,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0.86, 0, 0, 230),
+			ZIndex = 21,
+			Parent = cover,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }) })
+		Outline.border(card, Theme.sizes.outline, Theme.colors.gold)
+		local title = text({
+			Name = "Title",
+			Position = UDim2.fromOffset(0, 12),
+			Size = UDim2.new(1, 0, 0, 30),
+			FontFace = Theme.fonts.display,
+			TextSize = Theme.sizes.textLarge + 2,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 22,
+			Parent = card,
+		})
+		MenuFamily.outline(title, 2)
+		local holder: Frame = Create("Frame", {
+			Name = "Prizes",
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(12, 50),
+			Size = UDim2.new(1, -24, 0, 110),
+			ZIndex = 22,
+			Parent = card,
+		})
+		local chips = PrizeChips.new({
+			parent = holder,
+			tile = 52,
+			wrap = true,
+			size = UDim2.fromScale(1, 1),
+			outlined = true,
+		})
+		local nice = Button.new({
+			name = "Nice",
+			text = "Nice!",
+			style = "primary",
+			size = UDim2.fromOffset(
+				160,
+				Scale.tapHeight(Theme.sizes.touchMin, Theme.sizes.buttonDepth)
+			),
+			anchorPoint = Vector2.new(0.5, 1),
+			position = UDim2.new(0.5, 0, 1, -10),
+			zIndex = 22,
+			parent = card,
+			onClick = function()
+				cover.Visible = false
+			end,
+		})
+		self._allCard = { cover = cover, title = title, chips = chips, nice = nice }
+	end
+	local view = self._allCard
+	view.title.Text = ("%d spin%s used"):format(count, if count == 1 then "" else "s")
+	local catalog: Types.Catalog? = self._catalog
+	if catalog then
+		view.chips:setCatalog(catalog)
+	end
+	view.chips:set(prize, {
+		dayRate = TipJarLogic.prizeRate(self._prizeRate, self._income, self._night, NIGHT_SHARE),
+	})
+	view.cover.Visible = true
+	Tween.popIn(view.cover:FindFirstChild("Card") :: GuiObject, 0.9)
+end
+
+function SpinWheel.result(self: any, slice: number, amount: number)
+	self._pressedAt = nil
+	local now = Workspace:GetServerTimeNow()
+	local index = SpinLogic.indexOf(self._rows, slice)
+	if slice <= 0 or index == nil then
+		if slice > 0 then
+			self:_say("You won a prize!", CARD.good) -- a slice this catalog does not know
+		else
+			self:_say(SpinLogic.refusal(self._spin, now), CARD.warn)
+			-- the wheel's own soft tok-tok; uiError "sounds too similar to a device disconnecting" (Derek 10-28)
+			Sound.play("uiSpinBusy")
+		end
+		self:_refresh()
+		return
+	end
+	self:_say("", CARD.text)
+	local calm = GuiService.ReducedMotionEnabled
+	self:_turnTo(
+		index,
+		amount,
+		if calm then CALM_SECONDS else SPIN_SECONDS,
+		if calm then CALM_TURNS else TURNS
+	)
+	self._readyAt = self._turn.start + SPIN_SECONDS -- a full spin lands right on it, so Spin! comes back as it stops
+	self:_refresh()
+end
+
+-- Turns the wheel to slot `index` over `duration` seconds and at least `turns` full turns (one spin, or a roll of
+-- the Use all chain).
+function SpinWheel._turnTo(
+	self: any,
+	index: number,
+	amount: number,
+	duration: number,
+	turns: number
+)
+	self:_light(nil)
+	self._turn = {
+		from = self._angle,
+		to = SpinLogic.landing(self._angle, index, self._spans, turns),
+		start = os.clock(),
+		duration = duration,
+		index = index,
+		amount = amount,
+		skippable = false,
+	}
+	Sound.play("uiSpinStart")
+	self:_refresh()
+end
+
+function SpinWheel._build(self: any)
+	for _, tile in self._tiles do
+		if tile.portrait then
+			tile.portrait:destroy()
+		end
+		tile.icon:destroy()
+		tile.holder:Destroy()
+	end
+	table.clear(self._tiles)
+	for _, spoke in self._spokes do
+		spoke:Destroy()
+	end
+	table.clear(self._spokes)
+	for _, bar in self._wedges:GetChildren() do
+		bar:Destroy()
+	end
+	table.clear(self._bars)
+	local spans = SpinLogic.spans(self._rows)
+	self._spans = spans
+	table.clear(self._centres)
+	table.clear(self._radii)
+	local plain, golds = 0, 0
+	for index, row: Types.SpinRow in self._rows do
+		local size = spans[index]
+		local centre = SpinLogic.centre(spans, index)
+		self._centres[index] = centre
+		self._radii[index] = if row.jackpot == true then NARROW_RADIUS else RADIUS
+		local color: Color3
+		if row.jackpot == true then
+			golds += 1
+			color = JACKPOT_COLORS[(golds - 1) % #JACKPOT_COLORS + 1]
+		else
+			plain += 1
+			color = SLICE_COLORS[(plain - 1) % #SLICE_COLORS + 1]
+		end
+		local steps = math.max(2, math.ceil(size / WEDGE_STEP))
+		local step = size / steps
+		-- a bar's width, of the face: wide enough to reach the next ray at the rim, a little more so neighbours overlap
+		local width = 0.5 * math.sin(math.rad(step)) * 1.15
+		local from = centre - size / 2
+		local function add(base: number, side: number)
+			local bar: Frame = Create("Frame", {
+				Name = "Bar",
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Size = UDim2.fromScale(width, 0.5),
+				BackgroundColor3 = color,
+				BorderSizePixel = 0,
+				ZIndex = 1,
+				Parent = self._wedges,
+			})
+			table.insert(self._bars, { frame = bar, base = base, side = side, width = width })
+		end
+		for k = 0, math.ceil(steps / 2) - 1 do
+			add(from + k * step, 1) -- from the wedge's first edge, reaching clockwise
+		end
+		for k = 0, math.ceil(steps / 2) - 1 do
+			add(from + size - k * step, -1) -- from its last edge, reaching back
+		end
+	end
+	for _, tile in self._oddsTiles do
+		if tile.portrait then
+			tile.portrait:destroy()
+		end
+		tile.icon:destroy()
+		tile.holder:Destroy()
+	end
+	table.clear(self._oddsTiles)
+	self._landed = nil
+
+	for index, row: Types.SpinRow in self._rows do
+		table.insert(
+			self._spokes,
+			Create("Frame", {
+				Name = "Spoke" .. index,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Size = UDim2.new(0, SPOKE, 0.5, 0),
+				-- #1816 v3: a spoke beside a jackpot wedge is its thin gold edge (spoke i ends slice i)
+				BackgroundColor3 = if row.jackpot == true
+						or (self._rows[index % #self._rows + 1] :: Types.SpinRow).jackpot
+							== true
+					then JACKPOT_EDGE
+					else Theme.colors.white,
+				BorderSizePixel = 0,
+				ZIndex = 2,
+				Parent = self._face,
+			})
+		)
+		-- the prize on its wedge: one fat picture filling the wedge (Derek's 11-04 mockup), the amount in a dark pill over
+		-- its foot; the pill turns gold when won (#1816: the old gold ring read as "a random yellow circle")
+		local radius = self._radii[index]
+		local fit = math.min(TILE, 2 * radius * math.sin(math.rad(spans[index] / 2)) * TILE_FILL)
+		local holder = circle({
+			Name = "Slice" .. row.slice,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Size = UDim2.fromScale(fit, fit),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			ZIndex = 3,
+			Parent = self._face,
+		})
+		local icon = ItemIcon.new({
+			parent = holder,
+			size = UDim2.fromScale(0.9, 0.9),
+			anchorPoint = Vector2.new(0.5, 0),
+			position = UDim2.fromScale(0.5, -0.04),
+			badge = "gem",
+			plain = true,
+		})
+		-- #1816 v3: every pill the same size (of the face, not the tile), under its picture; a jackpot's narrow
+		-- wedge keeps its pill inside its own tile, so it never covers the next slice's
+		local pillW = if row.jackpot == true then math.min(PILL_W, fit) else PILL_W
+		local pill: Frame = Create("Frame", {
+			Name = "Pill",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.95),
+			Size = UDim2.fromScale(pillW / fit, PILL_H / fit),
+			BackgroundColor3 = Theme.colors.outline,
+			BackgroundTransparency = 0.1,
+			BorderSizePixel = 0,
+			ZIndex = 4,
+			Parent = holder,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		local amount = text({
+			Name = "Amount",
+			Size = UDim2.fromScale(1, 1),
+			FontFace = Theme.fonts.display,
+			TextSize = LABEL_MAX,
+			TextColor3 = Theme.colors.white,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextTruncate = Enum.TextTruncate.None,
+			ZIndex = 5,
+			Parent = pill,
+		})
+		Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 4),
+			Parent = amount,
+		})
+		local tile: Tile = {
+			holder = holder,
+			pill = pill,
+			icon = icon,
+			row = row,
+			crate = nil,
+			amount = amount,
+		}
+		self:_paint(tile)
+		table.insert(self._tiles, tile)
+	end
+	self:_buildOdds()
+	self:_setAngle(self._angle)
+	self:_refresh()
+end
+
+-- A tile's picture: coins, golden fish, the crate it pays now, or the food with its grade gem (F69), each the
+-- uploaded picture of F97 section 4.
+function SpinWheel._paint(self: any, tile: Tile)
+	local row = tile.row
+	local icon: ItemIcon.ItemIcon = tile.icon
+	if row.kind == "fish" then
+		icon:set(nil, "", "Legendary")
+		FishCoin.fill(icon.frame, 0.66, 2)
+	elseif row.kind == "crate" then
+		self:_paintCrate(tile)
+	elseif row.kind == "cat" then
+		icon:set(nil, "", "Secret")
+		self:_paintCat(tile)
+	elseif row.kind == "lure" then
+		-- the food's clean picture from the one food lookup (ShopIcons.food, #1242), as in the bowl and the Market
+		icon:setFood(if row.lureId then self._lureById[row.lureId] else nil, row.lureId)
+	else
+		-- the clean money bag (#966, Derek: "The money bag ... too hard to understand what it is or too small")
+		icon:set(nil, COIN_GLYPH, "Legendary", ShopIcons.clean("Bag"))
+	end
+end
+
+-- The Odds list, from the slices with the Dragon Keep's spin luck in them (Spin.rows, as the server picks), and a
+-- line under it while Lucky Spin is slotted. Drawn again when the luck changes (render).
+function SpinWheel._buildOdds(self: any)
+	for _, tile: Tile in self._oddsTiles do
+		if tile.portrait then
+			tile.portrait:destroy()
+		end
+		tile.icon:destroy()
+		tile.holder:Destroy()
+	end
+	table.clear(self._oddsTiles)
+	local old = self._oddsList:FindFirstChild("CardLuckNote")
+	if old then
+		old:Destroy()
+	end
+	self._oddsRows = Spin.rows(self._spinLuck) :: any
+	for order, row: Types.SpinRow in SpinLogic.byChance(self._oddsRows) do
+		self:_oddsRow(row, order)
+	end
+	local note = DragonKeep.cardLuckNote("spin", self._spinLuck)
+	if note ~= "" then
+		text({
+			Name = "CardLuckNote",
+			LayoutOrder = 999,
+			Size = UDim2.new(1, 0, 0, 20),
+			TextSize = Theme.sizes.textTiny,
+			TextWrapped = true,
+			Text = string.sub(note, 5), -- without the leading " · "
+			Parent = self._oddsList,
+		})
+	end
+end
+
+-- One row of the Odds list: the prize picture, its name, a bar as long as its chance and the chance.
+function SpinWheel._oddsRow(self: any, row: Types.SpinRow, order: number)
+	local line: Frame = Create("Frame", {
+		Name = "Slice" .. row.slice,
+		LayoutOrder = order,
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, ODDS_ROW),
+		Parent = self._oddsList,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+	})
+	local jackpot = row.jackpot == true
+	if jackpot then
+		line.BackgroundColor3 = CARD.goldCard -- #1500: the two jackpots in gold, so the rare chase stands out
+	end
+	local stroke = Outline.border(
+		line,
+		Theme.sizes.stroke,
+		if jackpot then Theme.colors.gold else CARD.cardStroke
+	)
+	local icon = ItemIcon.new({
+		parent = line,
+		size = UDim2.fromOffset(ODDS_ICON, ODDS_ICON),
+		anchorPoint = Vector2.new(0, 0.5),
+		position = UDim2.new(0, 8, 0.5, 0),
+		badge = "gem",
+	})
+	local left = ODDS_ICON + 18
+	local prize = text({
+		Name = "Prize",
+		Position = UDim2.fromOffset(left, 10),
+		Size = UDim2.new(1, -(left + ODDS_CHANCE), 0, 22),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textBody + 1,
+		Parent = line,
+	})
+	local track: Frame = Create("Frame", {
+		Name = "Bar",
+		BackgroundColor3 = CARD.line,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(left, 38),
+		Size = UDim2.new(1, -(left + ODDS_CHANCE), 0, 12),
+		Parent = line,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+	})
+	local rows = self._oddsRows or self._rows
+	local share = math.clamp(SpinLogic.share(rows, row) / 100, 0, 1)
+	Create("Frame", {
+		Name = "Fill",
+		BackgroundColor3 = if jackpot then Theme.colors.gold else Theme.colors.berry,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(share, 1),
+		Parent = track,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+	})
+	local chance = text({
+		Name = "Chance",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.fromOffset(ODDS_CHANCE - 16, 30),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textLarge + 2,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Text = SpinLogic.chance(rows, row),
+		Parent = line,
+	})
+	MenuFamily.outline(chance, 1)
+	local tile: Tile =
+		{ holder = line, stroke = stroke, icon = icon, row = row, crate = nil, prize = prize }
+	self:_paint(tile)
+	table.insert(self._oddsTiles, tile)
+end
+
+function SpinWheel._showOdds(self: any, on: boolean)
+	self._odds.Visible = on
+	if on then
+		self:_refresh()
+	end
+end
+
+-- Puts the wheel at `angle` degrees clockwise: each tile round the hub, each spoke between two tiles.
+function SpinWheel._setAngle(self: any, angle: number)
+	self._angle = angle
+	local count = #self._tiles
+	if count == 0 then
+		return
+	end
+	-- a bar turns about its middle: halfway out along its ray, then half its width off the ray into its wedge
+	for _, bar in self._bars do
+		local offset = bar.width / 2
+		local turn = bar.base + angle
+		local theta = math.rad(turn)
+		local sin, cos = math.sin(theta), math.cos(theta)
+		bar.frame.Position = UDim2.fromScale(
+			0.5 + 0.25 * sin + bar.side * offset * cos,
+			0.5 - 0.25 * cos + bar.side * offset * sin
+		)
+		bar.frame.Rotation = turn
+	end
+	for index, tile: Tile in self._tiles do
+		local theta = math.rad((self._centres[index] or 0) + angle)
+		local radius = self._radii[index] or RADIUS
+		tile.holder.Position =
+			UDim2.fromScale(0.5 + radius * math.sin(theta), 0.5 - radius * math.cos(theta))
+	end
+	for index, spoke: Frame in self._spokes do
+		local edge = (self._centres[index] or 0) + (self._spans[index] or 0) / 2 + angle
+		local theta = math.rad(edge)
+		spoke.Position = UDim2.fromScale(0.5 + 0.25 * math.sin(theta), 0.5 - 0.25 * math.cos(theta))
+		spoke.Rotation = edge
+	end
+end
+
+-- One frame of a spin: ease toward the landing angle, tick and blink as each slice passes the pointer.
+function SpinWheel._step(self: any)
+	local turn: Turn = self._turn
+	local elapsed = os.clock() - turn.start
+	if not turn.skippable and elapsed >= SpinLogic.SKIP_AFTER then
+		turn.skippable = true
+		self:_refresh()
+	end
+	local t = math.clamp(elapsed / turn.duration, 0, 1)
+	-- Quad Out slows at a steady rate: no long crawl over the last slice edge (N127)
+	local eased = TweenService:GetValue(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	self:_setAngle(turn.from + (turn.to - turn.from) * eased)
+	local slot = SpinLogic.slotAt(self._angle, self._spans)
+	if slot ~= self._slot then
+		self._slot = slot
+		Sound.play("uiSpinTick")
+		self:_blink(slot)
+	end
+	if t >= 1 then
+		self._turn = nil
+		self:_land(turn)
+	end
+end
+
+function SpinWheel._blink(self: any, phase: number?)
+	for index, light: Frame in self._lights do
+		local on = phase == nil or (index + phase) % 2 == 0
+		light.BackgroundColor3 = if on then RIM_LIGHT_COLOR else LIGHT_OFF_COLOR
+	end
+end
+
+-- The wheel has stopped in the middle of the paid slice: pop it, burst, say the prize.
+function SpinWheel._land(self: any, turn: Turn)
+	self:_setAngle(turn.to % 360)
+	self._slot = SpinLogic.slotAt(self._angle, self._spans)
+	self:_blink(nil)
+	self:_light(turn.index)
+	local row: Types.SpinRow? = self._rows[turn.index]
+	local jackpot = row ~= nil and row.jackpot == true
+	-- #1816 v3: the landed slice's pill turns gold (_light); no "You won" line, only a refusal ever shows
+	local tile: Tile? = self._tiles[turn.index]
+	if tile and self.frame.Visible then
+		Tween.popIn(tile.holder, 1.35)
+		local burst = circle({
+			Name = "Burst",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = tile.holder.Position,
+			Size = tile.holder.Size,
+			BackgroundColor3 = Theme.colors.gold,
+			BackgroundTransparency = 0.2,
+			BorderSizePixel = 0,
+			ZIndex = 1,
+			Parent = self._face,
+		})
+		-- a jackpot's burst fills the whole wheel (#1500: "the wheel's biggest win effect")
+		local reach = if jackpot then 1.1 else tile.holder.Size.X.Scale * 2.2
+		Tween.to(burst, Tween.RISE, {
+			Size = UDim2.fromScale(reach, reach),
+			BackgroundTransparency = 1,
+		}).Completed
+			:Once(function()
+				burst:Destroy()
+			end)
+	end
+	Sound.play("uiSpinWin")
+	-- a jackpot's toast comes from the server (SpinService, #1500), so the closed window does not add a second
+	local chain = self._chain
+	if not self.frame.Visible and not jackpot and chain == nil then
+		local won = if row
+			then "You won " .. self:_prize(row, turn.amount) .. "!"
+			else "You won a prize!"
+		self._callbacks.toast("Spin Wheel: " .. won)
+	end
+	-- #3157: the Use all chain turns its next roll after a beat; with the window closed it ends at once (one card,
+	-- no toast per roll)
+	if chain then
+		if not self.frame.Visible then
+			self:_endChain()
+		else
+			local position = chain.next
+			task.delay(SpinLogic.chainGap(position), function()
+				if self._chain == chain and chain.next == position and self._turn == nil then
+					self:_chainNext()
+				end
+			end)
+		end
+	end
+	self:_refresh()
+	-- landed early (a Skip or a calm spin): Spin! comes back the moment the cooldown ends, not up to a second later
+	local readyIn = self._readyAt - os.clock()
+	if readyIn > 0 then
+		task.delay(readyIn + 0.02, function()
+			if self._tick.Connected and not self._turn then
+				self:_refresh()
+			end
+		end)
+	end
+end
+
+-- Turns the landed tile's amount pill gold until the next spin; nil clears it.
+function SpinWheel._light(self: any, index: number?)
+	self._landed = index
+	for each, tile: Tile in self._tiles do
+		local lit = each == index
+		local pill: Frame? = tile.pill
+		if pill then
+			pill.BackgroundColor3 = if lit then Theme.colors.gold else Theme.colors.outline
+			pill.BackgroundTransparency = if lit then 0 else 0.1
+		end
+		local amount: TextLabel? = tile.amount
+		if amount then
+			amount.TextColor3 = if lit then Theme.colors.goldText else Theme.colors.white
+		end
+	end
+end
+
+function SpinWheel._say(self: any, message: string, color: Color3)
+	self._message.Text = message
+	self._message.TextColor3 = color
+	self._message.Visible = message ~= "" -- #1816 v3: only a refusal shows, so no empty gap above Odds
+end
+
+-- "3 Tuna", "$1,200", "4 golden fish", "1 Woods Crate"; `amount` is what SpinResult paid, else the estimate at the
+-- current day rate.
+function SpinWheel._prize(self: any, row: Types.SpinRow, amount: number?): string
+	if row.kind == "coins" then
+		local dayRate =
+			TipJarLogic.prizeRate(self._prizeRate, self._income, self._night, NIGHT_SHARE)
+		local coins = if amount and amount > 0 then amount else SpinLogic.coins(row, dayRate)
+		return Format.money(coins)
+	end
+	local count = if amount and amount > 0 then amount else row.count or 1
+	if row.kind == "cat" then
+		local def = if self._catOwned and row.catId then SharedCatalog.getCat(row.catId) else nil
+		return if def then def.name else "Secret Cat"
+	elseif row.kind == "fish" then
+		return ("%s golden fish"):format(Format.short(count))
+	elseif row.kind == "crate" then
+		local id = self:_crateOf(row)
+		return ("%d %s"):format(count, CrateLogic.name(id, self._crates[id]))
+	end
+	local lure: Types.LureDef? = if row.lureId then self._lureById[row.lureId] else nil
+	return ("%d %s"):format(count, if lure then lure.name else (row.lureId or "food"))
+end
+
+-- A wheel tile's short line (#1816 v3): "+1.2K" (the coins at the current day rate), "5 fish", "1 Crate", "1 Caviar".
+function SpinWheel._amount(self: any, row: Types.SpinRow): string
+	if row.kind == "coins" then
+		local dayRate =
+			TipJarLogic.prizeRate(self._prizeRate, self._income, self._night, NIGHT_SHARE)
+		return "+" .. Format.short(SpinLogic.coins(row, dayRate))
+	end
+	local count = row.count or 1
+	if row.kind == "cat" then
+		return if self._catOwned then "x1" else "?"
+	elseif row.jackpot == true then
+		-- a jackpot's narrow wedge has a narrower pill: "x100" (its picture and gold edge say the rest)
+		return "x" .. Format.short(count)
+	elseif row.kind == "fish" then
+		return ("%s fish"):format(Format.short(count))
+	elseif row.kind == "crate" then
+		return if count == 1 then "1 Crate" else ("%s Crates"):format(Format.short(count))
+	end
+	local lure: Types.LureDef? = if row.lureId then self._lureById[row.lureId] else nil
+	local name = if lure then lure.name else nil
+	-- a long food name would shrink every pill's text; it reads "x2" then (the Odds list has the full name)
+	if name and #name <= 7 then
+		return ("%s %s"):format(Format.short(count), name)
+	end
+	return "x" .. Format.short(count)
+end
+
+function SpinWheel._press(self: any)
+	local turn: Turn? = self._turn
+	if turn then
+		-- Skip: stop on the prize now (it is already paid); the next spin still waits out the cooldown
+		if turn.skippable then
+			self._turn = nil
+			self:_land(turn)
+		end
+		return
+	end
+	if self._pressedAt or self._chain or os.clock() < self._readyAt then
+		return
+	end
+	self._pressedAt = os.clock()
+	self:_say("", CARD.text)
+	self._callbacks.spin()
+	self:_refresh()
+end
+
+-- N132: walking away from the wheel closes the window, so a press out of range cannot happen.
+function SpinWheel._checkRange(self: any)
+	if not self.frame.Visible then
+		return
+	end
+	local distance = stationDistance()
+	if distance and distance > RANGE + CLOSE_SLACK then
+		self._callbacks.close()
+	end
+end
+
+function SpinWheel._refresh(self: any)
+	local now = Workspace:GetServerTimeNow()
+	local spin: Types.SpinState? = self._spin
+	if self._pressedAt and os.clock() - self._pressedAt >= PENDING_SECONDS then
+		self._pressedAt = nil
+		self:_say("The wheel did not answer. Try again!", CARD.warn)
+	end
+	if not self.frame.Visible then
+		return
+	end
+	-- #1816 v3: one text size for every pill, the largest every label fits, in the window's own units (AbsoluteSize
+	-- already carries the UI scale, and TextSize gets it again)
+	local unit = math.max(Scale.get(), 0.1)
+	local labelSize: number = LABEL_MAX
+	for _, tile: Tile in self._tiles do
+		local pill: Frame? = tile.pill
+		local amount: TextLabel? = tile.amount
+		if amount then
+			amount.Text = self:_amount(tile.row)
+			if pill and pill.AbsoluteSize.X > 0 then
+				local chars = utf8.len(amount.Text) or #amount.Text
+				local width = pill.AbsoluteSize.X / unit - 8
+				labelSize = math.min(
+					labelSize,
+					width / (LABEL_EM * chars),
+					pill.AbsoluteSize.Y / unit * 0.8
+				)
+			end
+		end
+	end
+	labelSize = math.floor(math.clamp(labelSize, LABEL_MIN, LABEL_MAX))
+	for _, tile: Tile in self._tiles do
+		local amount: TextLabel? = tile.amount
+		if amount then
+			amount.TextSize = labelSize
+		end
+	end
+	if self._odds.Visible then
+		for _, tile: Tile in self._oddsTiles do
+			local prize: TextLabel? = tile.prize
+			if prize then
+				local name = self:_prize(tile.row, nil)
+				prize.Text = if tile.row.jackpot == true then "Jackpot: " .. name else name
+			end
+		end
+	end
+
+	local spins = SpinLogic.spins(spin, now)
+	local chain = self._chain
+	self._spinsLabel.Text = if chain
+		then SpinLogic.chainText(math.max(1, chain.next - 1), #chain.rolls)
+		else (if spins == 1 then "1 SPIN" else ("%d SPINS"):format(spins))
+
+	local turn: Turn? = self._turn
+	self._skipTap.Visible = turn ~= nil
+	self._skipHint.Visible = turn ~= nil and turn.skippable
+	if self._skipHint.Visible then
+		self._skipHint.Text = SkipFocus.hint(UserInputService:GetLastInputType().Name) -- #2871
+	end
+	local button = SpinLogic.button({
+		turning = turn ~= nil or chain ~= nil, -- #3157: between two rolls of the chain too
+		skippable = turn ~= nil and turn.skippable,
+		waiting = self._pressedAt ~= nil,
+		readyIn = math.max(0, self._readyAt - os.clock()),
+		spins = spins,
+		rows = #self._rows,
+	})
+	self._button:setText(string.upper(button.text))
+	self._button:setStyle(if button.skip then "secondary" else "primary")
+	self._button:setEnabled(button.enabled)
+	-- Use all (#1078): two or more spins, not while a spin turns or waits
+	local allPending = self._allPending ~= nil and os.clock() - self._allPending < PENDING_SECONDS
+	local all: Button.Button = self._allButton
+	if chain then
+		-- #3157: while the chain plays, this button jumps to the totals card
+		all.instance.Visible = true
+		all:setText("Skip all")
+		all:setEnabled(true)
+		return
+	end
+	local showAll = self._callbacks.spinAll ~= nil and spins > 1
+	all.instance.Visible = showAll
+	local allText = SpinLogic.allText(spins, (Config :: any).SpinAllMax)
+	all:setText(if allPending then "..." else string.upper(allText))
+	all:setEnabled(not allPending and turn == nil and self._pressedAt == nil)
+end
+
+function SpinWheel.destroy(self: any)
+	self._chain = nil
+	self._tick:Disconnect()
+	self._skipKeys:Disconnect()
+	for _, tile in self._tiles do
+		tile.icon:destroy()
+	end
+	table.clear(self._tiles)
+	for _, tile in self._oddsTiles do
+		tile.icon:destroy()
+	end
+	table.clear(self._oddsTiles)
+	self._button:destroy()
+	self._allButton:destroy()
+	self._oddsButton:destroy()
+	self._oddsBack:destroy()
+	local card = self._allCard
+	if card then
+		card.chips:destroy()
+		card.nice:destroy()
+	end
+	self._panel:destroy()
+end
+
+return SpinWheel

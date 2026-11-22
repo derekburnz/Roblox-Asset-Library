@@ -1,0 +1,1161 @@
+--!strict
+-- Pure audio rules for the Audio module: which voice to reuse, spam gaps, pitch, which music bed or ambience bed
+-- plays, ducking and channel volumes. Pure: no Roblox services, so tests can require it.
+-- The rules come from docs/audio/cat-cafe/sound-list.md sections 2 to 5.
+
+local Logic = {}
+
+-- Major pentatonic as PlaybackSpeed (sound list 5.1): circle 1 to 5 plays one step higher each, so a run of
+-- Perfects plays a little tune from one sample. Steps past 5 go up an octave (a 6-hit rescue).
+Logic.SCALE = { 1, 1.125, 1.25, 1.5, 5 / 3 }
+
+export type VoiceState = { playing: boolean, startedAt: number }
+
+-- Index of the voice to use: the first idle one, a new one (#voices + 1) while under `max`, else the oldest.
+function Logic.pickVoice(voices: { VoiceState }, max: number): number
+	for index, voice in voices do
+		if not voice.playing then
+			return index
+		end
+	end
+	if #voices < math.max(1, max) then
+		return #voices + 1
+	end
+	local oldest = 1
+	for index, voice in voices do
+		if voice.startedAt < voices[oldest].startedAt then
+			oldest = index
+		end
+	end
+	return oldest
+end
+
+-- False while the cue played less than `minGap` seconds ago (drops coin spam and double presses).
+-- #3918: the pooled voices to let go (by index, highest first so they can be removed in order): idle (not
+-- playing) and last started more than `idle` seconds ago. A Sound kept for every cue ever heard holds its audio for
+-- the whole session, which showed as a creep with a step at each new area.
+function Logic.idleVoices(voices: { VoiceState }, now: number, idle: number): { number }
+	local drop: { number } = {}
+	for index = #voices, 1, -1 do
+		local voice = voices[index]
+		if not voice.playing and now - voice.startedAt > idle then
+			table.insert(drop, index)
+		end
+	end
+	return drop
+end
+
+function Logic.canPlay(lastPlayed: number?, now: number, minGap: number): boolean
+	return lastPlayed == nil or now - lastPlayed >= minGap
+end
+
+-- PlaybackSpeed for one step of the scale; nil or below 1 is the root.
+function Logic.scaleStep(step: number?): number
+	if step == nil or step < 1 then
+		return 1
+	end
+	local index = math.floor(step) - 1
+	local octave = index // #Logic.SCALE
+	return Logic.SCALE[index % #Logic.SCALE + 1] * 2 ^ octave
+end
+
+-- PlaybackSpeed for one play: the scale step times a random pick inside the cue's pitch range.
+-- `roll` is a number in [0, 1), passed in so tests stay deterministic.
+function Logic.speed(pitch: { number }?, step: number?, roll: number): number
+	local base = Logic.scaleStep(step)
+	if pitch == nil or #pitch < 2 then
+		return base
+	end
+	return base * (pitch[1] + (pitch[2] - pitch[1]) * roll)
+end
+
+-- One asset id out of a cue's variants; nil when the cue has none yet (silent, never an error).
+function Logic.pickId(ids: { string }, roll: number): string?
+	if #ids == 0 then
+		return nil
+	end
+	return ids[math.clamp(math.floor(roll * #ids) + 1, 1, #ids)]
+end
+
+-- Seconds already played of the current phase, from its length and the shared server clock.
+function Logic.secondsInto(phaseLength: number, endsAt: number?, now: number): number
+	if endsAt == nil then
+		return 0
+	end
+	return math.clamp(phaseLength - (endsAt - now), 0, phaseLength)
+end
+
+-- Music without loops (sound list section 3, 2026-11-03). The songs a phase can play: its music cues with a file
+-- (musicDayA, musicDayB, ... or musicNightA, ...), in letter order, so a new song joins by getting its file.
+local SONG_LETTERS = { "A", "B", "C", "D", "E", "F", "G", "H" }
+
+function Logic.songsFor(phase: string?, has: (string) -> boolean): { string }
+	local base = if phase == "night" then "musicNight" else "musicDay"
+	local songs: { string } = {}
+	for _, letter in SONG_LETTERS do
+		if has(base .. letter) then
+			table.insert(songs, base .. letter)
+		end
+	end
+	return songs
+end
+
+-- #4251: the zone the area song follows. Harvest Hollow has no World.Zones box, so while Effects/HarvestFx says you
+-- are in it the song's zone is "Harvest" (musicAreaHarvest), whatever zone the world gives.
+Logic.HARVEST_ZONE = "Harvest"
+function Logic.songZone(zone: string?, inHarvest: boolean): string?
+	return if inHarvest then Logic.HARVEST_ZONE else zone
+end
+
+-- #2651: the song of the area a zone names ("Desert" plays musicAreaDesert), or nil when the zone has none (the cafe
+-- and the town areas) or its file is not uploaded yet. Played in place of the cafe music while you are in it.
+function Logic.areaSongFor(zone: string?, has: (string) -> boolean): string?
+	if zone == nil or zone == "" then
+		return nil
+	end
+	local name = "musicArea"
+		.. string.upper(string.sub(zone, 1, 1))
+		.. string.lower(string.sub(zone, 2))
+	return if has(name) then name else nil
+end
+
+-- #2927: the sound for a LateStationResult(stationId, ok, detail). `wasIn` is the uid the last LateStationsState
+-- showed in detail.slot, so a put (the slot was empty) splashes and a take out (the same cat leaves) stays quiet.
+-- A collect chimes, a donation rings the gallery bell, and one that finished a room (detail.room) plays the Index
+-- milestone fanfare instead. A refusal or a slot bought plays nothing (the toast and the shop have their own).
+function Logic.lateStationCue(
+	stationId: string?,
+	ok: boolean?,
+	detail: any,
+	wasIn: string?
+): string?
+	if ok ~= true or type(detail) ~= "table" then
+		return nil
+	end
+	if stationId == "spa" then
+		if type(detail.relaxed) == "table" then
+			return if #detail.relaxed > 0 then "spaChime" else nil
+		end
+		if detail.bought == true or type(detail.uid) ~= "string" then
+			return nil
+		end
+		return if wasIn == detail.uid then nil else "spaSplash"
+	elseif stationId == "museum" then
+		if type(detail.room) == "string" and detail.room ~= "" then
+			return "indexReward"
+		end
+		return if type(detail.catId) == "string" then "museumBell" else nil
+	end
+	return nil
+end
+
+-- The uid a LateStationsState shows soaking in spa slot `slot`, or nil.
+function Logic.spaUidAt(state: any, slot: any): string?
+	if
+		type(state) ~= "table"
+		or type(state.spa) ~= "table"
+		or type(state.spa.soaking) ~= "table"
+	then
+		return nil
+	end
+	for _, view in state.spa.soaking do
+		if type(view) == "table" and view.slot == slot and type(view.uid) == "string" then
+			return view.uid
+		end
+	end
+	return nil
+end
+
+-- The next song, picked by `roll` (0 to 1): never the one that just played while there is another; nil for none.
+function Logic.nextSong(songs: { string }, last: string?, roll: number): string?
+	local choices: { string } = {}
+	for _, song in songs do
+		if song ~= last then
+			table.insert(choices, song)
+		end
+	end
+	if #choices == 0 then
+		choices = songs
+	end
+	if #choices == 0 then
+		return nil
+	end
+	return choices[math.clamp(math.floor(roll * #choices) + 1, 1, #choices)]
+end
+
+-- Where a play starts and how long it lasts, in seconds. A song of `seconds` is `sections` equal parts; a play is
+-- `play` parts from the one `roll` picks (a seamless loop wraps round its end), or from the top when `fromTop`. A
+-- song with no length given plays `fallback` seconds from the top.
+function Logic.songPlay(
+	seconds: number?,
+	sections: number?,
+	play: number,
+	roll: number,
+	fromTop: boolean,
+	fallback: number
+): (number, number)
+	if type(seconds) ~= "number" or seconds <= 0 then
+		return 0, fallback
+	end
+	local parts = if type(sections) == "number" and sections >= 1 then math.floor(sections) else 1
+	local part = seconds / parts
+	local first = if fromTop then 0 else math.clamp(math.floor(roll * parts), 0, parts - 1)
+	return first * part, math.clamp(play, 1, parts) * part
+end
+
+-- The ambience bed for a zone and phase: amb<Zone><Day|Night>, else amb<Zone>, else nil (silence).
+function Logic.ambienceFor(zone: string?, phase: string?, has: (string) -> boolean): string?
+	if zone == nil or zone == "" then
+		return nil
+	end
+	local name = "amb" .. string.upper(string.sub(zone, 1, 1)) .. string.sub(zone, 2)
+	local timed = name .. (if phase == "night" then "Night" else "Day")
+	if has(timed) then
+		return timed
+	end
+	return if has(name) then name else nil
+end
+
+-- The music level while ducks are active: the lowest one wins, 1 when there are none.
+function Logic.duckLevel(ducks: { [any]: number }): number
+	local level = 1
+	for _, value in ducks do
+		level = math.min(level, value)
+	end
+	return level
+end
+
+-- A channel's volume: its start volume times the player's slider gain (1 when there is none), or 0 when the
+-- player's switch turns it off.
+function Logic.groupVolume(base: number, enabled: boolean, gain: number?): number
+	return if enabled then base * (gain or 1) else 0
+end
+
+-- A settings volume slider (0 to 1) as a channel gain. Squared, because loudness follows decibels rather than
+-- amplitude: half way is about -12 dB, which sounds roughly half as loud, where a straight line would barely change
+-- until the bottom. Missing or not a number (an old save) is full volume; out of range is clamped.
+function Logic.sliderGain(value: any): number
+	if type(value) ~= "number" or value ~= value then
+		return 1
+	end
+	local clamped = math.clamp(value, 0, 1)
+	return clamped * clamped
+end
+
+-- The catch jingle for a rarity (sound list section 3); Common has none. A Secret (#3470, the tier above Mythical)
+-- has its own: the Mythical fanfare played lower and slower (Cues jingleSecret).
+local JINGLES: { [string]: string } = {
+	rare = "jingleRare",
+	epic = "jingleEpic",
+	legendary = "jingleLegendary",
+	mythical = "jingleMythical",
+	secret = "jingleSecret",
+}
+
+function Logic.jingleFor(rarity: string?): string?
+	if rarity == nil then
+		return nil
+	end
+	return JINGLES[string.lower(rarity)]
+end
+
+-- A rarity's place in the order, 1 for Common up to 5 for Mythical, so a shout-out chime rises with rarity.
+local RARITY_STEPS: { [string]: number } =
+	{ common = 1, rare = 2, epic = 3, legendary = 4, mythical = 5, secret = 5 }
+
+function Logic.rarityStep(rarity: string?): number?
+	if rarity == nil then
+		return nil
+	end
+	return RARITY_STEPS[string.lower(rarity)]
+end
+
+-- The indexes of the `max` nearest distances within `radius`, nearest first (which world loops to keep playing).
+function Logic.nearest(distances: { number }, radius: number, max: number): { number }
+	local inside = {}
+	for index, distance in distances do
+		if distance <= radius then
+			table.insert(inside, index)
+		end
+	end
+	table.sort(inside, function(a, b)
+		return distances[a] < distances[b]
+	end)
+	local out = {}
+	for i = 1, math.min(max, #inside) do
+		out[i] = inside[i]
+	end
+	return out
+end
+
+-- The grade cue for a circle; the code says "perfect", the sound list says "Perfect", both work.
+local GRADES: { [string]: string } = {
+	perfect = "circlePerfect",
+	good = "circleGood",
+	miss = "circleMiss",
+}
+
+function Logic.gradeCue(grade: string?): string?
+	if grade == nil then
+		return nil
+	end
+	return GRADES[string.lower(grade)]
+end
+
+-- The food cue for a bait id: kibble -> foodKibble, star_treat -> foodStarTreat; foodDealer for a food whose cue does
+-- not exist or has no file yet.
+function Logic.foodCue(lureId: string?, exists: (string) -> boolean): string
+	if lureId ~= nil and lureId ~= "" then
+		local camel = string.gsub(lureId, "_(%a)", string.upper)
+		local name = "food" .. string.upper(string.sub(camel, 1, 1)) .. string.sub(camel, 2)
+		if exists(name) then
+			return name
+		end
+	end
+	return "foodDealer"
+end
+
+-- The hit cue for a rescue trap (data-model TrapType); nil for a trap with no sound of its own yet.
+local TRAPS: { [string]: string } = {
+	trash_bin = "rescueHitBin",
+	garbage_bag = "rescueHitBag",
+	tree = "rescueHitTree",
+	trashcan = "rescueHitCan",
+}
+
+function Logic.trapCue(trapType: string?): string?
+	if trapType == nil then
+		return nil
+	end
+	return TRAPS[trapType]
+end
+
+-- The holdFill file lands on its pop this many seconds in; HoldDuration 0.5 plays it at 0.96 so the pop meets the
+-- trigger. Very short or long holds are clamped so the pitch stays friendly.
+Logic.HOLD_FILL_SECONDS = 0.48
+
+-- PlaybackSpeed for the hold sound of a prompt held for `holdDuration` seconds; nil when the prompt has no hold.
+function Logic.holdSpeed(holdDuration: number): number?
+	if holdDuration ~= holdDuration or holdDuration <= 0 then
+		return nil
+	end
+	return math.clamp(Logic.HOLD_FILL_SECONDS / holdDuration, 0.5, 2)
+end
+
+-- Whether a resting cafe cat purrs (reviewer N131, N150): on the sitting body (Pose "sit", PR #266) all day, on the
+-- lying body only while Effects shows it loafing; never at night, when resting cats doze.
+function Logic.restingPurrs(pose: any, night: boolean, loafing: boolean): boolean
+	if night then
+		return false
+	end
+	return pose == "sit" or loafing
+end
+
+-- #4470 (Derek 2026-11-15: "remove the ding sound from a mythic spawn bubble pop up its so annoying because of how
+-- the pop ups queue now"): a spawn shout-out ("A Mythical cat appeared in the Park!", "... is somewhere in the ...!",
+-- the queue's merged "2 Mythical cats are out in the ...!") plays no sting. The words match UI/Components/SpawnQueue's,
+-- copied here because Audio does not require the UI. Catch shout-outs ("Sam secured a Mythical ...") keep theirs.
+local SPAWN_WORDS = {
+	" appeared in the ",
+	" is somewhere in the ",
+	" is out in the ",
+	" are out in the ",
+	" are somewhere in the ",
+}
+function Logic.isSpawnLine(text: any): boolean
+	if type(text) ~= "string" then
+		return false
+	end
+	for _, words in SPAWN_WORDS do
+		if string.find(text, words, 1, true) ~= nil then
+			return true
+		end
+	end
+	return false
+end
+
+-- The shout-out cue for a rarity (F58): a Mythical gets its own sting, everything else the two-note chime.
+function Logic.announceCue(rarity: string?): string
+	local step = Logic.rarityStep(rarity)
+	return if step ~= nil and step >= 5 then "announceMythical" else "announce"
+end
+
+-- Whether a server time attribute (a carry's CarryStartedAt, a tackle's TackleAt) is fresh: set within the last
+-- `window` seconds (2 unless given), not a stale value seen on join. Anything but a number is not.
+function Logic.freshStart(startedAt: any, now: number, window: number?): boolean
+	return type(startedAt) == "number" and startedAt <= now + 1 and now - startedAt <= (window or 2)
+end
+
+-- The cue for a change to one of your plot's display attributes (data-model section 13): the Cat Collector arriving
+-- (F63) and the Mystery Visitor's gift appearing (F64). The gift clearing stays quiet, since the server also clears
+-- it at MysteryGiftKeepSeconds or a plot release; the UI plays giftOpen with the MysteryGiftResult card. TipPiles is
+-- silent since F97 (#714): a pile pays as it appears (CoinPop) and the count only drops when old piles are swept.
+-- A missing or odd value counts as 0; nil for anything else.
+function Logic.plotCue(attribute: string, before: any, after: any): string?
+	local was = if type(before) == "number" then before else 0
+	local is = if type(after) == "number" then after else 0
+	if attribute == "CollectorUntil" then
+		return if was <= 0 and is > 0 then "visitorCollector" else nil
+	elseif attribute == "MysteryGiftAt" then
+		return if was <= 0 and is > 0 then "visitorMystery" else nil
+	end
+	return nil
+end
+
+-- F84: whether a spot (world X and Z) is out in a wild area. The four wild areas sit wildDistance from the
+-- hometown's centre on the compass points and the hometown is well inside half that, so half is the line. False
+-- while Config.World has no WildAreaDistance, so the town sounds as before until the cannon lands.
+function Logic.inWild(x: number, z: number, wildDistance: any): boolean
+	if type(wildDistance) ~= "number" or wildDistance <= 0 then
+		return false
+	end
+	return math.sqrt(x * x + z * z) > wildDistance / 2
+end
+
+-- F84: the sound for a trip that worked (Travel). Home from a wild area is a cloud hop, known by where you are
+-- before the move or by your fresh CloudHopAt after it; the Cannon button moves you at once to a cannon nearby, even
+-- out in a wild area, so it poofs like any other trip (QA-Planner, A15).
+function Logic.travelCue(destination: any, inWild: boolean, hopping: boolean): string
+	if hopping or (inWild and destination ~= "cannon") then
+		return "cloudHop"
+	end
+	return "travelPoof"
+end
+
+-- Whether a stray twinkles as a player comes near (rareNear, a Secret its own secretNear): Mythical and up only.
+-- Derek 2026-10-28: the sound around rare cats was annoying, so Epic, Legendary and gold strays are quiet now.
+function Logic.shimmers(rarity: any): boolean
+	local step = if type(rarity) == "string" then Logic.rarityStep(rarity) else nil
+	return step ~= nil and step >= 5
+end
+
+-- The rare stray twinkle plays once as a player comes within `near` studs, and again only after they have been
+-- further than `far` (so walking around the cat does not repeat it). Returns whether to play now and whether the
+-- cat now counts as noticed.
+function Logic.rareNotice(
+	noticed: boolean,
+	distance: number,
+	near: number,
+	far: number
+): (boolean, boolean)
+	if noticed then
+		return false, distance <= far
+	end
+	return distance <= near, distance <= near
+end
+
+-- #2997: whether a Toast line is the weekly update gift's ("Update gift! 🐟 15 + 1 spin", PlaytimeGiftService), the
+-- one gift that has no client event of its own, so Audio hears it on the Toast remote.
+function Logic.isUpdateGiftToast(text: any): boolean
+	return type(text) == "string" and string.sub(text, 1, 12) == "Update gift!"
+end
+
+-- #2871 (console): whether moving the gamepad's selection from `before` to `after` ticks. Only a move from one button
+-- to another does: the first selection after none (a window opening and putting the selection on its first button, or
+-- the selection clearing) stays quiet, since the window's own open sound already played.
+function Logic.focusTick(before: any, after: any): boolean
+	return before ~= nil and after ~= nil and before ~= after
+end
+
+-- #3050: the Rummage Bin's prize pops out (Moments.RummageWin(row id, first)). The bar already rang its win chime
+-- (RescueDone), so this is the prize itself and reuses existing cues: a golden prize its reveal, a crate the reward
+-- jingle, and every other prize (tuna, fish, salmon, potion) a small gift ding. Unknown ids ding too.
+function Logic.rummageCue(rowId: any): string
+	if rowId == "golden" or rowId == "bigmoney" then -- #3608: the Big Money Potion is a top prize too
+		return "goldReveal"
+	elseif rowId == "crate" or rowId == "first_crate" then -- #3460: the fixed second prize holds a crate too
+		return "indexReward"
+	end
+	return "giftClaim"
+end
+
+-- #3690: a bounce on the Neighborhood's trampoline (Effects/Trampoline.onBounce): the net's springy bounce, until
+-- the trampoline has a boing of its own.
+Logic.TRAMPOLINE_CUE = "netBounce"
+
+-- #3608: the Rummage Bin's prize roll (Effects/BinRoll.onBeat). A soft tick as each row lights and the reel's
+-- stop as it lands, both existing cues. The win keeps its own cue by row (Logic.rummageCue on Moments.RummageWin),
+-- so the "win" beat plays nothing here and no win is heard twice. Nil for any other beat.
+function Logic.binRollCue(beat: any): string?
+	if beat == "tick" then
+		return "uiReelTick"
+	elseif beat == "land" then
+		return "uiReelStop"
+	end
+	return nil
+end
+
+-- #3651: petting a cat (Effects/PetCat.onBeat). "pet", as the hand reaches the cat: the soft heart chime (our own
+-- `mouseHeart`) and a short purr at the cat (the `purr` loop, held for `purrSeconds`). "heart", the moved heart
+-- landing, is silent since "pet" follows it at once. Returns the one-shot cue, the loop cue and the seconds the
+-- loop is held; nil and 0 for other beats.
+Logic.PET_PURR_SECONDS = 1.6
+function Logic.petCatCue(beat: any): (string?, string?, number)
+	if beat == "pet" then
+		return "mouseHeart", "purr", Logic.PET_PURR_SECONDS
+	end
+	return nil, nil, 0
+end
+
+-- #3389: the Mystic Pool's roll (Effects/MysticPool.onBeat). The cat's splash, one bubbling note per colour step
+-- (pitched a scale note higher each step, so it climbs with the rarity and stops there), the Mythic's own shimmer
+-- and the reveal chime. Returns the cue and the scale step to play it at; nil for an unknown beat.
+function Logic.poolCue(beat: any, step: any): (string?, number?)
+	if beat == "drop" then
+		return "poolDrop", nil
+	elseif beat == "step" then
+		return "poolStep", if type(step) == "number" then math.clamp(math.floor(step), 1, 5) else 1
+	elseif beat == "mythic" then
+		return "poolMythic", nil
+	elseif beat == "reveal" then
+		return "poolReveal", nil
+	end
+	return nil, nil
+end
+
+-- #4069: the new areas' own sounds, off the effects' beats. `beat` "step" is your step in an area (snow crunches in
+-- the Snowy Mountain), "arrive" a cat's gust where it lands (the Blizzard Cat's), "catch" a catch there: the
+-- Blizzard Cat's gust again and the White Tiger Cat's frost chime. Nil for everything else, which keeps the sounds
+-- every catch already has.
+-- #4251: Harvest Hollow's steps crunch dry leaves (leafStep: the snow crunch pitched up, crisper and lighter)
+local AREA_STEPS: { [string]: string } = { snowy = "snowStep", harvest = "leafStep" }
+-- #4070: the Water Cat lands and is caught with a splash (the Camp pond's, until the Water Park has its own sheet)
+-- #4071: the Dragon Knight lands and is caught with a little dragon's roar (the Dragon Keep hatchling's)
+-- #4070: the Coaster Cat rushes in on a whoosh of air and is caught with a splash, like the end of a water ride
+-- #4071: the Queen Cat is caught with a royal bell (the Cat Museum's)
+-- #4251: Harvest Hollow's cats. The Maple Leaf Cat lands and is caught in a crunch of dry leaves (leafStep), the
+-- Harvest Moon Cat with a soft chime (the Oasis Spa's); the Cranberry Cat is caught with the patch's pick pop
+-- (harvestPick), the Apple Pie Cat with the cafe's order ding and the Pumpkin Spice Cat with its pour
+local CAT_ARRIVES: { [string]: string } = {
+	blizzard = "snowGust",
+	water = "campSplash",
+	dragon_knight = "dragonChirp",
+	coaster = "cannonClouds",
+	maple_leaf = "leafStep",
+	harvest_moon = "spaChime",
+}
+local CAT_CATCHES: { [string]: string } = {
+	blizzard = "snowGust",
+	white_tiger = "frostChime",
+	water = "campSplash",
+	dragon_knight = "dragonChirp",
+	coaster = "campSplash",
+	queen = "museumBell",
+	cranberry = "harvestPick",
+	maple_leaf = "leafStep",
+	harvest_moon = "spaChime",
+	apple_pie = "orderDing",
+	pumpkin_spice = "orderPour",
+}
+-- #4069 to #4071: a new area's gate adds its own sound on top of the barrier dissolving: a snow gust on the
+-- Snowy Mountain, a splash at the Water Park, the Castle's portcullis rumbling
+local GATE_EXTRA: { [string]: string } =
+	{ snowy = "snowGust", waterpark = "campSplash", castle = "dragonRumble" }
+function Logic.gateCues(areaId: any): { string }
+	local extra = if type(areaId) == "string" then GATE_EXTRA[areaId] else nil
+	return if extra then { "gateOpen", extra } else { "gateOpen" }
+end
+-- #4197: what an admin event drops lands (Effects/AdminDrops.onLand)
+Logic.ADMIN_DROP_CUES = { fish = "adminFishLand", crate = "adminCrateLand" } :: { [string]: string }
+Logic.HARVEST_PICK_CUE = "harvestPick" -- #4251: a Harvest Hollow patch pumpkin is picked (Effects/HarvestFx)
+Logic.HARVEST_PIN_CUE = "harvestPin" -- #4251: a note pinned on the Thankful Board (Effects/HarvestFx)
+Logic.STORM_LAND_CUE = "stormLand" -- #4197: a Cat Storm's stray lands (Effects/StormFall)
+function Logic.areaCue(beat: any, area: any, catId: any): string?
+	if beat == "step" then
+		return if type(area) == "string" then AREA_STEPS[area] else nil
+	elseif beat == "arrive" then
+		return if type(catId) == "string" then CAT_ARRIVES[catId] else nil
+	elseif beat == "catch" then
+		return if type(catId) == "string" then CAT_CATCHES[catId] else nil
+	end
+	return nil
+end
+
+-- #4104: the Cat Fusion Observatory's window (Effects/FusionFx.onBeat), flat: the chime as the five tiles leave, and
+-- on Collect the "ta-da", the longer one for a rainbow. The tiles meeting has no sound of its own: the chime's last
+-- note lands there.
+function Logic.fusionCue(beat: any, coat: any): string?
+	if beat == "start" then
+		return "fusionStart"
+	elseif beat == "collect" then
+		return if coat == "rainbow" then "fusionCollectRainbow" else "fusionCollect"
+	end
+	return nil
+end
+
+-- #3846: a Legendary or Mythic trait roll's cutscene (Effects/BigTraitCut.onBeat): the fanfare lands with the big
+-- moment, the Mythical jingle for a Mythic, else the Legendary one. Flat, like the reveal.
+function Logic.bigTraitCue(beat: any, rarity: any): string?
+	if beat ~= "fanfare" then
+		return nil
+	end
+	-- #3908: a Secret trait gets the Mythical sting too, the biggest the game has
+	return if rarity == "mythic" or rarity == "secret" then "jingleMythical" else "jingleLegendary"
+end
+
+-- Derek 2026-11-13: the Rift Run's beats (Effects/RiftRun.onBeat), flat. A gate is the pool's step chime one note up
+-- the scale each tier (`step` 1 Common up to 5 Legendary), the Mythic gate the pool's Mythic flash and the Secret
+-- one the Secret jingle; the white over the pool a poof, the landing a soft drop, a meteor the cannon's landing
+-- thump, the dark the Secret shimmer, the rift tearing open the gate's opening and the leap the cannon's launch.
+-- The fanfare is BigTraitCut's, after.
+function Logic.riftRunCue(beat: any, step: any, tier: any): (string?, number?)
+	if beat == "gate" then
+		if tier == "secret" then
+			return "jingleSecret", nil
+		elseif tier == "mythic" then
+			return "poolMythic", nil
+		end
+		return "poolStep", if type(step) == "number" then math.clamp(math.floor(step), 1, 5) else 1
+	end
+	local cues: { [string]: string } = {
+		flare = "travelPoof",
+		land = "catDrop",
+		meteor = "cannonLand",
+		dark = "secretNear",
+		tear = "gateOpen",
+		leap = "cannonLaunch",
+	}
+	return if type(beat) == "string" then cues[beat] else nil, nil
+end
+
+-- #4062: the Dragon Keep's stage-up cutscene (Effects/DragonRise.onBeat) and the card deal (Effects/CardFlip.onBeat)
+-- on the Keep sheet's own sounds: the swing a whoosh, the curl the dragon's rumble, the crack its shell, the lap a
+-- wing beat and its landing a thump, and the roar by stage: a chirp for the Hatchling and the Whelp (1 and 2), the
+-- proud roar for the Drake and the Elder (3 and 4), the grand one with its bell call for Crowned (5). The second
+-- value is a cue to play `Logic.DRAGON_FANFARE_AFTER` seconds later: the rank-up jingle under stages 1 to 4 (the
+-- grand roar carries its own). A card's flip is its paper flick; a rare face its chime, a Legendary or Mythic face
+-- its rarity's jingle.
+Logic.DRAGON_FANFARE_AFTER = 0.7
+function Logic.dragonRiseCue(beat: any, stage: any): (string?, string?)
+	if beat == "roar" then
+		local n = if type(stage) == "number" then stage else 1
+		if n >= 5 then
+			return "dragonRoarGrand", nil
+		end
+		return if n >= 3 then "dragonRoar" else "dragonChirp", "jingleRankUp"
+	end
+	local cues: { [string]: string } = {
+		swing = "travelPoof",
+		curl = "dragonRumble",
+		crack = "dragonCrack",
+		lap = "dragonWing",
+		land = "cannonLand",
+	}
+	return if type(beat) == "string" then cues[beat] else nil, nil
+end
+
+function Logic.cardFlipCue(beat: any, rarity: any): string?
+	if beat == "flip" then
+		return "cardFlip"
+	elseif beat == "rare" then
+		local name = if type(rarity) == "string" then string.lower(rarity) else ""
+		if name == "mythic" or name == "mythical" or name == "secret" then
+			return "jingleMythical"
+		elseif name == "legendary" then
+			return "jingleLegendary"
+		end
+		return "cardRare"
+	end
+	return nil
+end
+
+-- #3430: the Mystic Pool's first walk-up cutscene (Effects/MysticIntroCut.onBeat) plays the pool's own chimes,
+-- calm: each colour step the step chime one note up the scale, and the silhouette's rise the soft reveal. Never the
+-- Mythic sting, since nothing was won.
+function Logic.poolIntroCue(beat: any, step: any): (string?, number?)
+	if beat == "step" then
+		return "poolStep", if type(step) == "number" then math.clamp(math.floor(step), 1, 5) else 1
+	elseif beat == "rise" then
+		return "poolReveal", nil
+	end
+	return nil, nil
+end
+
+-- #3296 Mouse Dash (the second Cat Arcade game). `kind` is what is in a hole: "mouse", "golden" or "kitten".
+-- What pops up: the mouse its pop, the golden mouse its chime, the napping kitten a soft purr.
+function Logic.mousePopCue(kind: any): string
+	if kind == "golden" then
+		return "mouseGoldUp"
+	elseif kind == "kitten" then
+		return "mousePurr"
+	end
+	return "mousePop"
+end
+
+-- #3296: a catch. The golden mouse has its own richer cue. A plain catch's squeak climbs one scale note per catch
+-- inside each group of `every` (5) of the streak and starts again, so it never runs off the scale in a long run.
+function Logic.mouseCatchCue(kind: any, streak: any, every: number?): (string, number?)
+	if kind == "golden" then
+		return "mouseGoldCatch", nil
+	end
+	local group = every or 5
+	if type(streak) ~= "number" or streak ~= streak or streak < 1 then
+		return "mouseCatch", 1
+	end
+	return "mouseCatch", (math.floor(streak) - 1) % group + 1
+end
+
+-- #3296: a heart lost. "escape" (the mouse ducked back in) the slide and puff, "kitten" (the napper tapped awake)
+-- its "mrow?", "empty" (a tap on an empty hole) the soft thud. Nil for anything else.
+function Logic.mouseMissCue(kind: any): string?
+	if kind == "escape" then
+		return "mouseDuck"
+	elseif kind == "kitten" then
+		return "mouseMrow"
+	elseif kind == "empty" then
+		return "mouseThud"
+	end
+	return nil
+end
+
+-- #3296: a run's end. `reason` is "hearts" (out of hearts), "time" (the run clock ran out, #3553), "win" (the top
+-- score) or "quit". A win or a new best plays the fanfare (a run closed on a new best too, since the window throws
+-- its confetti then), any other run that ran out of hearts or time with points the arcade's "nice try"; any other
+-- quit is silent.
+function Logic.mouseEndCue(points: any, reason: any, newBest: any): string?
+	if reason == "win" or newBest == true then
+		return "mouseBest"
+	elseif (reason == "hearts" or reason == "time") and type(points) == "number" and points > 0 then
+		return "arcadeEnd"
+	end
+	return nil
+end
+
+-- Toast lines that earn their own jingle, since the server sends them as a toast only: the update gift (#2997) the
+-- reward jingle, and a Golden find (#3222, LawnService.giveDrop: "Golden find! ...") the gold reveal. Nil for any other.
+function Logic.toastJingle(text: any): string?
+	if Logic.isUpdateGiftToast(text) then
+		return "indexReward"
+	elseif type(text) == "string" and string.sub(text, 1, 13) == "Golden find! " then
+		return "goldReveal"
+	end
+	return nil
+end
+
+-- #3419: the sound as an update party banner (Effects/EventBanner) drops in: the station fanfare for the party's
+-- start, the soft gift chime for the gift on its way and the update gift's jingle for the gift paid. All three are
+-- cues the game already has. Nil for anything else.
+function Logic.bannerCue(kind: any): string?
+	if kind == "party" then
+		return "stationReveal"
+	elseif kind == "giftSoon" then
+		return "uiGiftReady"
+	elseif kind == "gift" then
+		return "indexReward"
+	elseif kind == "secrets" or kind == "secretSpawn" then
+		return "secretNear" -- #3523: the Secret stray's low twinkle
+	elseif kind == "adminSoon" then
+		return "uiGiftReady" -- #4195: an admin event is two minutes away
+	elseif kind == "admin" then
+		return "stationReveal" -- #4195: it starts, as the party card does
+	end
+	return nil
+end
+
+-- #3022: whether the stray waiting for your second catch (its WaitsFor is your user id) calls out now. It calls once as
+-- you come within `near` studs, then every `gap` seconds while you stay that near, at most `most` times in all, so
+-- it helps a lost new player without nagging. `lastAt` is when it last called (nil for never), `calls` how often.
+function Logic.strayCallDue(
+	lastAt: number?,
+	calls: number,
+	now: number,
+	distance: number,
+	near: number,
+	gap: number,
+	most: number
+): boolean
+	if calls >= most or distance > near then
+		return false
+	end
+	return lastAt == nil or now - lastAt >= gap
+end
+
+-- F99: a rainbow stray (its Variant "rainbow") twinkles with its own rainbowNear, a Secret (#3470) with the deep
+-- secretNear, a Mythical with rareNear, and every other stray stays quiet.
+function Logic.strayNoticeCue(rarity: any, variant: any): string?
+	if variant == "rainbow" then
+		return "rainbowNear"
+	end
+	if not Logic.shimmers(rarity) then
+		return nil
+	end
+	return if string.lower(rarity) == "secret" then "secretNear" else "rareNear"
+end
+
+-- F89 and F99: the sting on your own big pull (SecuredRare). A rainbow cat always gets its own; otherwise the
+-- rarity's from Epic up (a gold Epic is the only Epic with a big pull). nil below Epic.
+function Logic.pullSting(rarity: any, variant: any): string?
+	if variant == "rainbow" then
+		return "jingleRainbow"
+	end
+	local step = if type(rarity) == "string" then Logic.rarityStep(rarity) else nil
+	if step == nil or step < 3 then
+		return nil
+	end
+	return Logic.jingleFor(rarity)
+end
+
+local STING_RANK: { [string]: number } =
+	-- a rainbow's own sting stays on top: a rainbow cat of any rarity plays it (Logic.pullSting)
+	{
+		jingleRare = 1,
+		jingleEpic = 2,
+		jingleLegendary = 3,
+		jingleMythical = 4,
+		jingleSecret = 5,
+		jingleRainbow = 6,
+	}
+
+-- Two stings within `quiet` seconds (a tame's BaitTame and its SecuredRare land together): the same one or a
+-- smaller one is skipped, a bigger one replaces the first (a rainbow's own sting over the rarity's).
+function Logic.stingAction(
+	lastCue: string?,
+	lastAt: number?,
+	cue: string,
+	now: number,
+	quiet: number
+): "play" | "skip" | "replace"
+	if lastCue == nil or lastAt == nil or now - lastAt >= quiet then
+		return "play"
+	end
+	return if (STING_RANK[cue] or 0) > (STING_RANK[lastCue] or 0) then "replace" else "skip"
+end
+
+-- F100: a camp extra collected (CampExtraCollect's extraId). The Yard Sale is a purchase, so it has none.
+local CAMP_EXTRA_CUES: { [string]: string } =
+	{ picnic = "campBasket", pond = "campSplash", lostFound = "campRattle" }
+
+function Logic.campExtraCue(extraId: any): string?
+	return if type(extraId) == "string" then CAMP_EXTRA_CUES[extraId] else nil
+end
+
+-- F90 cats make the orders: the sound of a Barista starting on an order by station (only the espresso machine pours;
+-- the oven and the counter work quietly under their puffs), and the scale step of the "ding!" when it is ready, so
+-- the oven's is the lowest, a drink's a note up and the counter's two.
+local ORDER_MAKE_CUES: { [string]: string } = { espresso = "orderPour" }
+local ORDER_DING_STEPS: { [string]: number } = { oven = 1, espresso = 2, counter = 3 }
+
+function Logic.orderMakeCue(station: any): string?
+	return if type(station) == "string" then ORDER_MAKE_CUES[station] else nil
+end
+
+-- F84 cannon beats (#954, #955): when the flyer reaches the clouds and when the feet touch the pad, in seconds from
+-- CannonLaunchAt. Config's CannonCloudsAt and CannonTouchdownAt when they are positive numbers; else the old clouds
+-- time and the touchdown as the flight ends (CannonLaunchSeconds, else `flightFallback`). The touchdown never comes
+-- before the clouds.
+function Logic.cannonBeats(
+	cloudsAt: any,
+	touchdownAt: any,
+	flight: any,
+	cloudsFallback: number,
+	flightFallback: number
+): (number, number)
+	local function positive(value: any): number?
+		return if type(value) == "number" and value == value and value > 0 then value else nil
+	end
+	local clouds = positive(cloudsAt) or cloudsFallback
+	local touchdown = positive(touchdownAt) or positive(flight) or flightFallback
+	return clouds, math.max(touchdown, clouds)
+end
+
+-- Whether a plot is this player's own cafe, from its OwnerUserId attribute: only your own cafe's orders ding (#981).
+-- A For Rent plot (0 or no owner) and anything but a number are nobody's.
+function Logic.ownPlot(ownerUserId: any, yourUserId: number): boolean
+	return type(ownerUserId) == "number" and ownerUserId ~= 0 and ownerUserId == yourUserId
+end
+
+function Logic.orderDingStep(station: any): number?
+	return if type(station) == "string" then ORDER_DING_STEPS[station] else nil
+end
+
+-- F102: the trade countdown's tocks, one each whole second left (5, 4, 3, 2, 1 for a full TradeCountdownSeconds),
+-- as delays from `now` in order; a state that arrives part way through gets only the seconds still ahead. At most
+-- `maxTicks`, none once `endsAt` has passed or for a bad time.
+function Logic.countdownTicks(now: number, endsAt: any, maxTicks: number): { number }
+	local delays: { number } = {}
+	if type(endsAt) ~= "number" or endsAt ~= endsAt or endsAt <= now then
+		return delays
+	end
+	local count = math.min(math.ceil(endsAt - now - 1e-6), maxTicks)
+	for left = count, 1, -1 do
+		table.insert(delays, math.max(0, endsAt - left - now))
+	end
+	return delays
+end
+
+-- F101: the points a new RallyState's bar counts its steps from, so a step reached plays the cheer once: the last
+-- state's points on the same lap, 0 on a newer lap, nil for the first state seen (joining mid-Rally is quiet) or
+-- while no Rally runs.
+function Logic.rallyFrom(before: { lap: number, points: number }?, lap: any, active: any): number?
+	if before == nil or active ~= true or type(lap) ~= "number" then
+		return nil
+	end
+	if lap == before.lap then
+		return before.points
+	end
+	return if lap > before.lap then 0 else nil
+end
+
+-- #4061 the Ticket Booth between two ProfileSyncs: `before` and `after` are the syncs' `ticketBooth` views (nil
+-- while the switch is off or the tier is not reached). True when a prize was bought: tickets spent went up. Earning
+-- tickets is silent, since they come with every catch and the catch has its own sounds.
+function Logic.ticketPrizeBought(before: any, after: any): boolean
+	if type(before) ~= "table" or type(after) ~= "table" then
+		return false
+	end
+	local was, now = before.spent, after.spent
+	return type(was) == "number" and type(now) == "number" and now > was
+end
+
+-- #4062 the Dragon Keep between two ProfileSyncs: `before` and `after` are the syncs' `dragon` views (nil while the
+-- switch is off). True when a Rekindle hand has just come up: the hand showing is a "rekindle" one and was not
+-- before. A stage hand is the cutscene's (Effects/DragonRise), with its own sounds.
+function Logic.keepRekindled(before: any, after: any): boolean
+	if type(before) ~= "table" or type(after) ~= "table" then
+		return false
+	end
+	return after.handKind == "rekindle" and before.handKind ~= "rekindle"
+end
+
+-- The bait bowl (F28) between two ProfileSyncs: `before` and `after` are the syncs' `bait` (nil for an empty bowl)
+-- and `catsBefore` and `catsAfter` how many cats each showed. "placed" when food went in, "arrive" when its cat came
+-- (the sync names the cat only once it is at the bowl), "letgo" when a bowl with a cat emptied and no cat joined.
+-- A tame adds its cat in the same sync and sounds with its check-in (CatCaught), so it is nil, like no change.
+function Logic.baitChange(before: any, after: any, catsBefore: number, catsAfter: number): string?
+	if type(after) == "table" then
+		if type(before) ~= "table" or before.placedAt ~= after.placedAt then
+			return "placed"
+		end
+		if before.cat == nil and type(after.cat) == "table" then
+			return "arrive"
+		end
+		return nil
+	end
+	if type(before) == "table" and before.cat ~= nil and catsAfter <= catsBefore then
+		return "letgo"
+	end
+	return nil
+end
+
+-- The arrival sound for a bait cat's coat: a gold one plays the gold reveal (F42), a rainbow one the rainbow shimmer
+-- (F99) and any other the arrival mrrp.
+function Logic.baitArriveCue(variant: any): string
+	if variant == "gold" then
+		return "goldReveal"
+	elseif variant == "rainbow" then
+		return "rainbowNear"
+	end
+	return "baitArrive"
+end
+
+-- #1191: the shop-only cats (CatId) whose shift start chimes; a cat chimes once its model carries the CatId.
+local SHOP_CATS = { duchess_marzipan = true, king_croissant = true, sprinkles = true }
+
+function Logic.isShopCat(catId: any): boolean
+	return type(catId) == "string" and SHOP_CATS[catId] == true
+end
+
+-- A cat model is working when it has a Role and is not in bed (the rule Effects/ShopCats uses for the sparkle).
+function Logic.working(role: any, bedtime: any): boolean
+	return role ~= nil and bedtime ~= true
+end
+
+-- A shift starts only on a seen change from off duty to working: nil before (a model just built or streamed in)
+-- plays nothing.
+function Logic.shiftStarted(before: boolean?, now: boolean): boolean
+	return before == false and now
+end
+
+-- #1168 row 2: the Jukebox Pass song the player picked plays in place of the rotation, once its cue has a file.
+-- nil means the normal day and night rotation.
+function Logic.jukeboxSong(cueId: string?, has: (string) -> boolean): string?
+	if cueId ~= nil and has(cueId) then
+		return cueId
+	end
+	return nil
+end
+
+-- #2077 Jukebox Shuffle: the cues of the list that have a file, each once, in the list's order. Empty for nil or a
+-- list with nothing playable, which sends the music back to the pick or the rotation.
+function Logic.shuffleSongs(cues: any, has: (string) -> boolean): { string }
+	local songs: { string } = {}
+	if type(cues) ~= "table" then
+		return songs
+	end
+	local seen: { [string]: boolean } = {}
+	for _, cueId in cues do
+		if type(cueId) == "string" and not seen[cueId] and has(cueId) then
+			seen[cueId] = true
+			table.insert(songs, cueId)
+		end
+	end
+	return songs
+end
+
+-- Whether two shuffle lists hold the same cues in the same order (a sync that repeats the list changes nothing).
+function Logic.sameList(a: { string }?, b: { string }?): boolean
+	if a == nil or b == nil then
+		return a == b
+	end
+	if #a ~= #b then
+		return false
+	end
+	for i, cueId in a do
+		if b[i] ~= cueId then
+			return false
+		end
+	end
+	return true
+end
+
+-- #1541: the tutorial's own song plays while the intro cutscene runs, or while the first tutorial steps (steps below
+-- `lastStep`) show with the Tutorial tile on. The tile's x (its setting off) or finishing the steps ends it. With no
+-- step known yet nothing plays.
+function Logic.tutorialSteps(step: number?, lastStep: number, tileOn: boolean): boolean
+	return tileOn and step ~= nil and step < lastStep
+end
+
+-- A tutorial step is done on a seen rise of the step (not the first sync after joining).
+function Logic.tutorialStepDone(before: number?, now: number): boolean
+	return before ~= nil and now > before
+end
+
+-- #1133/#1154/#1232: a camp station chimes when something starts waiting there, on a seen change of `held` from 0
+-- to more while its area is open. nil before (the first state after joining) plays nothing.
+function Logic.stationReady(before: number?, now: number, open: boolean): boolean
+	return open and before == 0 and now > 0
+end
+
+-- Animation beats (Beats.hit) to sounds: the Bellhop Cat's bell (F96) and the camp extras' moving touches (F100).
+local BEAT_CUES: { [string]: string } = {
+	bellRing = "bellhopBell",
+	fishJump = "campSplash",
+	rodCast = "campSplash",
+	basketOpen = "campBasket",
+	lidRattle = "campRattle",
+	stuckCall = "strayCall", -- #2912: the starter trap's cat calls for help (Effects/StuckCall)
+}
+
+function Logic.beatCue(beat: any): string?
+	return if type(beat) == "string" then BEAT_CUES[beat] else nil
+end
+
+-- How long a sound sheet's part lasts at a PlaybackSpeed (its region { start, stop } in seconds of the file), so
+-- a play can be stopped at its end; nil for a cue without a valid region.
+function Logic.regionSeconds(region: { number }?, speed: number): number?
+	if region == nil or #region ~= 2 or region[2] <= region[1] then
+		return nil
+	end
+	return (region[2] - region[1]) / math.max(speed, 0.01)
+end
+
+-- F89: each Legendary and Mythical decor piece's small sound (luck-and-rare-moments.md 2c), by its DecorId, and the
+-- name of the moving part it comes from once Model-Agent's rework has one (nil plays it at the model).
+local DECOR_SOUNDS: { [string]: { cue: string, part: string? } } = {
+	park_blossom_tree = { cue = "decorBlossomTree", part = "CatCafe_Decor_BlossomTree_Chime_Swing" },
+	sewer_bathtub_sofa = { cue = "decorBathtubSofa", part = "CatCafe_Decor_BathtubSofa_Duck_Bob" },
+	woods_hollow_log_booth = {
+		cue = "decorHollowLog",
+		part = "CatCafe_Decor_HollowLogBooth_Lantern_Swing",
+	},
+	neighbourhood_ice_cream_counter = {
+		cue = "decorIceCream",
+		part = "CatCafe_Decor_IceCreamCounter_Sign_Spin",
+	},
+	park_duck_fountain = {
+		cue = "decorDuckFountain",
+		part = "CatCafe_Decor_DuckFountain_Ducklings_Spin",
+	},
+	alley_retro_jukebox = { cue = "decorJukebox", part = "CatCafe_Decor_RetroJukebox_Record_Spin" },
+	classic_cat_tree_tower = {
+		cue = "decorCatTree",
+		part = "CatCafe_Decor_CatTreeTower_Toy1_Swing",
+	},
+}
+
+function Logic.decorSound(decorId: any): (string?, string?)
+	local entry = if type(decorId) == "string" then DECOR_SOUNDS[decorId] else nil
+	if entry == nil then
+		return nil, nil
+	end
+	return entry.cue, entry.part
+end
+
+-- F93 (catch-rework.md section 3): the result word a finished catch shows, from the server's grades: every circle
+-- Perfect is PURRFECT, at least half Perfect EXCELLENT, any other success GREAT, and a miss "So close!".
+function Logic.catchWord(grades: any, success: any): ("purrfect" | "excellent" | "great" | "close")?
+	if success ~= true then
+		return if success == false then "close" else nil
+	end
+	if type(grades) ~= "table" or #grades == 0 then
+		return "great"
+	end
+	local perfect = 0
+	for _, grade in grades do
+		if grade == "perfect" then
+			perfect += 1
+		end
+	end
+	if perfect == #grades then
+		return "purrfect"
+	elseif perfect * 2 >= #grades then
+		return "excellent"
+	end
+	return "great"
+end
+
+-- The word's own sound; PURRFECT already has purrfectChime (the Purrfect moment) and "So close!" catchMiss.
+function Logic.wordCue(word: string?): string?
+	if word == "nice" then
+		return "wordNice"
+	elseif word == "excellent" then
+		return "wordExcellent"
+	elseif word == "great" then
+		return "wordGreat"
+	end
+	return nil
+end
+
+-- Catch v3 (#1884): the server's `finish` ("purrfect", "great", "nice" or "bolt") picks the banner sound the same way:
+-- PURRFECT keeps the Purrfect chime and a bolt "So close!" (catchMiss), so only GREAT and NICE return a cue.
+function Logic.finishCue(finish: any): string?
+	if finish == "great" then
+		return "wordGreat"
+	elseif finish == "nice" then
+		return "wordNice"
+	end
+	return nil
+end
+
+-- The catch purr rises in pitch as trust fills: 1.0 at an empty bar up to 1.5 (a fifth) when full. `trust` over
+-- `need`; anything odd is clamped, so a bad number can never make a squeal.
+function Logic.trustPurrSpeed(trust: any, need: any): number
+	if type(trust) ~= "number" or type(need) ~= "number" or need <= 0 or trust ~= trust then
+		return 1
+	end
+	return 1 + 0.5 * math.clamp(trust / need, 0, 1)
+end
+
+-- #3656: a music or ambience bed is kept and reused, so one that failed to load (a 502, NetFail or a refused
+-- permission) would stay silent the whole session. It is rebuilt with a fresh fetch when it still has not loaded
+-- RELOAD_AFTER seconds after it was made, at most RELOAD_TRIES times per cue.
+Logic.RELOAD_AFTER = 20
+Logic.RELOAD_TRIES = 3
+
+function Logic.shouldReload(isLoaded: any, age: any, tries: any): boolean
+	return isLoaded ~= true
+		and type(age) == "number"
+		and age >= Logic.RELOAD_AFTER
+		and type(tries) == "number"
+		and tries < Logic.RELOAD_TRIES
+end
+
+-- #3615: the Yard Sale lucky pick's landing: the reel's stop, and for a golden crate the gold reveal chime
+-- YARD_CHIME_AFTER seconds later, so the two do not land on each other.
+Logic.YARD_CHIME_AFTER = 0.25
+
+function Logic.yardLandCues(golden: any): (string, string?)
+	return "uiReelStop", if golden == true then "goldReveal" else nil
+end
+
+return Logic

@@ -1,0 +1,890 @@
+--!strict
+-- Upgrades screen with two tabs, in the style of the fishing simulators' upgrade lists (UI plan 2026-10-27):
+--   Cafe   one row per upgrade: an icon box, the name, a star per level (gold up to the level owned), the effect
+--          line and a gold price button ("MAX" when maxed, "Tier 3" while the tier gate holds it).
+--   Staff  the role slots that used to float over the cafe as labels: one row per role with a square per slot in
+--          the order they open (Components/StaffSlots): the working cat's initial on its rarity colour, a green
+--          "+" for a free slot (a tap opens the cat room) or a grey lock with the tier that opens it. A rank up
+--          card on top names the next tier and what it opens; its button opens the rank up card.
+-- Rows are built once per catalog and only their text, colours and buttons change on render. When a row's level goes
+-- up its price button pops, the new stars pop in and flash mint before turning gold, and the row flashes mint, in
+-- step with the sparkle VFX plays where the upgrade shows in the cafe (Reduce Motion keeps only the colour flash).
+-- F82: the Bait bowl's row has two lines in place of its effect line, the next bowl and its wait, then one food's
+-- rarer cats ("Rarer bait cats: Salmon Legendary 8.5% to 9.36%", Components/FoodOdds.bowlStep).
+-- F88: the Lucky Cat's row has two lines too, the Luck it gives now and next, then what Luck does
+-- (Components/LuckLogic.statueLines).
+
+local GuiService = game:GetService("GuiService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Button = require(script.Parent.Parent.Components.Button)
+local Create = require(script.Parent.Parent.Components.Create)
+local FoodOdds = require(script.Parent.Parent.Components.FoodOdds)
+local Format = require(script.Parent.Parent.Components.Format)
+local IconArt = require(script.Parent.Parent.Components.IconArt)
+local LateBuild = require(script.Parent.Parent.Components.LateBuild)
+local LuckLogic = require(script.Parent.Parent.Components.LuckLogic)
+local MenuFamily = require(script.Parent.Parent.Components.MenuFamily)
+local Outline = require(script.Parent.Parent.Components.Outline)
+local Panel = require(script.Parent.Parent.Components.Panel)
+local RankUp = require(script.Parent.RankUp)
+local Scale = require(script.Parent.Parent.Scale)
+local ShopIcons = require(script.Parent.Parent.Components.ShopIcons)
+local StaffSlots = require(script.Parent.Parent.Components.StaffSlots)
+local Theme = require(script.Parent.Parent.Theme)
+local TutorialGlow = require(script.Parent.Parent.Components.TutorialGlow)
+local TutorialHints = require(script.Parent.Parent.Components.TutorialHints)
+local Tween = require(script.Parent.Parent.Components.Tween)
+local Types = require(script.Parent.Parent.Types)
+local UpgradeReady = require(script.Parent.Parent.Components.UpgradeReady)
+
+-- the dark window palette (#1028), in place of Theme.modal
+local PAL = MenuFamily.pal
+local CARD = MenuFamily.card -- #3558: what sits on a picture card (cream in the family look)
+
+local FLASH = TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+export type Links = {
+	openCatRoom: () -> (), -- a free slot's "+" and Add cat
+	openRankUp: () -> (), -- the rank up card's button
+	isOpen: (() -> boolean)?, -- #5253 follow-up: whether the modal shows Upgrades now, so the warm-up never hides it
+}
+
+export type Tab = "Cafe" | "Staff"
+
+export type UpgradeShop = {
+	frame: Frame,
+	setCatalog: (self: UpgradeShop, catalog: Types.Catalog) -> (),
+	render: (self: UpgradeShop, state: Types.PlayerState) -> (),
+	showTab: (self: UpgradeShop, tab: Tab) -> (),
+	destroy: (self: UpgradeShop) -> (),
+}
+
+local TAB_HEIGHT = Theme.sizes.touchMin
+local ROW_HEIGHT = 104
+local ICON_BOX = 72
+local SLOT = Theme.sizes.touchMin -- reviewer N102: tappable slot squares
+local RANK_HEIGHT = 76
+local TEXT_LEFT = 12 + ICON_BOX + 14
+local BUTTON_W = 136
+-- #3558 batch 1 (Model-Agent's mock): in the family look the Cafe tab is a grid of picture cards, two across (one on
+-- a narrow window): the picture on the left, the name, stars and one line beside it, the price button bottom right
+local GRID_CELL = 134
+local GRID_ICON = 64
+local GRID_MIN_TWO = 520 -- the list's width in design px from which two cards fit side by side
+local GRID_LEFT = 10 + GRID_ICON + 10
+local GRID_STAR = 16
+local GRID_BUTTON_W = 124
+
+local UpgradeShop = {}
+UpgradeShop.__index = UpgradeShop
+
+local function text(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.body,
+		TextSize = Theme.sizes.textBody,
+		TextColor3 = PAL.text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = "",
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	return Create("TextLabel", merged)
+end
+
+local function card(name: string, height: number, order: number, parent: Instance): Frame
+	return Create("Frame", {
+		Name = name,
+		BackgroundColor3 = CARD.card,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 0, height),
+		LayoutOrder = order,
+		Parent = parent,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		Create("UIStroke", { Color = CARD.cardStroke, Thickness = Theme.sizes.stroke }),
+	})
+end
+
+-- The square on the left of a row with a big glyph, like the item art boxes in the references; returns the glyph,
+-- which a row with an uploaded icon (the Net) draws its picture over.
+local function iconBox(parent: Instance, glyph: string, color: Color3, grid: boolean?): TextLabel
+	local label: TextLabel = Create("TextLabel", {
+		Name = "Glyph",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(0.7, 0.7),
+		FontFace = Theme.fonts.display,
+		TextScaled = true,
+		TextColor3 = Theme.colors.white,
+		Text = glyph,
+	})
+	local box: Frame = Create("Frame", {
+		Name = "Icon",
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Position = if grid
+			then UDim2.fromOffset(10, 10)
+			else UDim2.fromOffset(12, (ROW_HEIGHT - ICON_BOX) / 2),
+		Size = if grid
+			then UDim2.fromOffset(GRID_ICON, GRID_ICON)
+			else UDim2.fromOffset(ICON_BOX, ICON_BOX),
+		Parent = parent,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radius) }),
+		label :: Instance,
+	})
+	Outline.border(box, Theme.sizes.stroke)
+	Outline.shade(box, 0.2)
+	return label
+end
+
+local function scrollList(name: string, parent: Instance, grid: boolean?): ScrollingFrame
+	local layout: Instance = if grid
+		then Create("UIGridLayout", {
+			CellPadding = UDim2.fromOffset(Theme.sizes.gap, Theme.sizes.gap),
+			CellSize = UDim2.new(0.5, -Theme.sizes.gap / 2, 0, GRID_CELL),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		})
+		else Create("UIListLayout", {
+			Padding = UDim.new(0, Theme.sizes.gap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		})
+	return Create("ScrollingFrame", {
+		Name = name,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, TAB_HEIGHT + Theme.sizes.gap),
+		Size = UDim2.new(1, 0, 1, -(TAB_HEIGHT + Theme.sizes.gap)),
+		CanvasSize = UDim2.new(),
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = PAL.caramel,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+		Parent = parent,
+	}, {
+		layout,
+		Outline.listPadding(10), -- #2294: room for the rows' outlines
+	})
+end
+
+function UpgradeShop.new(
+	onBuy: (upgradeId: string) -> (),
+	onClose: () -> (),
+	links: Links?
+): UpgradeShop
+	local self = setmetatable({}, UpgradeShop) :: any
+	self._onBuy = onBuy
+	self._links = links
+	self._rows = {} :: { [string]: any }
+	self._roleRows = {} :: { [string]: any }
+	self._catalog = nil :: Types.Catalog?
+	self._catDefs = {} :: { [string]: Types.CatDef }
+	self._dirty = true
+	self._lastState = nil :: Types.PlayerState?
+	self._tab = "Cafe" :: Tab
+
+	local panel = Panel.new({
+		dark = true, -- #1028
+		name = "Upgrades",
+		color = Theme.colors.red,
+		icon = Theme.icons.upgrades,
+		title = "Upgrades",
+		subtitle = "Cafe Lv 1",
+		size = UDim2.fromScale(1, 1),
+		onClose = onClose,
+	})
+	Create("UISizeConstraint", { MaxSize = Vector2.new(760, 560), Parent = panel.frame })
+	self._panel = panel
+	self.frame = panel.frame
+
+	local tabs: Frame = Create("Frame", {
+		Name = "Tabs",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, TAB_HEIGHT),
+		Parent = panel.content,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			Padding = UDim.new(0, Theme.sizes.gap),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	self._cafeTab = Button.new({
+		name = "CafeTab",
+		text = "Cafe",
+		icon = Theme.icons.home, -- #3350: the HUD's My Cafe picture
+		image = ShopIcons.hud("MyCafe"),
+		style = "gold",
+		size = UDim2.fromOffset(120, TAB_HEIGHT),
+		textSize = Theme.sizes.textBody,
+		layoutOrder = 1,
+		parent = tabs,
+		sound = "uiTab",
+		onClick = function()
+			self:showTab("Cafe")
+		end,
+	})
+	self._staffTab = Button.new({
+		name = "StaffTab",
+		text = "Staff",
+		icon = "☕", -- #3350
+		style = "ghost",
+		size = UDim2.fromOffset(120, TAB_HEIGHT),
+		textSize = Theme.sizes.textBody,
+		layoutOrder = 2,
+		parent = tabs,
+		sound = "uiTab",
+		onClick = function()
+			self:showTab("Staff")
+		end,
+	})
+
+	-- #3558: the family look's grid of picture cards, two across where they fit
+	self._list = scrollList("List", panel.content, true)
+	do
+		local list: ScrollingFrame = self._list
+		local cells = list:FindFirstChildOfClass("UIGridLayout") :: UIGridLayout
+		local function fit()
+			local scale = math.max(Scale.get(), 0.01)
+			local two = list.AbsoluteSize.X / scale >= GRID_MIN_TWO
+			cells.CellSize = if two
+				then UDim2.new(0.5, -Theme.sizes.gap / 2, 0, GRID_CELL)
+				else UDim2.new(1, 0, 0, GRID_CELL)
+		end
+		list:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+		fit()
+	end
+	self._staff = scrollList("Staff", panel.content)
+	self._staff.Visible = false
+
+	-- rank up card at the top of the Staff tab
+	local rank = card("RankUp", RANK_HEIGHT, 0, self._staff)
+	self._rankTitle = text({
+		Name = "Title",
+		AnchorPoint = Vector2.new(0, 0.5), -- centred in the card, with no line under it (#1225)
+		Position = UDim2.new(0, 16, 0.5, 0),
+		Size = UDim2.new(1, -(BUTTON_W + 40), 0, 26),
+		FontFace = Theme.fonts.display,
+		TextSize = Theme.sizes.textLarge - 2,
+		TextColor3 = CARD.text, -- Derek 2026-11-13: dark words on the cream card (it read white on cream)
+		Parent = rank,
+	})
+	self._rankSub = text({
+		Name = "Opens",
+		Position = UDim2.fromOffset(16, 40),
+		Size = UDim2.new(1, -(BUTTON_W + 40), 0, 24),
+		TextSize = Theme.sizes.textSmall,
+		TextColor3 = CARD.subtext,
+		TextWrapped = true,
+		Parent = rank,
+	})
+	self._rankButton = Button.new({
+		name = "Rank",
+		text = "Rank up",
+		style = "gold",
+		size = UDim2.fromOffset(BUTTON_W, Theme.sizes.touchMin + 4),
+		anchorPoint = Vector2.new(1, 0.5),
+		position = UDim2.new(1, -12, 0.5, 0),
+		textSize = Theme.sizes.textBody,
+		parent = rank,
+		sound = false, -- the rank up card swishes open
+		onClick = function()
+			local open = self._links
+			if open then
+				open.openRankUp()
+			end
+		end,
+	})
+
+	return self :: UpgradeShop
+end
+
+function UpgradeShop.showTab(self: any, tab: Tab)
+	self._tab = tab
+	self._list.Visible = tab == "Cafe"
+	self._staff.Visible = tab == "Staff"
+	self._cafeTab:setStyle(if tab == "Cafe" then "gold" else "ghost")
+	self._staffTab:setStyle(if tab == "Staff" then "gold" else "ghost")
+	local state: Types.PlayerState? = self._lastState
+	if state then
+		self:render(state)
+	end
+end
+
+function UpgradeShop._buildRows(self: any)
+	for _, row in self._rows do
+		row.buy:destroy()
+		row.frame:Destroy()
+	end
+	table.clear(self._rows)
+	for _, row in self._roleRows do
+		row.add:destroy()
+		row.frame:Destroy()
+	end
+	table.clear(self._roleRows)
+	local catalog: Types.Catalog? = self._catalog
+	if not catalog then
+		return
+	end
+	assert(catalog, "catalog not set; call UI.init first")
+
+	for index, upgrade in catalog.upgrades do
+		local row = card(upgrade.id, ROW_HEIGHT, index, self._list)
+		local glyph = iconBox(
+			row,
+			Theme.upgradeIcons[upgrade.id] or Theme.icons.upgrades,
+			CARD.goldCard,
+			true
+		)
+		local drawn = ShopIcons.upgrade(upgrade.id) -- #2836: the drawn picture over the emoji
+		if drawn then
+			IconArt.setImage(glyph, drawn, 1)
+		end
+		local name = text({
+			Name = "Name",
+			Position = UDim2.fromOffset(GRID_LEFT, 6),
+			Size = UDim2.new(1, -(GRID_LEFT + 8), 0, 24),
+			FontFace = Theme.fonts.display,
+			TextSize = Theme.sizes.textBody + 2,
+			TextColor3 = CARD.text,
+			Text = upgrade.name,
+			Parent = row,
+		})
+		-- one star per level, gold up to the level owned (the fishing games' purple stars, in cafe gold)
+		local star = GRID_STAR
+		local starRow: Frame = Create("Frame", {
+			Name = "Stars",
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(GRID_LEFT, 31),
+			Size = UDim2.fromOffset(upgrade.maxLevel * (star + 2), star),
+			Parent = row,
+		}, {
+			Create("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				Padding = UDim.new(0, 2),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+		})
+		local stars: { TextLabel } = {}
+		for level = 1, upgrade.maxLevel do
+			local starLabel = text({
+				Name = "Star",
+				Size = UDim2.fromOffset(star, star),
+				FontFace = Theme.fonts.display,
+				TextSize = star,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				TextTruncate = Enum.TextTruncate.None,
+				TextColor3 = CARD.line,
+				Text = "★",
+				LayoutOrder = level,
+				Parent = starRow,
+			})
+			Outline.text(starLabel, 1.5)
+			table.insert(stars, starLabel)
+		end
+		-- the Bait bowl's two lines (F82) and the Lucky Cat's (F88) start a little higher to fit
+		local twoLines = upgrade.id == "lure_bowl" or upgrade.id == LuckLogic.UPGRADE
+		local description = text({
+			Name = "Description",
+			Position = UDim2.fromOffset(GRID_LEFT, 50),
+			-- the Bait bowl's second line can wrap on a card two across: room for a third line, whose short tail ends
+			-- left of the button (Studio look, 2026-11-13)
+			Size = UDim2.new(1, -(GRID_LEFT + 8), 0, if twoLines then 44 else 30),
+			TextSize = Theme.sizes.textTiny,
+			TextWrapped = true,
+			ClipsDescendants = true, -- two lines at most on a card; a longer one is cut, never under the button
+			TextYAlignment = Enum.TextYAlignment.Top,
+			TextColor3 = CARD.subtext,
+			Text = upgrade.description,
+			Parent = row,
+		})
+		local buy = Button.new({
+			name = "Buy",
+			text = "",
+			style = "primary",
+			size = UDim2.fromOffset(GRID_BUTTON_W, Theme.sizes.touchMin),
+			anchorPoint = Vector2.new(1, 1),
+			position = UDim2.new(1, -8, 1, -8),
+			textSize = Theme.sizes.textBody + 1,
+			parent = row,
+			onClick = function()
+				self:_predictBuy(upgrade.id)
+				self._onBuy(upgrade.id)
+			end,
+		})
+		self._rows[upgrade.id] = {
+			frame = row,
+			glyph = glyph,
+			name = name,
+			stars = stars,
+			description = description,
+			buy = buy,
+			def = upgrade,
+		}
+	end
+
+	-- Staff: one row per role, its slot squares built from the catalog's spots
+	local layout = StaffSlots.rows(catalog.allSpots or catalog.spots or {}, 1, nil)
+	for index, role in layout do
+		local row = card(role.role, ROW_HEIGHT, index, self._staff)
+		local roleGlyph =
+			iconBox(row, Theme.roleIcons[role.role] or Theme.icons.cats, Theme.colors.mintDark)
+		local roleArt = ShopIcons.role(role.role) -- #2836
+		if roleArt then
+			IconArt.setImage(roleGlyph, roleArt, 1)
+		end
+		text({
+			Name = "Name",
+			Position = UDim2.fromOffset(TEXT_LEFT, 8),
+			Size = UDim2.fromOffset(200, 28),
+			FontFace = Theme.fonts.display,
+			TextSize = Theme.sizes.textLarge,
+			TextColor3 = CARD.text, -- Derek 2026-11-13: dark words on the cream card
+			Text = role.name,
+			Parent = row,
+		})
+		local summary = text({
+			Name = "Summary",
+			Position = UDim2.fromOffset(TEXT_LEFT, 36),
+			Size = UDim2.new(1, -(TEXT_LEFT + BUTTON_W + 24), 0, 18),
+			TextSize = Theme.sizes.textSmall,
+			TextColor3 = CARD.subtext,
+			Parent = row,
+		})
+		local slotRow: Frame = Create("Frame", {
+			Name = "Slots",
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(TEXT_LEFT, 54),
+			Size = UDim2.fromOffset(0, SLOT),
+			AutomaticSize = Enum.AutomaticSize.X, -- a hidden pass-only square takes no room (#1624)
+			Parent = row,
+		}, {
+			Create("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				Padding = UDim.new(0, 6),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+		})
+		local squares = {}
+		for slotIndex, slot in role.slots do
+			local square: TextButton = Create("TextButton", {
+				Name = slot.spotId,
+				Text = "",
+				AutoButtonColor = false,
+				BackgroundColor3 = Theme.colors.disabled,
+				BorderSizePixel = 0,
+				Size = UDim2.fromOffset(SLOT, SLOT),
+				LayoutOrder = slotIndex,
+				Parent = slotRow,
+			}, { Create("UICorner", { CornerRadius = UDim.new(0, Theme.sizes.radiusSmall) }) })
+			local border = Outline.border(square, Theme.sizes.stroke)
+			local glyph = text({
+				Name = "Glyph",
+				Size = UDim2.fromScale(1, 1),
+				FontFace = Theme.fonts.display,
+				TextSize = Theme.sizes.textBody,
+				TextColor3 = Theme.colors.white,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				TextTruncate = Enum.TextTruncate.None,
+				Parent = square,
+			})
+			Outline.text(glyph, 1.5)
+			-- the tier that opens a locked slot, small in its corner under the lock
+			local tierTag = text({
+				Name = "Tier",
+				AnchorPoint = Vector2.new(1, 1),
+				Position = UDim2.new(1, -2, 1, 0),
+				Size = UDim2.fromOffset(SLOT, 14),
+				FontFace = Theme.fonts.display,
+				TextSize = Theme.sizes.textTiny,
+				TextColor3 = Theme.colors.white,
+				TextXAlignment = Enum.TextXAlignment.Right,
+				TextTruncate = Enum.TextTruncate.None,
+				Text = "",
+				ZIndex = 2,
+				Parent = square,
+			})
+			Outline.text(tierTag, 1)
+			square.Activated:Connect(function()
+				local open = self._links
+				if open and square:GetAttribute("Open") == true then
+					open.openCatRoom()
+				end
+			end)
+			table.insert(
+				squares,
+				{ button = square, glyph = glyph, tier = tierTag, border = border }
+			)
+		end
+		local add = Button.new({
+			name = "Add",
+			text = "Add cat",
+			style = "primary",
+			size = UDim2.fromOffset(BUTTON_W, Theme.sizes.touchMin + 4),
+			anchorPoint = Vector2.new(1, 0.5),
+			position = UDim2.new(1, -12, 0.5, 0),
+			textSize = Theme.sizes.textBody,
+			parent = row,
+			sound = false, -- the cat room swishes open
+			onClick = function()
+				local open = self._links
+				if open then
+					open.openCatRoom()
+				end
+			end,
+		})
+		self._roleRows[role.role] = {
+			frame = row,
+			summary = summary,
+			squares = squares,
+			add = add,
+		}
+	end
+end
+
+UpgradeShop.BUILD_AFTER = 7 -- #3722: seconds after the catalog arrives
+
+function UpgradeShop.setCatalog(self: any, catalog: Types.Catalog)
+	self._catalog = catalog
+	table.clear(self._catDefs)
+	for _, def in catalog.cats do
+		self._catDefs[def.id] = def
+	end
+	-- #3722: the rows are built after start-up, or at once when the window opens first
+	self._lateBuild = self._lateBuild
+		or LateBuild.new(UpgradeShop.BUILD_AFTER, function()
+			self:_buildRows()
+			self:_warm()
+		end)
+	self._lateBuild:queue()
+	self._dirty = true
+end
+
+-- #5253 follow-up (Sync 2026-11-18: the first open has one 136 to 164 ms frame, the first layout and draw of the
+-- never-shown list): once the rows are built, the window lays out once far off screen for two frames, so the first
+-- real open is as quick as the later ones. Never while it is open, and the rows forget the levels they saw so the
+-- first real open shows no level-up flourish. The upgradesWarm switch, on unless set false, turns this off.
+UpgradeShop.WARM_FRAMES = 2
+function UpgradeShop._warm(self: any)
+	if ReplicatedStorage:GetAttribute("LiveFlag_upgradesWarm") == false then
+		return
+	end
+	local links: Links? = self._links
+	local isOpen = if links ~= nil then links.isOpen else nil
+	local frame: Frame = self.frame
+	if frame.Visible or isOpen == nil then
+		return
+	end
+	local home = frame.Position
+	local away = home + UDim2.fromScale(4, 0)
+	frame.Position = away
+	frame.Visible = true
+	local state: Types.PlayerState? = self._lastState
+	if state ~= nil then
+		self:render(state)
+	end
+	for _ = 1, UpgradeShop.WARM_FRAMES do
+		RunService.RenderStepped:Wait()
+	end
+	if frame.Position == away then
+		frame.Position = home
+	end
+	if not (isOpen :: () -> boolean)() then
+		frame.Visible = false
+		self._dirty = true
+	end
+	for _, row in self._rows do
+		row.level = nil
+	end
+end
+
+function UpgradeShop.render(self: any, state: Types.PlayerState)
+	self._lastState = state
+	if not self.frame.Visible then
+		self._dirty = true
+		return
+	end
+	self._dirty = false
+	if self._lateBuild ~= nil then
+		self._lateBuild:ensure()
+	end
+	local tier = state.tier
+	local catalog: Types.Catalog? = self._catalog
+	self._panel:setTitle(
+		"Upgrades",
+		Format.tier(tier, if catalog then catalog.tiers else nil)
+			.. "  ·  "
+			.. Format.money(state.money)
+	)
+	-- #3880: the tutorial's table and Bait bowl are both bought, so the X glows (arrow and spotlight) on either tab
+	TutorialGlow.set(
+		self._panel:closeTarget(),
+		TutorialHints.closeUpgrades(state.tutorialStep, state.upgradeLevels)
+	)
+	if self._tab == "Staff" then
+		self:_renderStaff(state)
+		return
+	end
+
+	-- #1796: the row the tutorial asks for (a table at step 3, the Bait bowl at step 4) glows
+	local asked = TutorialHints.upgrade(state.tutorialStep, state.upgradeLevels)
+	if asked ~= self._asked then
+		self._asked = asked
+		if asked ~= nil and self._rows[asked] then
+			self:_scrollTo(self._rows[asked].frame)
+		end
+	end
+	for upgradeId, row in self._rows do
+		TutorialGlow.set(row.frame, upgradeId == asked)
+		local def: Types.UpgradeDef = row.def
+		local level = state.upgradeLevels[upgradeId] or 0
+		-- #2345: the tier gates and the price as the HUD tile's "!" reads them (Components/UpgradeReady)
+		local status = UpgradeReady.status(
+			def,
+			UpgradeReady.level(def, state.upgradeLevels),
+			tier,
+			state.money
+		)
+
+		local before: number? = row.level
+		row.level = level
+		if upgradeId == "net" and level ~= before then
+			IconArt.setImage(row.glyph, ShopIcons.net(level), 1.25) -- the net the row offers next
+		end
+		if upgradeId == "lure_bowl" and catalog then
+			-- the next bowl and its wait, with the Big Bowl perk's 2 minutes off when owned (F82, F95)
+			local fishPerks: { [string]: number } = state.fishPerks or {}
+			local bigBowl = (fishPerks.big_bowl or 0) >= 1
+			if level ~= before or bigBowl ~= row.bigBowl then
+				row.bigBowl = bigBowl
+				local first, second = FoodOdds.bowlStep(catalog, level, bigBowl)
+				row.description.Text = first .. "\n" .. (second or def.description)
+			end
+		end
+		if upgradeId == LuckLogic.UPGRADE and level ~= before then
+			local first, second = LuckLogic.statueLines(level, def.maxLevel)
+			row.description.Text = first .. "\n" .. second
+		end
+		if before ~= nil and level > before then
+			self:_celebrate(row, before, level)
+		else
+			for index, star in row.stars do
+				star.TextColor3 = if index <= level then Theme.colors.gold else CARD.line
+			end
+		end
+
+		if status.kind == "max" then
+			row.buy:setText("MAX")
+			row.buy:setEnabled(false)
+		elseif status.kind == "locked" then
+			row.buy:setText(Format.tier(status.needsTier :: number))
+			row.buy:setEnabled(false)
+		elseif status.kind == "none" then
+			row.buy:setText("—")
+			row.buy:setEnabled(false)
+		else
+			row.buy:setText(Format.money(status.cost :: number))
+			row.buy:setEnabled(status.kind == "buy")
+		end
+		-- #2996 (retention-ideas.md 5e): one soft pulse on the price when coins coming in make it affordable while
+		-- the window is open (a level just bought has its own pop in _celebrate). Off with Reduce Motion.
+		if
+			status.kind == "buy"
+			and row.kind ~= nil
+			and row.kind ~= "buy"
+			and level == before
+			and not GuiService.ReducedMotionEnabled
+		then
+			Tween.popIn(row.buy.instance, 0.9)
+		end
+		row.kind = status.kind
+	end
+end
+
+-- #5253 (Derek 2026-11-18: "the upgrades menu has long delays and should feel instant and responsive"; switch
+-- upgradesInstant): a press on a price the player can pay shows the bought level, the stars and the money at once,
+-- from the last state, while the server's sync (a moment later) confirms it or puts it back. Only this window paints
+-- the guess: the HUD and the rest wait for the server.
+function UpgradeShop._predictBuy(self: any, upgradeId: string)
+	if ReplicatedStorage:GetAttribute("LiveFlag_upgradesInstant") ~= true then
+		return
+	end
+	local state: Types.PlayerState? = self._lastState
+	local row = self._rows[upgradeId]
+	if state == nil or row == nil or row.kind ~= "buy" or self._tab == "Staff" then
+		return
+	end
+	local status = UpgradeReady.status(
+		row.def,
+		UpgradeReady.level(row.def, state.upgradeLevels),
+		state.tier,
+		state.money
+	)
+	if status.kind ~= "buy" or type(status.cost) ~= "number" then
+		return
+	end
+	local levels = table.clone(state.upgradeLevels)
+	levels[upgradeId] = (levels[upgradeId] or 0) + 1
+	local guess = table.clone(state :: any)
+	guess.upgradeLevels = levels
+	guess.money = state.money - (status.cost :: number)
+	self:render(guess :: Types.PlayerState)
+end
+
+-- A level bought: the price button pops, the stars from `before` + 1 to `level` pop in mint and settle gold, and
+-- the row flashes mint. Reduce Motion keeps the colours and drops the pops.
+-- #1796: brings the row the tutorial asks for into view (the Bait bowl is the fourth row, below a phone's fold) once
+-- the window's layout has placed it.
+function UpgradeShop._scrollTo(self: any, frame: Frame)
+	task.spawn(function()
+		task.wait()
+		task.wait()
+		local list: ScrollingFrame = self._list
+		if not frame.Parent or not list.Parent then
+			return
+		end
+		local scale = 1
+		local node: Instance? = list
+		while node do
+			local found = node:FindFirstChildOfClass("UIScale")
+			if found then
+				scale *= (found :: UIScale).Scale
+			end
+			node = node.Parent
+		end
+		scale = math.max(scale, 0.01)
+		local offset = (frame.AbsolutePosition.Y - list.AbsolutePosition.Y) / scale
+		local most = math.max(0, (list.AbsoluteCanvasSize.Y - list.AbsoluteWindowSize.Y) / scale)
+		list.CanvasPosition =
+			Vector2.new(0, math.clamp(list.CanvasPosition.Y + offset - 8, 0, most))
+	end)
+end
+
+function UpgradeShop._celebrate(_self: any, row: any, before: number, level: number)
+	local calm = GuiService.ReducedMotionEnabled
+	if not calm then
+		Tween.popIn(row.buy.instance, 0.85)
+	end
+	for index, star: TextLabel in row.stars do
+		if index > before and index <= level then
+			star.TextColor3 = Theme.colors.mint
+			Tween.to(star, FLASH, { TextColor3 = Theme.colors.gold })
+			if not calm then
+				Tween.popIn(star, 0.4)
+			end
+		else
+			star.TextColor3 = if index <= level then Theme.colors.gold else CARD.line
+		end
+	end
+	local frame: Frame = row.frame
+	frame.BackgroundColor3 = Theme.colors.mint
+	Tween.to(frame, FLASH, { BackgroundColor3 = CARD.card })
+end
+
+function UpgradeShop._renderStaff(self: any, state: Types.PlayerState)
+	local catalog: Types.Catalog? = self._catalog
+	if not catalog then
+		return
+	end
+	assert(catalog, "catalog")
+
+	if catalog.tiers then
+		local progress = RankUp.progress(catalog, state)
+		local current = progress.current
+		local nextTier = progress.nextTier
+		self._rankTitle.Text = ("Tier %d%s"):format(
+			progress.tier,
+			if current then "  ·  " .. current.name else ""
+		)
+		-- just "Tier N · Name" (#1225, the friend 11-04): the tier quest already says what comes next
+		self._rankSub.Text = ""
+		if nextTier then
+			self._rankButton:setText(if progress.ready then "Rank up!" else "See goals")
+			self._rankButton:setStyle(if progress.ready then "gold" else "secondary")
+			self._rankButton.instance.Visible = true
+		else
+			self._rankButton.instance.Visible = false
+		end
+	end
+
+	-- cats resting in the cat room, so Add cat only lights when there is a cat to add
+	local resting = 0
+	local cats = state.cats
+	if cats then
+		for _, cat in cats do
+			if cat.spotId == nil then
+				resting += 1
+			end
+		end
+	end
+
+	-- #1624: every slot, the pass-only ones too, opened by the tier and the extra slots
+	for _, role in
+		StaffSlots.rows(
+			catalog.allSpots or catalog.spots or {},
+			state.tier,
+			cats,
+			(state :: any).extraSlots
+		)
+	do
+		local row = self._roleRows[role.role]
+		if row then
+			row.summary.Text = role.summary
+			row.add.instance.Visible = role.open > 0
+			row.add:setEnabled(resting > 0)
+			for index, slot in role.slots do
+				local square = row.squares[index]
+				if square then
+					square.button.Visible = not slot.hidden
+					local glyph: TextLabel = square.glyph
+					local color = Theme.colors.disabled
+					local label = Theme.icons.lock
+					if slot.kind == "working" then
+						local instance = if cats and slot.catUid then cats[slot.catUid] else nil
+						local def: Types.CatDef? = if instance
+							then self._catDefs[instance.catId]
+							else nil
+						color = Theme.rarityColor(if def then def.rarity else nil)
+						label = StaffSlots.initial(
+							if instance and instance.name
+								then instance.name
+								elseif def then def.name
+								else "?"
+						)
+					elseif slot.kind == "open" then
+						color = Theme.colors.good
+						label = "+"
+					end
+					square.tier.Text = if slot.kind == "locked" then "T" .. slot.tier else ""
+					square.button.BackgroundColor3 = color
+					square.button:SetAttribute("Open", slot.kind == "open")
+					glyph.Text = label
+					glyph.TextSize = if slot.kind == "open"
+						then Theme.sizes.textLarge
+						else Theme.sizes.textBody
+				end
+			end
+		end
+	end
+end
+
+function UpgradeShop.destroy(self: any)
+	for _, row in self._rows do
+		row.buy:destroy()
+	end
+	for _, row in self._roleRows do
+		row.add:destroy()
+	end
+	self._cafeTab:destroy()
+	self._staffTab:destroy()
+	self._rankButton:destroy()
+	self._panel:destroy()
+end
+
+return UpgradeShop

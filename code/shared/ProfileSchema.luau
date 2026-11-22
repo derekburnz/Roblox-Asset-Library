@@ -1,0 +1,1329 @@
+--!strict
+-- Save data (data-model section 14): template, migration and sanitising. Pure.
+
+local Advent = require(script.Parent.Advent)
+local BagColours = require(script.Parent.BagColours)
+local CafePass = require(script.Parent.CafePass)
+local CampExtras = require(script.Parent.CampExtras)
+local CatStats = require(script.Parent.CatStats)
+local Catalog = require(script.Parent.Catalog)
+local Config = require(script.Parent.Config)
+local CornerShop = require(script.Parent.CornerShop)
+local CozyCafe = require(script.Parent.CozyCafe)
+local DailyDeal = require(script.Parent.DailyDeal)
+local DailyGifts = require(script.Parent.DailyGifts)
+local DailyTreat = require(script.Parent.DailyTreat)
+local DaysPlayed = require(script.Parent.DaysPlayed)
+local DragonKeep = require(script.Parent.DragonKeep)
+local EquipBest = require(script.Parent.EquipBest)
+local FirstVisits = require(script.Parent.FirstVisits)
+local FishStore = require(script.Parent.FishStore)
+local Follower = require(script.Parent.Follower)
+local FreeStart = require(script.Parent.FreeStart)
+local FreshCatch = require(script.Parent.FreshCatch)
+local Fusion = require(script.Parent.Fusion)
+local GrandOpening = require(script.Parent.GrandOpening)
+local HarvestSave = require(script.Parent.HarvestSave)
+local Holdout = require(script.Parent.Holdout)
+local IntroSplit = require(script.Parent.IntroSplit)
+local Invites = require(script.Parent.Invites)
+local Jukebox = require(script.Parent.Jukebox)
+local LateStations = require(script.Parent.LateStations)
+local Lawn = require(script.Parent.Lawn)
+local Looks = require(script.Parent.Looks)
+local MysteryMarket = require(script.Parent.MysteryMarket)
+local Onboarding = require(script.Parent.Onboarding)
+local Pet = require(script.Parent.Pet)
+local PlaytimeGifts = require(script.Parent.PlaytimeGifts)
+local Products = require(script.Parent.Products)
+local Rally = require(script.Parent.Rally)
+local Settings = require(script.Parent.Settings)
+local SignStyles = require(script.Parent.SignStyles)
+local Spin = require(script.Parent.Spin)
+local StartFunnel = require(script.Parent.StartFunnel)
+local StarterCat = require(script.Parent.StarterCat)
+local StoreTabs = require(script.Parent.StoreTabs)
+local TicketBooth = require(script.Parent.TicketBooth)
+local Tier3Trip = require(script.Parent.Tier3Trip)
+local Tips = require(script.Parent.Tips)
+local Trade = require(script.Parent.Trade)
+local Traits = require(script.Parent.Traits)
+local TutorialOrder = require(script.Parent.TutorialOrder)
+local Types = require(script.Parent.Types)
+local YardSale = require(script.Parent.YardSale)
+
+local ProfileSchema = {}
+
+-- Version 2 (2026-10-26) added level, xp and charm per cat. Version 3 (2026-10-26, design v0.3) adds the tier,
+-- role slots, bait, the dealer, shinies, cat names and how each cat was found; cafe_level and park_access go.
+-- Version 4 (2026-10-27) renames shiny to gold. Version 5 (F48) adds indexRewards and stats.tipJarClaims: an older
+-- server would drop them, and a player hopping servers could claim every Index reward again (reviewer S60).
+-- Version 6 (F49) adds spin and stats.spins, for the same reason: an older server would drop spin during a
+-- rollout, giving a second free spin and losing banked ones.
+-- Version 7 (F52 and F53, golden-fish.md) adds goldenFish, lifetimeGoldenFish, crates, crateLuck, fishPerks,
+-- stats.cratesOpened and stats.fishEarned: an older server would drop them, losing fish, crates and perks.
+-- Version 8 (F54) adds the All Cats and Decor Index pages to indexRewards and bait.readyAt: an older server would
+-- drop those claims, so a player hopping servers during a rollout could claim them twice.
+-- Version 9 (F65) adds codesRedeemed: an older server would drop it, letting a code pay twice.
+-- Version 10 (F72) adds introSeen: an older server would drop it, playing the intro cutscene again.
+-- Version 11 (v0.8 F56) adds stats.pickups, the counter of Dropped cats picked up: an older server would drop it.
+-- Version 12 (v0.12 F75) moves cats onto the 50-level curve (an old level L becomes 1 + ceil(2.5 x (L - 1)) with xp
+-- 0), lets xp hold fractions and adds stats.catLevelUps: an older server would clamp level 24 back to 10 and save it.
+-- Version 13 (F64) adds potions, buffs (seconds of play time left), stats.potionsUsed and stats.mysteryGifts: an
+-- older server would drop them, losing the bag and any running potion.
+-- Version 14 (F62) adds each cat's `locked` and locks every gold, Legendary and Mythical cat already owned, once: an
+-- older server would drop the flag, and a second run would lock again a cat its player unlocked.
+-- Version 15 (F63) adds stats.collectorTrades, the cats traded to the Cat Collector: an older server would drop it.
+-- Version 16 (F73) adds quests, achievements and seven stats (rareCatches, goldCatches, tipPilesCollected and the
+-- quest and set counts): an older server would drop the claims, so a player hopping servers during a rollout could
+-- claim a quest or an achievement twice.
+-- Version 17 (F70) adds dailyTreat, the Daily Treat card: an older server would drop it, letting a stamp pay twice
+-- in a day and the card start again at day 1.
+-- Version 18 (F94, rewards-and-shops.md section 6) adds freshCatch, the Fresh Catch shelf's counts and alert, and
+-- drops dealer, whose stock is now per server per night and kept in memory: an older server would drop freshCatch,
+-- letting a player buy a window's stock twice by hopping servers during a rollout.
+-- Version 19 (F87, easy-start.md section 5) moves telemetry to the 24 step onboarding funnel v2 (`funnel` 2, with
+-- the old step carried over; since #1273 Onboarding.fromOld) and adds telemetry.firstDay: an older server would read a v2 step
+-- as a v1 one and log the wrong steps.
+-- Version 20 (F87, easy-start.md section 6) adds tipsSeen, feedbackAsked and stuckHelpShown: an older server would
+-- drop them and show every context tip and the one feedback ask again. A save from before version 20 that is past
+-- the first loop (tutorialStep 5) has seen every tip already (Tips.sanitizeSeen).
+-- Version 21 (F96, starter-cat.md section 4) adds starterCatClaimed: an older server would drop it and let the free
+-- Bellhop Cat be claimed again. A save that already holds a Bellhop Cat counts as claimed.
+-- Version 22 (F96, starter-cat.md section 3) adds notifyAskAt, when the notification ask first showed: an older server
+-- would drop it and ask again sooner than the 30 days. The favorite and notification asks ride tipsSeen like the like
+-- ask (Tips.sanitizeSeen keeps them).
+-- Version 23 (F98, leaderboards.md section 5) adds stats.bestRate, stats.weekPlay and stats.weekBestRate: an older
+-- server would drop them, and the Money board would forget the player's best rate.
+-- Version 24 (F99, rainbow-coat.md section 5) adds the rainbow coat: variant "rainbow", rainbowCollection and
+-- stats.rainbowCatches. An older server would read a rainbow cat as a base one and save it so, and drop the
+-- collection and the count.
+-- Version 25 (F100, camp-extras.md section 4) adds campExtras, what the four camp extras hold and the Yard Sale's
+-- buys today: an older server would drop it, letting a player collect the same fill or buy the same crate twice by
+-- hopping servers during a rollout. A save from before version 25 starts with one fill waiting at each open extra.
+-- Version 26 (F101, rescue-rally.md section 5) adds rally, the weekend and the laps paid in it: an older server would
+-- drop it, and a player could take more than RallyMaxLaps laps of prizes by hopping servers during a rollout.
+-- Version 27 (F102, trading.md section 6) adds tradeLog, tradeIds, stats.trades, stats.tradesToday and the "trade"
+-- method: an older server would drop the applied trade ids, so a trade still
+-- pending after a shutdown (section 4) could be applied twice, and it would read a traded cat's method as none.
+-- Version 28 (F91, front-lawn.md section 5) adds lawnOwned, lawn and lawnStyles, the front lawn bought with coins: an
+-- older server would drop them, and the player would lose every piece and style paid for. Older saves start with an
+-- empty lawn, Grey Slabs and no fence; CafeService gives the Tier 2 and 3 gifts on load (Lawn.grantTierGifts).
+-- Version 29 (#1052, corner-shop.md section 5) adds cornerShop, the Corner Shop's bought counts this window and the
+-- Cat Snack XP given today: an older server would drop it, letting a player buy a window's stock twice or pass the
+-- day's snack cap by hopping servers during a rollout. Older saves start with nothing bought.
+-- Version 30 (#1083, idea-credits.md section 4) adds hideCredit, true while the player keeps their name off the Thank
+-- You board: an older server would drop it, and the player's name would come back on the board after a rollout.
+-- Version 31 (#1182) adds receipts, the developer product PurchaseIds already granted: an older server would drop
+-- them, and a receipt Roblox delivers again after a rollout would grant its potions twice.
+-- #1273 (no new version): telemetry moves to the onboarding funnel v3 (`funnel` 3, sanitizeTelemetry) and gains
+-- telemetry.introStep. It is analytics only: an older server during a rollout reads funnel 3 as v1 and saves funnel 2,
+-- which this one then takes back to v3's start or out of it, and a step Roblox sees twice counts once.
+-- Version 32 (#1180, #1181; corner-shop-v2.md section 4) adds catFood, the Bag's cat food, and the Corner Shop's day
+-- counters (day, today, foodXpToday; snackDay and snackXp go): an older server would drop them, losing the food
+-- bought and letting a player pass a daily limit by hopping servers during a rollout.
+-- Version 33 (#1154, camp-stations.md section 3) turns campExtras.yardSale from { day, bought } into
+-- { lastClaimAt, claims }, one free crate every YardSaleClaimHours: an older server would read it as no crate taken
+-- today and give a second one by server hopping during a rollout. A save that took today's crate waits until
+-- YardSaleClaimHours after that UTC day began (CampExtras.sanitize).
+-- Version 34 (#1161) adds bait2, the Second Bait Bowl's food and rolled cat: an older server would drop it, losing
+-- the food and letting the player roll that bowl again by hopping servers during a rollout.
+-- #1574 (no new version): decorUnlocked, the Legendary and up pieces unlocked to trade, and the trade log's gaveDecor
+-- and gotDecor. An older server drops them, which only locks those pieces again and shortens old log entries.
+-- #3276 (no new version): decorLocked, the Legendary and up pieces locked on their card; nothing arrives locked any
+-- more. decorUnlocked stays as its mirror (every other owned lockable piece) so an older server sees the same locks;
+-- An older server drops decorLocked, which unlocks those pieces again (the player can lock them again); decorLocked
+-- is not rebuilt from decorUnlocked's gaps, as those gaps are every piece a save before #3276 never unlocked.
+-- Version 35 (#1625) adds onceBought, signStyles and signStyle, the Starter Bundle's once-per-account mark and the
+-- sign styles: an older server would drop them, losing the Bakery Stripes sign and letting the bundle be bought as new.
+-- #1168 row 2 (no new version): jukebox, the Jukebox track pick (free since #1875). An older server drops it, which only plays the
+-- normal rotation until the player picks again.
+-- #1842 (no new version): storeSeen, the Store tab versions last opened. An older server drops it, which only shows the
+-- tabs' "New" dots again.
+-- Version 36 (#1645, cafe-pass.md section 6) adds pass, the Cafe Pass's XP, claims, paid season and items: an older
+-- server would drop it, losing the XP and letting a reward be claimed twice by hopping servers during a rollout.
+-- Version 37 (#1537, lawn-nursery.md section 7) adds yardDecor, the Yard Sale's lawn rows bought this global game
+-- day: an older server would drop it, letting the player buy the same row again by hopping servers during a rollout.
+-- Version 38 (#1624, store-pass-looks.md) adds looks, the cafe theme and uniform picks: an older server would drop them,
+-- showing Classic until the player picks again.
+-- Version 39 (#1624, store-pass-looks.md section 6) adds looks.accessory, the cats' accessory pick: an older server's
+-- Looks.sanitize would drop it, showing no accessory until the player picks again.
+-- Version 40 (#1732, camp-stations.md section 4b) turns campExtras.lostFound from { day, held } into { at, held }, one
+-- find every LostFoundEverySeconds: an older server would read it as a day number far in the past and fill it to the
+-- hold at once. An older save's clock starts at the load, keeping what it held (CampExtras.sanitize).
+-- Version 41 (#1893, #1897; first-hour.md sections 1c and 2) adds grandOpening, the roadmap's milestones paid, and
+-- firstWow, the guaranteed Rare-or-better bait set: an older server would drop them, paying the milestones again and
+-- guaranteeing another Rare by hopping servers during a rollout. A save from before it already at Tier 3 starts with
+-- the roadmap finished (nothing back-paid), and one that has set two baits or more has had its second bait.
+-- #1934 (no new version): stats.purrfectCatches, purrfectStreak, bestPurrfectStreak and teamRescuesHelped, for the
+-- Roblox badges (shared/Badges). An older server drops them, which only loses those counts: a badge already awarded
+-- stays on the player's Roblox account.
+-- #3694 section 3 (no new version): stats.binWins, yardPicks, traitRolls, dashRuns, goldenCratesOpened and
+-- restSeconds, for the newer features' achievements. An older server drops them, which only loses those counts.
+-- #3618 (no new version): stats.cannonFlights, for the Liftoff badge; an older server dropping it only loses the count.
+-- #4453 (no new version): stats.tier2TopUp, the Tier 2 top up paid; it pays only as the first bait cat is tamed
+-- (stats.baitsTamed 1), so an older server dropping it cannot make it pay twice.
+-- #5038 (no new version): stats.tier3TopUp, the Tier 3 welcome gift paid. An older server dropping it could pay it
+-- once more while the save is still at Tier 2 with the kinds and Rares met, never past Tier 3's cost (Tier3Path).
+-- Version 42 (#1947, like-prompts.md section 2) adds likeGift and favGift, the two once-per-account gifts for play
+-- time: an older server would drop them and pay each gift again. A save from before it gets them by its play time:
+-- one past 10 or 30 minutes already is paid on its next join.
+-- Version 43 (#2486, live-events.md section 2e) adds eventRewards and eventLast, the Cafe Event reward pieces given and
+-- the last event rewarded: an older server would drop eventLast and pay the event's reward (or its repeat coin gift)
+-- again by hopping servers during a rollout.
+-- Version 44 (#2565, mystery-market.md section 2) adds mystery and mysterySeen, the Mystery Market items owned and
+-- whether its walk-in card was seen: an older server would drop a bought item, which was paid for in golden fish.
+-- Config.MysteryOpen opens buying with this version, in a publish that restarts the servers.
+-- Version 45 (#2651, tier6-7-areas.md) opens Tier 6 and 7, the Desert and the Ruins, with their 20 cats, their crate
+-- pieces and two more Espresso and Lucky Cat levels: an older server would drop the new cat and decor ids from a save
+-- and clamp a Tier 6 or 7 cafe back to Tier 5 by hopping servers during a rollout.
+-- Version 46 (#2651 part 4, late-stations.md section 3) adds spa and museum, the Oasis Spa's slots and soaking cats
+-- and the Relic Museum's filled exhibits: an older server would drop them, losing slots bought with golden fish and
+-- the exhibits (whose cats left the save) and their tip bonus.
+-- Version 47 (#2797, retention-ideas.md 5d) adds invites and referredBy, the invite reward's two sides: an older server
+-- would drop them and could pay a joiner or an inviter twice for the same friend.
+-- Version 48 (#3196, trait-station.md section 6) adds each cat's trait and traits, the Mystic Pool's Trait Tokens, free
+-- starter rolls used, station timer and a re-roll waiting for its choice: an older server would drop a cat's trait
+-- and the tokens, and could give the free rolls again. It ships with a publish that restarts the servers (Derek's
+-- yes at the time); the `traits` flag opens the station after it. A save from before it has no traits, no tokens and
+-- every free roll still to use.
+-- Version 49 adds fishBought (#4055, shared/FishStore: the Store passes bought with golden fish), tickets (#4061,
+-- shared/TicketBooth: the Ticket Booth's tickets and limits) and dragon (#4062, shared/DragonKeep: Cinder, his cards
+-- and the cats moved in): an older server would drop them and the player would lose a pass paid for with fish,
+-- tickets or Cinder. It ships with a publish that restarts the servers; the `fishStore`, `ticketBooth` and
+-- `dragonKeep` switches open them after it.
+-- Version 50 (#4104, shared/Fusion) adds fusion, the Fusion Observatory's dome: an older server would drop a fusion
+-- under way, and with it the five cats that went in. It ships with the Snowy Mountain update's restart; the `fusion`
+-- switch opens the dome after it. A save from before it has an empty dome.
+-- Version 51 adds harvest (#4251, shared/HarvestSave: Harvest Hollow's pumpkins and Stall items): an older server
+-- would drop them and the player would lose pumpkins and items. The field went in under version 50 on 2026-11-17
+-- (empty until the area opens); this bump rides a restart before the area opens on 2026-11-25.
+ProfileSchema.VERSION = 51 -- 50 is the Fusion Observatory's (#4104)
+
+local DAY_SECONDS = 86400 -- telemetry.firstDay is a UTC day number (F87)
+
+-- What version 2 charged for each level, frozen here because the live Catalog no longer has cafe_level or
+-- park_access and has repriced the net. The 2 to 3 migration refunds levels it takes away at these prices.
+local V2_COSTS: { [string]: { number } } = {
+	cafe_level = { 0, 250, 800, 2500, 8000 },
+	park_access = { 1000 },
+	tables = { 100, 250, 600, 1500, 3500, 8000 },
+	espresso = { 0, 300, 1200, 4000, 12000 },
+	net = { 500, 2500, 10000 },
+}
+local V2_START_LEVELS: { [string]: number } = { cafe_level = 1, espresso = 1 }
+
+local STARTER_UID = "starter_tabby"
+local MAX_NAME_LENGTH = 200 -- bytes kept from a saved name
+
+local function asNumber(value: any, default: number): number
+	if type(value) == "number" and value == value and value >= 0 and value < math.huge then
+		return value
+	end
+	return default
+end
+
+local function asInt(value: any, default: number): number
+	return math.floor(asNumber(value, default))
+end
+
+local function newStats(): Types.Stats
+	return {
+		catsCaught = 0,
+		catsSold = 0,
+		grabsAttempted = 0,
+		grabsSucceeded = 0,
+		perfectCircles = 0,
+		circlesTotal = 0,
+		rescues = 0,
+		rescueAttempts = 0,
+		baitsTamed = 0,
+		baitsLetGo = 0,
+		bumpsGiven = 0,
+		bumpsLanded = 0,
+		bumpsTaken = 0,
+		luresUsed = 0,
+		playtimeSeconds = 0,
+		sessions = 0,
+		tipJarClaims = 0,
+		spins = 0,
+		cratesOpened = 0,
+		fishEarned = 0,
+		pickups = 0,
+		catLevelUps = 0,
+		potionsUsed = 0,
+		mysteryGifts = 0,
+		collectorTrades = 0,
+		rareCatches = 0,
+		pondPassAt = 0, -- #2745: the Golden Pond pass bought with Robux, for the fish trade hold (no version)
+		pondSeen = 0, -- #2745: the pass seen owned once, so an off-game buy starts the hold too
+		goldCatches = 0,
+		rainbowCatches = 0, -- F99
+		tipPilesCollected = 0,
+		dailyQuestsDone = 0,
+		dailySetsDone = 0,
+		weeklyQuestsDone = 0,
+		weeklySetsDone = 0,
+		bestRate = 0, -- F98
+		weekPlay = { week = 0, seconds = 0 },
+		weekBestRate = { week = 0, rate = 0 },
+		trades = 0, -- F102
+		tradesToday = { day = 0, count = 0 },
+		purrfectCatches = 0, -- #1934
+		purrfectStreak = 0,
+		bestPurrfectStreak = 0,
+		teamRescuesHelped = 0,
+		binWins = 0, -- #3694 section 3
+		yardPicks = 0,
+		traitRolls = 0,
+		dashRuns = 0,
+		goldenCratesOpened = 0,
+		restSeconds = 0,
+		cannonFlights = 0, -- #3618
+		tier2TopUp = 0, -- #4453
+		tier3TopUp = 0, -- #5038
+	}
+end
+
+-- F98: a saved { week, <field> } pair of whole week number and non-negative amount, else week 0 and 0.
+local function sanitizeWeekly(raw: any, field: string): any
+	local week = if type(raw) == "table" then asInt(raw.week, 0) else 0
+	local amount = if type(raw) == "table" then asNumber(raw[field], 0) else 0
+	return { week = week, [field] = amount }
+end
+
+-- No quests yet (F73): day and week 0, so QuestService rolls both when the profile loads.
+local function newQuests(): Types.QuestState
+	return {
+		day = 0,
+		daily = {},
+		dailyReroll = false,
+		dailySet = false,
+		week = 0,
+		weekly = {},
+		weeklyReroll = false,
+		weeklySet = false,
+	}
+end
+
+-- Starting profile: 50 coins, Tier 1, one Tabby working as the Barista. `now` is server os.time().
+function ProfileSchema.template(now: number): Types.PlayerProfile
+	local levels: { [string]: number } = {}
+	for _, def in Catalog.upgrades do
+		levels[def.id] = def.startLevel
+	end
+	levels.tables = math.max(levels.tables or 0, Config.StartTables) -- #3660: the first table is already open
+	levels.lure_bowl = math.max(levels.lure_bowl or 0, Config.StartBowls) -- #4097: and the Bait bowl
+	-- The starter has neutral charm (50) so every new cafe earns the same 1.5 per second.
+	local starter = CatStats.newInstance(STARTER_UID, "tabby", now)
+	starter.spotId = "barista_1"
+	starter.method = "starter"
+	return {
+		version = ProfileSchema.VERSION,
+		coins = Config.StartCoins,
+		lifetimeCoins = 0,
+		lastTick = now,
+		lastSeen = now,
+		rateAtLogout = 0,
+		tier = 1,
+		upgradeLevels = levels,
+		decorOwned = {},
+		decorPlaced = {},
+		decorUnlocked = {},
+		decorLocked = {},
+		lures = if Config.StartBowls >= 1 then { kibble = 1 } else {}, -- #4097: the first bowl's Kibble
+		bait = nil,
+		bait2 = nil,
+		pet = nil,
+		freshCatch = FreshCatch.fresh(),
+		cats = {
+			[STARTER_UID] = starter,
+		},
+		collection = { tabby = now },
+		goldCollection = {},
+		rainbowCollection = {},
+		indexRewards = {},
+		spin = { lastFreeDay = 0, banked = 0 },
+		goldenFish = 0,
+		lifetimeGoldenFish = 0,
+		crates = {},
+		crateLuck = {},
+		fishPerks = {},
+		mystery = {},
+		mysterySeen = false,
+		fishBought = {}, -- #4055
+		tickets = TicketBooth.fresh(), -- #4061
+		harvest = HarvestSave.fresh(), -- #4251
+		dragon = DragonKeep.fresh(), -- #4062
+		fusion = Fusion.fresh(), -- #4104
+		firstVisits = {},
+		codesRedeemed = {},
+		introSeen = false,
+		potions = {},
+		buffs = {},
+		quests = newQuests(),
+		achievements = {},
+		dailyTreat = { stamp = 0, lastDay = 0 },
+		stats = newStats(),
+		tutorialStep = 0,
+		settings = Settings.defaults(),
+		flags = { autoPress = false },
+		telemetry = {
+			onboardingStep = 0,
+			-- #3660: the first table is there from the start, so its funnel step counts as met: it is logged in its
+			-- place as the funnel reaches it (the funnel needs every step in order) and nothing waits on it
+			achieved = Onboarding.startAchieved(Config.StartTables, Config.StartBowls),
+			funnel = Onboarding.VERSION,
+			firstDay = now // DAY_SECONDS,
+			introStep = 0,
+			firstHourStep = Onboarding.FIRST_HOUR_V2_COUNT,
+			firstHourV3Step = 0,
+			cleanStep = 0,
+			cleanV8Step = 0, -- #4504
+			cleanV9Step = 0, -- onboarding_v9
+			playtimeStep = 0,
+		},
+		tipsSeen = {},
+		feedbackAsked = false,
+		sessionFeedbackDay = 0,
+		stuckHelpShown = {},
+		starterCatClaimed = false,
+		notifyAskAt = 0,
+		campExtras = CampExtras.fresh(now),
+		spa = LateStations.freshSpa(),
+		museum = LateStations.freshMuseum(),
+		invites = Invites.fresh(),
+		traits = Traits.fresh(now),
+		rally = Rally.fresh(now),
+		tradeLog = {},
+		tradeIds = {},
+		lawnOwned = {},
+		lawn = {},
+		lawnStyles = Lawn.freshStyles(),
+		cornerShop = CornerShop.fresh(),
+		yardDecor = YardSale.fresh(),
+		hideCredit = nil,
+		receipts = {},
+		catFood = {},
+		onceBought = {},
+		signStyles = {},
+		signStyle = nil,
+		storeSeen = {},
+		jukebox = nil,
+		pass = CafePass.fresh(0),
+		looks = {},
+		grandOpening = GrandOpening.fresh(),
+		firstWow = false,
+		likeGift = false,
+		favGift = false,
+		cozy = CozyCafe.fresh(),
+		giftSteps = {},
+		eventRewards = {},
+		eventLast = "",
+		palDay = { day = 0 }, -- #4913, no version
+		follower = { uid = "", boost = "money" }, -- #5172, no version
+	}
+end
+
+-- The version a raw save was written by. Saves from before the field existed count as version 1.
+function ProfileSchema.versionOf(raw: any): number
+	if type(raw) ~= "table" then
+		return ProfileSchema.VERSION
+	end
+	return math.max(1, asInt(raw.version, 1))
+end
+
+-- True when the save was written by newer code than this server runs. Loading it would drop the fields this
+-- version does not know and then save that, so DataService refuses it and asks the player to rejoin (S31).
+function ProfileSchema.isNewerThanCode(raw: any): boolean
+	return ProfileSchema.versionOf(raw) > ProfileSchema.VERSION
+end
+
+-- Coins a version 2 save spent on levels from `fromLevel + 1` up to `toLevel` of an upgrade.
+local function v2Spent(upgradeId: string, fromLevel: number, toLevel: number): number
+	local costs = V2_COSTS[upgradeId]
+	if costs == nil then
+		return 0
+	end
+	local total = 0
+	for level = fromLevel + 1, math.min(toLevel, #costs) do
+		total += costs[level]
+	end
+	return total
+end
+
+-- Version 1 and 2 upgrade levels: carries the ones that still exist (renamed ids too), caps tables, espresso and
+-- net at Tier 1, and returns the refund for everything taken away (cafe_level, park_access, levels over a cap).
+local function migrateV2Upgrades(rawLevels: any, profile: Types.PlayerProfile): number
+	if type(rawLevels) ~= "table" then
+		return 0
+	end
+	local refund = 0
+	for rawId, lvl in rawLevels do
+		if type(rawId) ~= "string" then
+			continue
+		end
+		-- A renamed upgrade (gloves -> net) carries its level unless the new id was saved too.
+		local renamed = Catalog.renamedUpgrades[rawId]
+		local id = if renamed ~= nil and rawLevels[renamed] == nil then renamed else rawId
+		local def = Catalog.getUpgrade(id)
+		local start = V2_START_LEVELS[id] or (if def ~= nil then def.startLevel else 0)
+		local level = math.max(start, asInt(lvl, start))
+		if def == nil then
+			-- Removed in version 3 (cafe_level, park_access): give back what was spent.
+			refund += v2Spent(id, start, level)
+		else
+			level = math.min(level, def.maxLevel)
+			local cap = (Catalog.tiers[1].caps :: any)[id]
+			if type(cap) == "number" and level > cap then
+				refund += v2Spent(id, cap, level)
+				level = cap
+			end
+			profile.upgradeLevels[def.id] = level
+		end
+	end
+	return refund
+end
+
+local function migrateV3Upgrades(rawLevels: any, profile: Types.PlayerProfile)
+	if type(rawLevels) ~= "table" then
+		return
+	end
+	for id, lvl in rawLevels do
+		local def = if type(id) == "string" then Catalog.getUpgrade(id) else nil
+		if def ~= nil then
+			-- #5441: Tables 7 and 8 are kept with the tablesEight switch off (or not read yet at load)
+			-- #5491 (a player: "everytime there's an update, i need to upgrade my net to maxed again"): Net 4 and 5 are kept
+			-- too, with netTiers off or not read yet when a fresh server loads the save
+			local top = if def.id == "tables"
+				then math.max(def.maxLevel, Catalog.TABLES_MAX_EIGHT)
+				elseif def.id == "net" then math.max(def.maxLevel, Catalog.NET_MAX_TIERS)
+				else def.maxLevel
+			profile.upgradeLevels[def.id] =
+				math.clamp(asInt(lvl, def.startLevel), def.startLevel, top)
+		end
+	end
+end
+
+-- A saved cat or bait variant: "gold", "rainbow" (F99), or "shiny" from a version 3 save (Derek 2026-10-27 renamed
+-- shiny to gold); anything else is the base coat.
+local function variantOf(value: any): string
+	return if value == "rainbow"
+		then "rainbow"
+		elseif value == "gold" or value == "shiny" then "gold"
+		else "base"
+end
+
+-- A saved name, cut to MAX_NAME_LENGTH bytes on a character boundary; nil when empty or not valid UTF-8
+-- (reviewer N36). RenameCat enforces the real rules on the way in.
+local function sanitizeName(value: any): string?
+	if type(value) ~= "string" then
+		return nil
+	end
+	local name: string = value
+	if #name == 0 or utf8.len(name) == nil then
+		return nil
+	end
+	if #name > MAX_NAME_LENGTH then
+		local cut = MAX_NAME_LENGTH
+		-- Step back past continuation bytes (10xxxxxx) so the cut never splits a character.
+		while cut > 0 and bit32.band(string.byte(name, cut + 1), 0xC0) == 0x80 do
+			cut -= 1
+		end
+		name = string.sub(name, 1, cut)
+	end
+	return name
+end
+
+local function sanitizeMethod(value: any): Types.CatchMethod?
+	if
+		value == "net"
+		or value == "rescue"
+		or value == "bait"
+		or value == "starter"
+		or value == "trade"
+	then
+		return value
+	end
+	return nil
+end
+
+-- How a cat saved before version 3 was found: the template's starter, a rescue, otherwise the net.
+local function legacyMethod(uid: string, entry: any): Types.CatchMethod
+	if uid == STARTER_UID then
+		return "starter"
+	elseif entry.rescued == true then
+		return "rescue"
+	end
+	return "net"
+end
+
+-- One saved cat as this version keeps it (`entry` already has a known catId); `spotId` checked by the caller.
+local function catFrom(
+	uid: string,
+	entry: any,
+	fromVersion: number,
+	now: number,
+	spotId: string?
+): Types.CatInstance
+	local instance: Types.CatInstance = {
+		uid = uid,
+		catId = entry.catId,
+		-- Golden and Galaxy were never handed out; only "shiny" survives, and it is "gold" now.
+		variant = variantOf(entry.variant),
+		caughtAt = asInt(entry.caughtAt, now),
+		spotId = spotId,
+		-- Version 1 cats had no stats: they become level 1 with neutral charm (a 1.0x rate). Before version 12 the
+		-- cap was 10 at 5% a level: the level moves onto the 50-level curve and the xp toward it starts again.
+		level = if fromVersion >= 12
+			then math.clamp(
+				asInt(entry.level, CatStats.MIN_LEVEL),
+				CatStats.MIN_LEVEL,
+				Config.CatMaxLevel
+			)
+			else CatStats.remapLevel(asInt(entry.level, CatStats.MIN_LEVEL)),
+		xp = if fromVersion >= 12 then asNumber(entry.xp, 0) else 0,
+		charm = math.clamp(
+			asInt(entry.charm, CatStats.DEFAULT_CHARM),
+			CatStats.MIN_CHARM,
+			CatStats.MAX_CHARM
+		),
+		rescued = if entry.rescued == true then true else nil,
+		perfect = if entry.perfect == true then true else nil, -- #5300: no version bump, older saves have none
+		name = if fromVersion >= 3 then sanitizeName(entry.name) else nil,
+		method = if fromVersion >= 3
+			then sanitizeMethod(entry.method)
+			else legacyMethod(uid, entry),
+	}
+	-- #3196 (version 48): its trait; a cat from an older save has none
+	instance.trait = if fromVersion >= 48 then Traits.sanitize(entry.trait) else nil
+	-- F62: the saved lock; a save from before version 14 locks its gold, Legendary and Mythical cats
+	local locked = if fromVersion >= 14
+		then entry.locked == true
+		else CatStats.arrivesLocked(instance.catId, instance.variant)
+	instance.locked = if locked then true else nil
+	return instance
+end
+
+local function sanitizeCats(
+	raw: any,
+	profile: Types.PlayerProfile,
+	fromVersion: number,
+	now: number
+)
+	if type(raw.cats) ~= "table" then
+		return
+	end
+	profile.cats = {}
+	local usedSpots: { [string]: boolean } = {}
+	for uid, entry in raw.cats do
+		if
+			type(uid) ~= "string"
+			or type(entry) ~= "table"
+			or type(entry.catId) ~= "string"
+			or Catalog.getCat(entry.catId) == nil
+		then
+			continue
+		end
+		-- Version 3 slots are role slots; older spot ids are cleared and Equip Best fills the roles afterwards.
+		local spotId: string? = nil
+		if fromVersion >= 3 and type(entry.spotId) == "string" then
+			local spot = Catalog.getSpot(entry.spotId)
+			if spot ~= nil and spot.tier <= profile.tier and not usedSpots[spot.id] then
+				spotId = spot.id
+				usedSpots[spot.id] = true
+			end
+		end
+		profile.cats[uid] = catFrom(uid, entry, fromVersion, now, spotId)
+	end
+end
+
+local function sanitizeCollection(value: any, now: number): { [string]: number }
+	local out: { [string]: number } = {}
+	if type(value) == "table" then
+		for catId, at in value do
+			if type(catId) == "string" and Catalog.getCat(catId) ~= nil then
+				out[catId] = asInt(at, now)
+			end
+		end
+	end
+	return out
+end
+
+local function sanitizeBait(value: any): Types.BaitState?
+	if type(value) ~= "table" then
+		return nil
+	end
+	if type(value.lureId) ~= "string" or Catalog.getLure(value.lureId) == nil then
+		return nil
+	end
+	if type(value.catId) ~= "string" or Catalog.getCat(value.catId) == nil then
+		return nil
+	end
+	if type(value.placedAt) ~= "number" or value.placedAt ~= value.placedAt then
+		return nil
+	end
+	local placedAt = math.floor(value.placedAt)
+	-- F54: the arrival UseLure fixed, inside the longest wait (an old save has none and waits LureWaitSeconds)
+	local readyAt: number? = nil
+	if type(value.readyAt) == "number" and value.readyAt == value.readyAt then
+		readyAt = math.clamp(math.floor(value.readyAt), placedAt, placedAt + Config.LureWaitSeconds)
+	end
+	return {
+		lureId = value.lureId,
+		placedAt = placedAt,
+		readyAt = readyAt,
+		night = if value.night == true then true else nil, -- F60: night bait, only ever true
+		wow = if value.wow == true then true else nil, -- #1897: the guaranteed Rare-or-better cat, only ever true
+		-- #4338: the Bowl Frenzy that sped it, a short id string
+		frenzy = if type(value.frenzy) == "string" and #value.frenzy <= 64
+			then value.frenzy
+			else nil,
+		catId = value.catId,
+		variant = variantOf(value.variant),
+		charm = math.clamp(
+			asInt(value.charm, CatStats.DEFAULT_CHARM),
+			CatStats.MIN_CHARM,
+			CatStats.MAX_CHARM
+		),
+	}
+end
+
+-- Unopened crates (F53): known crate ids with a whole count above 0.
+local function sanitizeCrates(value: any): { [string]: number }
+	local out: { [string]: number } = {}
+	if type(value) == "table" then
+		for id, count in value do
+			if type(id) == "string" and Catalog.getCrate(id) ~= nil then
+				local n = asInt(count, 0)
+				if n > 0 then
+					out[id] = n
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- Opens since each pool's last Epic or better (F53): known pools, 0 to CrateLuckyEvery - 1.
+local function sanitizeCrateLuck(value: any): { [string]: number }
+	local out: { [string]: number } = {}
+	if type(value) == "table" then
+		for pool, count in value do
+			if type(pool) == "string" and Catalog.cratePools[pool] then
+				local n = math.min(asInt(count, 0), Config.CrateLuckyEvery - 1)
+				if n > 0 then
+					out[pool] = n
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- Golden Fish Market perks (F53): known perk ids, 1 to the perk's maxLevel.
+local function sanitizeFishPerks(value: any): { [string]: number }
+	local out: { [string]: number } = {}
+	if type(value) == "table" then
+		for id, level in value do
+			local row = if type(id) == "string" then Catalog.getFishShopRow(id) else nil
+			if row ~= nil and row.kind == "perk" then
+				local n = math.min(asInt(level, 0), row.maxLevel or 0)
+				if n > 0 then
+					out[id] = n
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- The potion bag (F64): known potion ids with a whole count above 0.
+-- #2891: potions taken out of the game, by id, with the coins each one held is refunded for: the Cat Whistle's
+-- Corner Shop prices (coins only; none was ever sold for Robux or given as a prize). sanitizePotions drops unknown
+-- ids, so a refunded count is gone from the save and pays only once.
+ProfileSchema.RETIRED_POTIONS = table.freeze({
+	cat_whistle_small = 8000,
+	cat_whistle = 300000,
+	cat_whistle_big = 60000000,
+}) :: { [string]: number }
+
+-- #2891: the coins owed for the retired potions in a raw save's `potions`, 0 for none.
+function ProfileSchema.retiredRefund(raw: any): number
+	local potions = if type(raw) == "table" then raw.potions else nil
+	local total = 0
+	if type(potions) == "table" then
+		for id, price in ProfileSchema.RETIRED_POTIONS do
+			if Catalog.getPotion(id) == nil then
+				total += math.max(0, asInt(potions[id], 0)) * price
+			end
+		end
+	end
+	return total
+end
+
+local function sanitizePotions(value: any): { [string]: number }
+	local out: { [string]: number } = {}
+	if type(value) == "table" then
+		for id, count in value do
+			if type(id) == "string" and Catalog.getPotion(id) ~= nil then
+				local n = asInt(count, 0)
+				if n > 0 then
+					out[id] = n
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- Running potions (F64): known potion ids with seconds of play time left, above 0 and at most PotionMaxMinutes.
+local function sanitizeBuffs(value: any): { [string]: number }
+	local out: { [string]: number } = {}
+	if type(value) == "table" then
+		for id, left in value do
+			if type(id) == "string" and Catalog.getPotion(id) ~= nil then
+				local seconds = math.min(asNumber(left, 0), Config.PotionMaxMinutes * 60)
+				if seconds > 0 then
+					out[id] = seconds
+				end
+			end
+		end
+	end
+	return out
+end
+
+-- A save's quest slots (F73), in order up to `slots` and dense (the N116 lesson): a string id (QuestService gives an
+-- unknown or misplaced one a fresh pick), a whole base of 0 or more and needs of at least 1.
+local function sanitizeQuestList(value: any, slots: number): { Types.QuestEntry }
+	local out: { Types.QuestEntry } = {}
+	if type(value) ~= "table" then
+		return out
+	end
+	for slot = 1, slots do
+		local entry = value[slot]
+		if type(entry) ~= "table" then
+			break
+		end
+		table.insert(out, {
+			id = if type(entry.id) == "string" then string.sub(entry.id, 1, 40) else "",
+			base = math.max(0, asInt(entry.base, 0)),
+			needs = math.max(1, asInt(entry.needs, 1)),
+			claimed = entry.claimed == true,
+		})
+	end
+	return out
+end
+
+local function sanitizeQuests(value: any): Types.QuestState
+	local quests = newQuests()
+	if type(value) ~= "table" then
+		return quests
+	end
+	quests.day = asInt(value.day, 0)
+	quests.daily = sanitizeQuestList(value.daily, Config.QuestDailyCount)
+	quests.dailyReroll = value.dailyReroll == true
+	quests.dailySet = value.dailySet == true
+	quests.week = asInt(value.week, 0)
+	quests.weekly = sanitizeQuestList(value.weekly, Config.QuestWeeklyCount)
+	quests.weeklyReroll = value.weeklyReroll == true
+	quests.weeklySet = value.weeklySet == true
+	return quests
+end
+
+-- Claimed achievements (F73): known ids only.
+local function sanitizeAchievements(value: any): { [string]: boolean }
+	local out: { [string]: boolean } = {}
+	if type(value) == "table" then
+		for id, claimed in value do
+			if type(id) == "string" and claimed == true and Catalog.getAchievement(id) ~= nil then
+				out[id] = true
+			end
+		end
+	end
+	return out
+end
+
+-- Redeemed codes (F65): any code id a code could have had (letters and digits, up to CodeMaxLength) with a time, so
+-- a code row removed and later added back still counts as used.
+local function sanitizeCodes(value: any): { [string]: number }
+	local out: { [string]: number } = {}
+	if type(value) == "table" then
+		for id, at in value do
+			if
+				type(id) == "string"
+				and #id <= Config.CodeMaxLength
+				and string.match(id, "^%w+$") ~= nil
+				and type(at) == "number"
+			then
+				out[id] = asInt(at, 0)
+			end
+		end
+	end
+	return out
+end
+
+-- F87: a state saved before version 19 counts its steps in the 12 step funnel v1, one before #1273 in the 25 step
+-- funnel v2, one before #1888 in the 37 step funnel v3, one before #2391 in the 46 step v4; Onboarding.fromOld takes
+-- any of them out of the funnel v5 once
+-- it had logged a first catch, else back to its start (#1273: no save version, since `funnel` already tells the
+-- funnels apart). A first day in the future is
+-- clamped to today.
+local function sanitizeTelemetry(value: any, now: number): Types.TelemetryState
+	local telemetry: Types.TelemetryState = {
+		onboardingStep = 0,
+		achieved = {},
+		funnel = Onboarding.VERSION,
+		firstDay = 0,
+		introStep = 0,
+		firstHourStep = Onboarding.FIRST_HOUR_V2_COUNT,
+		firstHourV3Step = 0,
+		cleanStep = 0,
+		cleanV8Step = 0,
+		cleanV9Step = 0,
+		playtimeStep = 0,
+	}
+	if type(value) ~= "table" then
+		return telemetry
+	end
+	local step = math.max(0, asInt(value.onboardingStep, 0))
+	local achieved: { [string]: boolean } = {}
+	local introStep = math.max(0, asInt(value.introStep, 0))
+	local firstHourStep = math.max(0, asInt(value.firstHourStep, 0))
+	if value.funnel == Onboarding.VERSION then
+		if type(value.achieved) == "table" then
+			for key, held in value.achieved do
+				if type(key) == "string" and held == true then
+					achieved[key] = true
+				end
+			end
+		end
+	else
+		local old = if type(value.funnel) == "number" then value.funnel else nil
+		step = Onboarding.fromOld(old, step)
+		-- a player out of the funnel is out of the intro one too; #2391: v5 keeps v4's intro funnel, so a v4 save keeps
+		-- its intro step
+		if old ~= 4 and old ~= 5 then
+			introStep = if step >= Onboarding.COUNT then Onboarding.INTRO_COUNT else 0
+		end
+		-- #2391: first_hour came with v5, so a player out of the funnel is out of it too. #2636: v6 sends
+		-- first_hour_v2, whose steps moved, so a v5 save that logged any of first_hour leaves it as well.
+		local loggedFirstHour = old == 5 and firstHourStep >= 1
+		firstHourStep = if step >= Onboarding.COUNT or loggedFirstHour
+			then Onboarding.FIRST_HOUR_COUNT
+			else 0
+	end
+	telemetry.onboardingStep = math.clamp(step, 0, Onboarding.COUNT)
+	for later = telemetry.onboardingStep + 1, Onboarding.COUNT do
+		local key = tostring(later)
+		if achieved[key] == true then
+			telemetry.achieved[key] = true
+		end
+	end
+	telemetry.introStep = math.clamp(introStep, 0, Onboarding.INTRO_COUNT)
+	-- #3308: first_hour_v3 from its own field once this code has saved it; before that (or after a server on v2
+	-- dropped it), a save that logged any of first_hour_v2, or was taken out of it above, leaves v3 too. firstHourStep
+	-- is then written as v2's count, so a server still on v2 logs no v2 step for this player.
+	local v3Step = value.firstHourV3Step
+	local firstHourV3Step = if type(v3Step) == "number"
+			and value.funnel == Onboarding.VERSION
+		then math.max(0, asInt(v3Step, 0))
+		elseif firstHourStep >= 1 then Onboarding.FIRST_HOUR_COUNT
+		else 0
+	telemetry.firstHourStep = Onboarding.FIRST_HOUR_V2_COUNT
+	telemetry.firstHourV3Step = math.clamp(firstHourV3Step, 0, Onboarding.FIRST_HOUR_COUNT)
+	-- #3695: the clean funnel and playtime_v1 from their own fields once this code has saved them. Without them (an
+	-- older save, or a server on v6 dropped them) a save past its first catch is out of the clean funnel, and one that
+	-- logged any first_hour step is out of playtime_v1: both count only players who start on them.
+	local cleanStep = value.cleanStep
+	telemetry.cleanStep = if type(cleanStep) == "number"
+		then math.clamp(asInt(cleanStep, 0), 0, Onboarding.V7_CLEAN_COUNT)
+		else Onboarding.v7Start(telemetry)
+	-- #4504: onboarding_v8 (cleanV8Step, logged while the walk-through runs bowl first) the same way
+	local cleanV8Step = value.cleanV8Step
+	telemetry.cleanV8Step = if type(cleanV8Step) == "number"
+		then math.clamp(asInt(cleanV8Step, 0), 0, Onboarding.V8_CLEAN_COUNT)
+		elseif Onboarding.cleanStart(telemetry) > 0 then Onboarding.V8_CLEAN_COUNT
+		else 0 -- (v8 is no longer logged: onboarding_v9 took its place)
+	-- onboarding_v9 (cleanV9Step), as v8 was
+	local cleanV9Step = value.cleanV9Step
+	telemetry.cleanV9Step = if type(cleanV9Step) == "number"
+		then math.clamp(asInt(cleanV9Step, 0), 0, Onboarding.CLEAN_COUNT)
+		else Onboarding.cleanStart(telemetry)
+	-- #5533: onboarding_v10 (cleanV10Step), only for a save on the play first start; nil reads as 0
+	local cleanV10Step = value.cleanV10Step
+	telemetry.cleanV10Step = if type(cleanV10Step) == "number"
+		then math.clamp(asInt(cleanV10Step, 0), 0, Onboarding.V10_COUNT)
+		else nil
+	-- #5551: first_five_v1 and its start_side bits (shared/StartFunnel); nil reads as 0
+	telemetry.firstFiveStep = StartFunnel.validStep(value.firstFiveStep)
+	telemetry.startSide = StartFunnel.validSide(value.startSide)
+	local playtimeStep = value.playtimeStep
+	telemetry.playtimeStep = if type(playtimeStep) == "number"
+		then math.clamp(asInt(playtimeStep, 0), 0, Onboarding.PLAYTIME_COUNT)
+		elseif telemetry.firstHourV3Step >= 1 then Onboarding.PLAYTIME_COUNT
+		else 0
+	telemetry.firstDay = math.clamp(asInt(value.firstDay, 0), 0, now // DAY_SECONDS)
+	telemetry.introGroup = IntroSplit.valid(value.introGroup) -- #3666
+	telemetry.orderGroup = TutorialOrder.valid(value.orderGroup) -- #5498
+	telemetry.holdout = Holdout.valid(value.holdout) -- #5499
+	telemetry.tier3Trip = Tier3Trip.sanitize(value.tier3Trip) -- #5517
+	telemetry.freeStart = if value.freeStart == true then true else nil -- #5533 (shared/FreeStart)
+	telemetry.startPaid = FreeStart.validPaid(value.startPaid) -- #5533
+	-- #5291: milestones_v1's mask (MilestoneFunnel.sanitize, kept here as a number check so this module needs no
+	-- Economy): a whole number from -1 (out) to 4095 (all 12 steps), nil for none
+	local milestoneMask = value.milestoneMask
+	if type(milestoneMask) == "number" and milestoneMask == milestoneMask then
+		telemetry.milestoneMask = if milestoneMask < 0
+			then -1
+			else math.min(math.floor(milestoneMask), 4095)
+	end
+	return telemetry
+end
+
+-- Takes whatever was loaded (any version up to this one, possibly damaged) and returns a valid current profile.
+-- Unknown catalog ids are dropped so a removed cat or upgrade never breaks loading. Migrates forward only:
+-- callers check isNewerThanCode first, because this would strip a newer save down to this version.
+--
+-- Version 2 to 3 (data-model section 14): Tier 1; refunds cafe_level levels above 1, park_access, and tables,
+-- espresso and net levels above the Tier 1 caps at the version 2 prices; clears every cat's spot and runs Equip
+-- Best once to fill barista_1 and waiter_1; method "starter" for the first Tabby, "rescue" for rescued cats and
+-- "net" for the rest; equippedLure (the v0.2 lure spots, replaced by the bait bowl in F28) and renovations are
+-- dropped.
+function ProfileSchema.migrate(raw: any, now: number): Types.PlayerProfile
+	local profile = ProfileSchema.template(now)
+	if type(raw) ~= "table" then
+		return profile
+	end
+	local fromVersion = math.min(ProfileSchema.versionOf(raw), ProfileSchema.VERSION)
+
+	profile.coins = asNumber(raw.coins, profile.coins)
+	profile.lifetimeCoins = asNumber(raw.lifetimeCoins, 0)
+	profile.lastTick = asInt(raw.lastTick, now)
+	profile.lastSeen = asInt(raw.lastSeen, now)
+	profile.rateAtLogout = asNumber(raw.rateAtLogout, 0)
+	profile.tutorialStep = math.clamp(asInt(raw.tutorialStep, 0), 0, 5)
+	profile.tier = if fromVersion >= 3
+		then math.clamp(asInt(raw.tier, 1), 1, Catalog.maxTier)
+		else 1
+
+	if fromVersion >= 3 then
+		migrateV3Upgrades(raw.upgradeLevels, profile)
+	else
+		profile.coins += migrateV2Upgrades(raw.upgradeLevels, profile)
+	end
+
+	if type(raw.decorOwned) == "table" then
+		for id, owned in raw.decorOwned do
+			if type(id) == "string" and owned == true and Catalog.getDecor(id) ~= nil then
+				profile.decorOwned[id] = true
+			end
+		end
+	end
+	if type(raw.decorPlaced) == "table" then
+		for id, placed in raw.decorPlaced do
+			if type(id) == "string" and placed == true and profile.decorOwned[id] then
+				profile.decorPlaced[id] = true
+			end
+		end
+	end
+
+	if type(raw.lures) == "table" then
+		for id, count in raw.lures do
+			if type(id) == "string" and Catalog.getLure(id) ~= nil then
+				local n = asInt(count, 0)
+				if n > 0 then
+					profile.lures[id] = n
+				end
+			end
+		end
+	end
+	if fromVersion >= 3 then
+		profile.bait = sanitizeBait(raw.bait)
+	end
+	if fromVersion >= 34 then
+		profile.bait2 = sanitizeBait(raw.bait2) -- #1161: kept even if the pass is not seen this session
+	end
+
+	sanitizeCats(raw, profile, fromVersion, now)
+	profile.pet = Pet.sanitize(raw.pet, now) -- #3651: the happy cat, at any version (an older server drops it)
+
+	profile.collection = sanitizeCollection(raw.collection, now)
+	for _, instance in profile.cats do
+		if profile.collection[instance.catId] == nil then
+			profile.collection[instance.catId] = instance.caughtAt
+		end
+	end
+	-- Version 3 called it shinyCollection (Derek 2026-10-27: shiny is gold now); a later save only has goldCollection.
+	if fromVersion >= 4 then
+		profile.goldCollection = sanitizeCollection(raw.goldCollection, now)
+	elseif fromVersion == 3 then
+		profile.goldCollection = sanitizeCollection(raw.shinyCollection, now)
+	end
+	for _, instance in profile.cats do
+		if instance.variant == "gold" and profile.goldCollection[instance.catId] == nil then
+			profile.goldCollection[instance.catId] = instance.caughtAt
+		end
+	end
+	-- F99: the rainbow coats found (version 24); every rainbow cat owned is in it
+	profile.rainbowCollection = sanitizeCollection(raw.rainbowCollection, now)
+	for _, instance in profile.cats do
+		if instance.variant == "rainbow" and profile.rainbowCollection[instance.catId] == nil then
+			profile.rainbowCollection[instance.catId] = instance.caughtAt
+		end
+	end
+
+	-- Index reward claims (F48); saves before version 5 have none and can claim every milestone they passed.
+	if type(raw.indexRewards) == "table" then
+		for areaId, claims in raw.indexRewards do
+			local prizes = if type(areaId) == "string" then Catalog.indexPrizes[areaId] else nil
+			if prizes ~= nil and type(claims) == "table" then
+				local kept: { [string]: boolean } = {}
+				for milestoneId, claimed in claims do
+					if
+						type(milestoneId) == "string"
+						and claimed == true
+						and prizes[milestoneId] ~= nil
+					then
+						kept[milestoneId] = true
+					end
+				end
+				if next(kept) ~= nil then
+					profile.indexRewards[areaId] = kept
+				end
+			end
+		end
+	end
+
+	-- The Spin Wheel (F49); saves before version 6 have no spins banked and today's free spin due.
+	profile.spin = Spin.sanitize(raw.spin, now)
+
+	-- Golden fish, crates and Market perks (F52, F53); saves before version 7 start with none.
+	profile.goldenFish = asInt(raw.goldenFish, 0)
+	profile.lifetimeGoldenFish = math.max(asInt(raw.lifetimeGoldenFish, 0), profile.goldenFish)
+	profile.crates = sanitizeCrates(raw.crates)
+	profile.crateLuck = sanitizeCrateLuck(raw.crateLuck)
+	profile.fishPerks = sanitizeFishPerks(raw.fishPerks)
+	-- #2565: the Mystery Market's owned items and its first visit; a save without them owns none, not yet seen
+	profile.mystery = MysteryMarket.sanitize(raw.mystery)
+	profile.mysterySeen = raw.mysterySeen == true
+	-- #4055 (version 49): the passes bought with golden fish; an older save bought none
+	profile.fishBought = FishStore.sanitize(raw.fishBought)
+	-- #4061 (version 49): the Ticket Booth; an older save has no tickets
+	profile.tickets = TicketBooth.sanitize(raw.tickets)
+	-- #4062 (version 49): the Dragon Keep; an older save has no dragon
+	profile.dragon = DragonKeep.sanitize(raw.dragon)
+	-- #4104 (version 50): the Fusion Observatory; an older save has an empty dome
+	profile.fusion = Fusion.sanitize(raw.fusion, sanitizeName)
+	-- #4251 (version 51): Harvest Hollow; an older save has no pumpkins
+	profile.harvest = HarvestSave.sanitize(raw.harvest)
+	-- #3699: the Backpack's colour picks (no version: see Types.PlayerProfile.bagColours)
+	profile.bagColours = BagColours.sanitize(raw.bagColours)
+	-- #5502 (no version: see Types.PlayerProfile.advent): the advent calendar and the Snowflakes
+	profile.advent = Advent.sanitize(raw.advent)
+	local flakes = raw.snowflakes
+	profile.snowflakes = if type(flakes) == "number"
+			and flakes == flakes
+			and flakes > 0
+		then math.min(math.floor(flakes), 1000000000)
+		else nil
+	profile.dealDay = DailyDeal.sanitizeDay(raw.dealDay) -- #3996 (no version: see Types.PlayerProfile.dealDay)
+	profile.shoeColours = BagColours.sanitize(raw.shoeColours, "shoes") -- #4049, the same way
+	-- #2792: the special visitors met once (no version: see Types.PlayerProfile.firstVisits)
+	profile.firstVisits = FirstVisits.sanitize(raw.firstVisits)
+	profile.codesRedeemed = sanitizeCodes(raw.codesRedeemed) -- F65; saves before version 9 have used none
+	-- F72: every save from before version 10 plays the intro once too (Derek, intro-cutscene.md answer 2)
+	profile.introSeen = raw.introSeen == true
+	profile.potions = sanitizePotions(raw.potions) -- F64; saves before version 13 hold none
+	profile.buffs = sanitizeBuffs(raw.buffs)
+	profile.quests = sanitizeQuests(raw.quests) -- F73; saves before version 16 have none and roll on load
+	profile.achievements = sanitizeAchievements(raw.achievements)
+	profile.dailyTreat = DailyTreat.sanitize(raw.dailyTreat, now) -- F70; saves before version 17 start a fresh card
+	-- F94; saves before version 18 have bought nothing on the shelf, and their dealer counts are dropped
+	profile.freshCatch = FreshCatch.sanitize(raw.freshCatch, now)
+
+	if type(raw.stats) == "table" then
+		local stats = profile.stats :: any
+		for key, default in newStats() :: any do
+			if type(default) == "number" then
+				stats[key] = asInt(raw.stats[key], 0)
+			end
+		end
+		-- F98 (version 23): a rate keeps its fractions; older saves have none of the three
+		stats.bestRate = asNumber(raw.stats.bestRate, 0)
+		stats.weekPlay = sanitizeWeekly(raw.stats.weekPlay, "seconds")
+		stats.weekBestRate = sanitizeWeekly(raw.stats.weekBestRate, "rate")
+		-- F102 (version 27)
+		stats.tradesToday = Trade.sanitizeToday(raw.stats.tradesToday)
+	end
+	profile.settings = Settings.sanitize(raw.settings)
+
+	if fromVersion >= 3 and type(raw.flags) == "table" then
+		profile.flags.autoPress = raw.flags.autoPress == true
+	end
+	profile.telemetry = sanitizeTelemetry(raw.telemetry, now)
+	-- F87 (version 20): an older save past the first loop has met everything the tips explain
+	profile.tipsSeen =
+		Tips.sanitizeSeen(raw.tipsSeen, fromVersion < 20 and profile.tutorialStep >= 5)
+	profile.feedbackAsked = raw.feedbackAsked == true
+	-- #3272 (no new version): the UTC day the once-a-day session ask was last answered or skipped, 0 before. An older
+	-- server drops it, which at worst asks once more that day.
+	profile.sessionFeedbackDay = if type(raw.sessionFeedbackDay) == "number"
+			and raw.sessionFeedbackDay == raw.sessionFeedbackDay
+		then math.clamp(math.floor(raw.sessionFeedbackDay), 0, 1e6)
+		else 0
+	profile.stuckHelpShown = Tips.sanitizeHelp(raw.stuckHelpShown)
+	-- F96 (version 21): the one free Bellhop Cat, kept claimed by the flag or by owning one
+	profile.starterCatClaimed = raw.starterCatClaimed == true
+	for _, instance in profile.cats do
+		if instance.catId == StarterCat.CAT_ID then
+			profile.starterCatClaimed = true
+		end
+	end
+
+	-- F96 (version 22): when the notification ask first showed, never in the future
+	profile.notifyAskAt = math.clamp(asInt(raw.notifyAskAt, 0), 0, now)
+	-- F100 (version 25): the camp extras, settled for the tier by CampExtraService once the profile loads
+	profile.campExtras = CampExtras.sanitize(raw.campExtras, now)
+	-- #2651 part 4 (version 46): the Oasis Spa (its cats must still be owned) and the Relic Museum's exhibits
+	profile.spa = LateStations.sanitizeSpa(raw.spa, profile.cats, now)
+	profile.museum = LateStations.sanitizeMuseum(raw.museum)
+	-- #2797 (version 47): the invite reward; a save without them has invited nobody and was invited by nobody
+	profile.invites = Invites.sanitize(raw.invites)
+	profile.referredBy = Invites.sanitizeReferred(raw.referredBy)
+	-- #3196 (version 48): the Mystic Pool's side; an older save starts fresh (no tokens, every free roll to use). A
+	-- version 48 save's broken free-roll count reads as all used, never as five more (Traits.sanitizeSave).
+	local owned: { [string]: boolean } = {}
+	for _, cat in profile.cats do
+		owned[cat.uid] = true
+	end
+	profile.traits = if fromVersion >= 48
+		then Traits.sanitizeSave(raw.traits, now, owned)
+		else Traits.fresh(now)
+	-- F101 (version 26): the Rescue Rally laps this weekend
+	profile.rally = Rally.sanitize(raw.rally, now)
+	-- F102 (version 27): the Trades page and the trades this save has applied
+	profile.tradeLog = Trade.sanitizeLog(raw.tradeLog)
+	profile.tradeIds = Trade.sanitizeIds(raw.tradeIds)
+	-- F91 (version 28): the front lawn, kept to what the tier opens
+	profile.lawnOwned, profile.lawn, profile.lawnStyles =
+		Lawn.sanitize(raw.lawnOwned, raw.lawn, raw.lawnStyles, profile.tier)
+	-- #3276 (no new version): the Legendary and up pieces locked on their card, owned ones only; every other owned one
+	-- is unlocked, so a save from before (when they arrived locked) has them all unlocked. decorUnlocked (#1574) is
+	-- rebuilt as the mirror for older servers.
+	profile.decorLocked = {}
+	if type(raw.decorLocked) == "table" then
+		for id, locked in raw.decorLocked do
+			local info = if type(id) == "string" then Trade.piece(id) else nil
+			if
+				info ~= nil
+				and locked == true
+				and Trade.ownsPiece(profile, id)
+				and Trade.lockable(info.rarity)
+			then
+				profile.decorLocked[id] = true
+			end
+		end
+	end
+	profile.decorUnlocked = Trade.unlockedPieces(profile)
+	-- #1052 (version 29): the Corner Shop; saves before it have bought nothing and fed no snacks
+	profile.cornerShop = CornerShop.sanitize(raw.cornerShop, now)
+	-- #1537 (version 35): the Yard Sale's lawn rows bought today; saves before it have bought none
+	profile.yardDecor = YardSale.sanitize(raw.yardDecor)
+	-- #1083 (version 30): only true hides the name on the Thank You board; anything else is shown
+	profile.hideCredit = if raw.hideCredit == true then true else nil
+	-- #1182 (version 31): the granted PurchaseIds, kept as strings, newest last; older saves have granted none
+	profile.receipts = Products.sanitize(raw.receipts)
+	-- #1625 (version 35): the once-per-account products bought, the saved sign styles and the pick; none before
+	profile.onceBought = Products.sanitizeOnce(raw.onceBought)
+	profile.signStyles = SignStyles.sanitize(raw.signStyles)
+	profile.signStyle = SignStyles.sanitizePick(raw.signStyle)
+	-- #1842 (no new version): the Store tabs opened; none before
+	profile.storeSeen = StoreTabs.sanitize(raw.storeSeen)
+	-- #1168 row 2 (no new version): the Jukebox pick; none before
+	profile.jukebox = Jukebox.sanitizePick(raw.jukebox)
+	-- #1645 (version 36): the Cafe Pass; saves before it start at season 0 with nothing (CafePassService rolls it on)
+	profile.pass = CafePass.sanitize(raw.pass)
+	CafePass.grantOwned(profile) -- #1645: pass decor and the frame claimed before they had a place (decor, sign styles)
+	-- #1624 (version 38): the theme and uniform picks, and (39) the accessory, known ids only; saves before show Classic
+	profile.looks = Looks.sanitize(raw.looks)
+	-- #1181 (version 32): the Bag's cat food, known foods only, whole counts of 1 to CatFoodMax
+	if type(raw.catFood) == "table" then
+		for _, food in Catalog.catFood do
+			local count = raw.catFood[food.id]
+			if type(count) == "number" and count == count and count >= 1 then
+				profile.catFood[food.id] = math.min(math.floor(count), Config.CatFoodMax)
+			end
+		end
+	end
+
+	-- #1893, #1897 (version 41): the Grand Opening roadmap (finished at once for a save already at Tier 3) and the
+	-- guaranteed Rare-or-better bait (had already for a save that set its second bait)
+	profile.grandOpening = GrandOpening.sanitize(raw.grandOpening, fromVersion, profile.tier)
+	profile.firstWow = raw.firstWow == true
+		or (fromVersion < GrandOpening.FROM_VERSION and profile.stats.luresUsed >= 2)
+	-- #1947 (version 42): the like and favourite gifts
+	profile.likeGift = raw.likeGift == true
+	profile.favGift = raw.favGift == true
+	profile.cozy = CozyCafe.sanitize(raw.cozy) -- #2798, no version
+	profile.giftSteps = PlaytimeGifts.sanitize(raw.giftSteps) -- #2791, no version
+	profile.dailyGifts = DailyGifts.sanitize(raw.dailyGifts) -- #5506, no version
+	profile.daysPlayed = DaysPlayed.sanitize(raw.daysPlayed) -- #5505, no version
+	-- #2486 (version 43): the Cafe Event reward pieces (string ids of at most 64 characters, whole times) and the
+	-- last event rewarded
+	if type(raw.eventRewards) == "table" then
+		for id, at in raw.eventRewards do
+			if type(id) == "string" and #id >= 1 and #id <= 64 and type(at) == "number" then
+				profile.eventRewards[id] = asInt(at, 0)
+			end
+		end
+	end
+	profile.eventLast = if type(raw.eventLast) == "string" and #raw.eventLast <= 96
+		then raw.eventLast
+		else ""
+
+	if fromVersion < 3 then
+		EquipBest.apply(profile, EquipBest.plan(profile))
+	end
+
+	-- #4913: no version bump; an older server would drop it, so the palDay switch goes on only after a restart
+	local palDay = if type(raw.palDay) == "table" then raw.palDay else {}
+	profile.palDay = { day = math.max(0, asInt(palDay.day, 0)) }
+	-- #5172: no version bump either; an older server would drop it, so catFollower goes on only after a restart
+	profile.follower = Follower.sanitize(raw.follower)
+	profile.version = ProfileSchema.VERSION
+	return profile
+end
+
+-- F102: a cat from outside the save (a stored trade record on the recovery path) made whole as a cat of this version
+-- is, with no spot; nil unless it has a string uid and a known catId.
+function ProfileSchema.cleanCat(entry: any, now: number): Types.CatInstance?
+	if
+		type(entry) ~= "table"
+		or type(entry.uid) ~= "string"
+		or #entry.uid == 0
+		or type(entry.catId) ~= "string"
+		or Catalog.getCat(entry.catId) == nil
+	then
+		return nil
+	end
+	return catFrom(entry.uid, entry, ProfileSchema.VERSION, now, nil)
+end
+
+function ProfileSchema.catCount(profile: Types.PlayerProfile): number
+	local n = 0
+	for _ in profile.cats do
+		n += 1
+	end
+	return n
+end
+
+function ProfileSchema.collectionCount(profile: Types.PlayerProfile): number
+	local n = 0
+	for _ in profile.collection do
+		n += 1
+	end
+	return n
+end
+
+return ProfileSchema

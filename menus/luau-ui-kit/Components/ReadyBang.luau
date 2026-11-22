@@ -1,0 +1,334 @@
+--!strict
+-- The camp stations' red "!" (camp-stations.md section 1; #1133 Picnic Basket, #1154 Yard Sale, #1232 Fish Pond):
+-- the HUD's red "!" dot (#1074 / #1117) as a world BillboardGui on each station's `BangAnchor` attachment, 2 studs
+-- above its sign. It shows while that extra holds something to claim (open and `held > 0`, the same state the
+-- Cat Cannon picker's dot uses) and hides the moment it is claimed or while it refills. Each client only gets its
+-- own CampExtrasState, and the billboards live in this player's PlayerGui, so only the owner ever sees theirs.
+-- Shows within BANG_RANGE studs of the camera (40 since #2730, was 150: only close by), bobs 1 stud every 2 s, and
+-- holds still with Reduce Motion.
+-- #1614 (Derek2 11-05: "always have a bubble up for whatever station is in that area"): each open station now always
+-- wears a bubble within that range, its icon and name over what waits ("14 fish", "Next in 2 h 10 m"), the Cat Cannon
+-- picker's words (CampExtrasLogic.bubble). The red "!" sits on the bubble's corner while there is something to claim,
+-- and only then does the bubble bob. The words move on once a second.
+--
+-- Roblox terms: a BillboardGui is 2D UI drawn at a point in the 3D world, always facing the camera. Its Adornee is
+-- the part or attachment it hangs from, and MaxDistance hides it past that many studs. CollectionService tags let
+-- the client find the stations the server placed, including ones that stream in later (Model-Agent's
+-- CatCafe_Camp_Park_PicnicStation, CatCafe_Camp_Neighbourhood_YardSaleStall and CatCafe_Camp_Woods_FishingHut,
+-- tagged `CampExtra` with an ExtraId attribute). #1733: the Sewer's Lost and Found (CatCafe_Camp_Sewer_LostFound)
+-- wears one too.
+--
+--   ReadyBang.new(parent)   the billboards; :update(state) with every CampExtrasState, :destroy()
+-- When each shows is CampExtrasLogic.bangShows (pure, so the cloud specs check it).
+-- #2651 part 4: the Oasis Spa and the Relic Museum (tagged `LateStation` with a StationId attribute) wear one too, from
+-- LateStationsState (:updateLate(state)): the Cat Cannon picker's line, and the "!" while a spa cat has a level to
+-- collect or an exhibit can be filled (LateStationsLogic.bubble and bangShows).
+
+local CollectionService = game:GetService("CollectionService")
+local GuiService = game:GetService("GuiService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local CampExtrasLogic = require(script.Parent.CampExtrasLogic)
+local Create = require(script.Parent.Create)
+local LateStationsLogic = require(script.Parent.LateStationsLogic)
+local Outline = require(script.Parent.Outline)
+local Scale = require(script.Parent.Parent.Scale)
+local Theme = require(script.Parent.Parent.Theme)
+
+export type ReadyBang = {
+	update: (self: ReadyBang, state: unknown) -> (),
+	updateLate: (self: ReadyBang, state: unknown) -> (), -- #2651 part 4: with every LateStationsState
+	destroy: (self: ReadyBang) -> (),
+}
+
+local ReadyBang = {}
+ReadyBang.__index = ReadyBang
+
+ReadyBang.TAG = "CampExtra" -- shared/CampExtras.TAG
+ReadyBang.LATE_TAG = "LateStation" -- shared/LateStations.TAG, its models' StationId attribute
+ReadyBang.LATE = { LateStationsLogic.SPA, LateStationsLogic.MUSEUM }
+ReadyBang.ANCHOR = "BangAnchor"
+ReadyBang.FALLBACK_STUDS = 2 -- #1733: over the top of a station model that has no BangAnchor
+ReadyBang.BOB_STUDS = 1
+ReadyBang.BOB_SECONDS = 2 -- one full bob, up and back down
+ReadyBang.LOOK_SECONDS = 1 -- the bubble's words move on, and a station not streamed in yet is looked for again
+
+type Bang = {
+	gui: BillboardGui,
+	title: TextLabel,
+	line: TextLabel,
+	dot: Frame,
+	bob: Tween?,
+}
+
+-- The station's BangAnchor attachment, or nil while the station (or that part of it) is streamed out. #1733
+-- (Derek2 11-06: no bubble over the Sewer's Lost and Found): a station model with no BangAnchor (the Lost and Found's
+-- old box) hangs it from its main part instead, FALLBACK_STUDS over the top of the model; the second value is that
+-- lift. #2096: a bubble on its anchor is lifted too, when needed, so it clears the top of its own station.
+local function anchorFor(extraId: string, lateStation: boolean?): (Instance?, Vector3)
+	local tag = if lateStation then ReadyBang.LATE_TAG else ReadyBang.TAG
+	local attribute = if lateStation then "StationId" else "ExtraId"
+	for _, instance in CollectionService:GetTagged(tag) do
+		if
+			instance:IsA("Model")
+			and instance:GetAttribute(attribute) == extraId
+			and instance:IsDescendantOf(Workspace)
+		then
+			local model = instance :: Model
+			local anchor = instance:FindFirstChild(ReadyBang.ANCHOR, true)
+			if anchor ~= nil and anchor:IsA("Attachment") then
+				-- #2096: lifted clear of the station's top, so its own parts (the Picnic's parasol) can't cover it
+				local box, size = model:GetBoundingBox()
+				local top = box.Position.Y + size.Y / 2
+				local lift = CampExtrasLogic.bubbleLift((anchor :: Attachment).WorldPosition.Y, top)
+				return anchor :: Attachment, Vector3.new(0, lift, 0)
+			end
+			local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+			if part ~= nil then
+				local box, size = model:GetBoundingBox()
+				local top = box.Position.Y + size.Y / 2
+				return part, Vector3.new(0, top - part.Position.Y + ReadyBang.FALLBACK_STUDS, 0)
+			end
+		end
+	end
+	return nil, Vector3.zero
+end
+
+local function label(props: { [string]: any }): TextLabel
+	local merged: { [string]: any } = {
+		BackgroundTransparency = 1,
+		FontFace = Theme.fonts.bodyBold,
+		TextScaled = true,
+		TextColor3 = Theme.colors.white,
+		Text = "",
+	}
+	for key, value in props do
+		merged[key] = value
+	end
+	local made: TextLabel = Create("TextLabel", merged)
+	Outline.text(made, 1.5)
+	return made
+end
+
+-- The bubble: a dark rounded card with the station's icon and name over what waits, and the red "!" on its corner.
+local function build(parent: Instance, extraId: string): Bang
+	local gui: BillboardGui = Create("BillboardGui", {
+		Name = "CatCafeReadyBang_" .. extraId,
+		-- studs up close, never smaller than 120 x 36 px at the edge of its range; #2762: a size smaller on a phone
+		Size = UDim2.new(
+			6 * Scale.phoneStuds(),
+			Scale.billboard(120),
+			1.8 * Scale.phoneStuds(),
+			Scale.billboard(36)
+		),
+		LightInfluence = 0,
+		AlwaysOnTop = false, -- walls in front hide it, as they hide the station (the Rescue "!" does the same)
+		MaxDistance = CampExtrasLogic.BANG_RANGE,
+		-- #2770 (Laptop-Tester: one close to the camera covered half a phone's screen): no bigger than at this many studs
+		DistanceLowerLimit = Scale.BUBBLE_NEAR,
+		ResetOnSpawn = false,
+		Enabled = false,
+		Parent = parent,
+	})
+	local card: Frame = Create("Frame", {
+		Name = "Bubble",
+		BackgroundColor3 = Theme.colors.cocoaDeep,
+		BackgroundTransparency = 0.15,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = gui,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0.3, 0) }),
+		Create("UIPadding", {
+			PaddingLeft = UDim.new(0.05, 0),
+			PaddingRight = UDim.new(0.05, 0),
+			PaddingTop = UDim.new(0.1, 0),
+			PaddingBottom = UDim.new(0.1, 0),
+		}),
+	})
+	Outline.border(card, 2)
+	local title = label({
+		Name = "Title",
+		Size = UDim2.fromScale(1, 0.55),
+		FontFace = Theme.fonts.display,
+		Text = CampExtrasLogic.icon(extraId),
+		Parent = card,
+	})
+	local line = label({
+		Name = "Line",
+		Position = UDim2.fromScale(0, 0.58),
+		Size = UDim2.fromScale(1, 0.42),
+		TextColor3 = Theme.colors.cream,
+		Parent = card,
+	})
+	-- the red "!" on the top right corner while there is something to claim
+	local dot: Frame = Create("Frame", {
+		Name = "Dot",
+		BackgroundColor3 = Theme.colors.red,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(1, 0),
+		Size = UDim2.fromScale(0.7, 0.7),
+		SizeConstraint = Enum.SizeConstraint.RelativeYY,
+		Visible = false,
+		ZIndex = 3,
+		Parent = gui,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Outline.border(dot, 2)
+	local mark: TextLabel = Create("TextLabel", {
+		Name = "Mark",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0.8),
+		Position = UDim2.fromScale(0, 0.1),
+		FontFace = Theme.fonts.display,
+		TextScaled = true,
+		TextColor3 = Theme.colors.white,
+		Text = "!",
+		ZIndex = 4,
+		Parent = dot,
+	})
+	Outline.text(mark, 2)
+	return { gui = gui, title = title, line = line, dot = dot, bob = nil }
+end
+
+function ReadyBang.new(parent: Instance): ReadyBang
+	local self = setmetatable({}, ReadyBang) :: any
+	self._bangs = {} :: { [string]: Bang }
+	self._state = nil :: unknown
+	self._late = nil :: unknown
+	self._connections = {} :: { RBXScriptConnection }
+	for _, extraId in CampExtrasLogic.BANG_EXTRAS do
+		self._bangs[extraId] = build(parent, extraId)
+	end
+	for _, stationId in ReadyBang.LATE do
+		self._bangs[stationId] = build(parent, stationId)
+	end
+	local function refresh()
+		self:_apply()
+	end
+	-- stations streaming in or out, and the Reduce Motion switch
+	table.insert(
+		self._connections,
+		CollectionService:GetInstanceAddedSignal(ReadyBang.TAG):Connect(refresh)
+	)
+	table.insert(
+		self._connections,
+		CollectionService:GetInstanceRemovedSignal(ReadyBang.TAG):Connect(refresh)
+	)
+	table.insert(
+		self._connections,
+		CollectionService:GetInstanceAddedSignal(ReadyBang.LATE_TAG):Connect(refresh)
+	)
+	table.insert(
+		self._connections,
+		GuiService:GetPropertyChangedSignal("ReducedMotionEnabled"):Connect(function()
+			for _, bang: Bang in self._bangs do
+				self:_still(bang)
+			end
+			refresh()
+		end)
+	)
+	-- once a second the words move on ("Next in 2 h 10 m"), and a station whose anchor isn't streamed in yet (or
+	-- streamed out) is looked for again
+	self._alive = true
+	task.spawn(function()
+		while self._alive do
+			task.wait(ReadyBang.LOOK_SECONDS)
+			if self._alive then
+				self:_apply()
+			end
+		end
+	end)
+	return self :: ReadyBang
+end
+
+function ReadyBang._still(_self: any, bang: Bang)
+	local bob = bang.bob
+	if bob ~= nil then
+		bob:Cancel()
+		bang.bob = nil
+	end
+	bang.gui.StudsOffset = Vector3.zero
+end
+
+function ReadyBang._apply(self: any)
+	local now = Workspace:GetServerTimeNow()
+	for extraId, bang: Bang in self._bangs do
+		local lateStation = table.find(ReadyBang.LATE, extraId) ~= nil
+		local view: CampExtrasLogic.Line? = if lateStation
+			then LateStationsLogic.bubble(self._late :: any, extraId)
+			else CampExtrasLogic.bubble(self._state, extraId, now)
+		local ready = if lateStation
+			then LateStationsLogic.bangShows(self._late :: any, extraId)
+			else CampExtrasLogic.bangShows(self._state, extraId)
+		local anchor: Instance?, lift = nil, Vector3.zero
+		if view ~= nil then
+			anchor, lift = anchorFor(extraId, lateStation)
+		end
+		local gui: any = bang.gui
+		if gui.Adornee ~= anchor then
+			gui.Adornee = anchor -- nil while hidden, so a streamed-out station isn't held on to
+		end
+		if gui.StudsOffsetWorldSpace ~= lift then
+			gui.StudsOffsetWorldSpace = lift
+		end
+		local on = anchor ~= nil
+		bang.gui.Enabled = on
+		if view ~= nil then
+			local title = view.icon .. " " .. view.name
+			if bang.title.Text ~= title then
+				bang.title.Text = title
+			end
+			if bang.line.Text ~= view.state then
+				bang.line.Text = view.state
+			end
+		end
+		bang.dot.Visible = ready
+		if not on or not ready then
+			self:_still(bang)
+		elseif bang.bob == nil and not GuiService.ReducedMotionEnabled then
+			local info = TweenInfo.new(
+				ReadyBang.BOB_SECONDS / 2,
+				Enum.EasingStyle.Sine,
+				Enum.EasingDirection.InOut,
+				-1,
+				true
+			)
+			local bob = TweenService:Create(
+				bang.gui,
+				info,
+				{ StudsOffset = Vector3.new(0, ReadyBang.BOB_STUDS, 0) }
+			)
+			bob:Play()
+			bang.bob = bob
+		end
+	end
+end
+
+-- Every CampExtrasState: each station's "!" shows or hides.
+function ReadyBang.update(self: any, state: unknown)
+	self._state = state
+	self:_apply()
+end
+
+-- #2651 part 4: every LateStationsState: the spa's and the museum's bubbles.
+function ReadyBang.updateLate(self: any, state: unknown)
+	self._late = state
+	self:_apply()
+end
+
+function ReadyBang.destroy(self: any)
+	self._alive = false
+	for _, connection in self._connections do
+		connection:Disconnect()
+	end
+	table.clear(self._connections)
+	for _, bang: Bang in self._bangs do
+		self:_still(bang)
+		bang.gui:Destroy()
+	end
+	table.clear(self._bangs)
+end
+
+return ReadyBang

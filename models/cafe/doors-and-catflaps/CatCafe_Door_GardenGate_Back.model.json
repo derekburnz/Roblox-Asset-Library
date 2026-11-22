@@ -1,0 +1,5674 @@
+{
+ "className": "Model",
+ "attributes": {
+  "Rojo_Target_PrimaryPart": "CatCafe_Door_GardenGate_Back/0",
+  "PartBuilt": true
+ },
+ "children": [
+  {
+   "name": "CatCafe_Door_GardenGate_Back",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -3.215,
+       3.975,
+       0.66
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.47,
+     7.95,
+     0.32
+    ],
+    "Color": [
+     0.2431,
+     0.498,
+     0.3059
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth",
+    "PivotOffset": {
+     "CFrame": {
+      "position": [
+       3.215,
+       -3.975,
+       -0.66
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "attributes": {
+    "Rojo_Id": "CatCafe_Door_GardenGate_Back/0"
+   }
+  },
+  {
+   "name": "CatCafe_Door_GardenGate_Back",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.0,
+       0.04,
+       0.01
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     5.98,
+     0.08,
+     0.98
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Door_GardenGate_Back",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       3.215,
+       3.975,
+       0.66
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.47,
+     7.95,
+     0.32
+    ],
+    "Color": [
+     0.2431,
+     0.498,
+     0.3059
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Door_GardenGate_Back",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.0,
+       7.73,
+       0.66
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     5.96,
+     0.44,
+     0.32
+    ],
+    "Color": [
+     0.2431,
+     0.498,
+     0.3059
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Door_GardenGate_Back/1"
+   },
+   "children": [
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.7902,
+       3.08,
+       0.22
+      ],
+      "Color": [
+       0.2471,
+       0.4353,
+       0.3686
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         -2.925,
+         -3.9,
+         0.15
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Door_GardenGate_Back/1"
+     },
+     "children": [
+      {
+       "name": "CatFlap",
+       "className": "Attachment",
+       "properties": {
+        "CFrame": {
+         "CFrame": {
+          "position": [
+           -0.045,
+           -3.68,
+           0.15
+          ],
+          "orientation": [
+           [
+            -1.0,
+            0.0,
+            0.0
+           ],
+           [
+            0.0,
+            1.0,
+            0.0
+           ],
+           [
+            0.0,
+            0.0,
+            -1.0
+           ]
+          ]
+         }
+        }
+       }
+      }
+     ]
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         0.335,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.7902,
+       0.21,
+       0.22
+      ],
+      "Color": [
+       0.2471,
+       0.4353,
+       0.3686
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.89,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.9199,
+       1.92,
+       0.22
+      ],
+      "Color": [
+       0.2471,
+       0.4353,
+       0.3686
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.935,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       2.01,
+       1.92,
+       0.22
+      ],
+      "Color": [
+       0.2471,
+       0.4353,
+       0.3686
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.6575,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       2.385,
+       1.02,
+       0.22
+      ],
+      "Color": [
+       0.2471,
+       0.4353,
+       0.3686
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.7475,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       2.385,
+       1.02,
+       0.22
+      ],
+      "Color": [
+       0.2471,
+       0.4353,
+       0.3686
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         6.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.7902,
+       0.98,
+       0.22
+      ],
+      "Color": [
+       0.2471,
+       0.4353,
+       0.3686
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.5269,
+         0.325,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       0.25,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.5269,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       1.9,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.5269,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       3.1,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.5269,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       1.0,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.5269,
+         6.96,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       1.02,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.7831,
+         0.325,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       0.25,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.7831,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.9,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.7831,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       3.1,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.7831,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.0,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.7831,
+         6.96,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.02,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.0519,
+         0.325,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       0.25,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.1463,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.4925,
+       1.9,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.0519,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       3.1,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.0519,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.0,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.0519,
+         6.96,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.02,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.3206,
+         0.335,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       0.27,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.3206,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       3.14,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.5581,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.2062,
+       1.0,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.3206,
+         6.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.04,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.4106,
+         0.335,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       0.27,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.4106,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       3.14,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.6481,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.2062,
+       1.0,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.4106,
+         6.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.04,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.1419,
+         0.325,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       0.25,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.1912,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.5825,
+       1.9,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.1419,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       3.1,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.1419,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.0,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.1419,
+         6.96,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.02,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.8731,
+         0.325,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       0.25,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.8731,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.9,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.8731,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       3.1,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.8731,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.0,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.8731,
+         6.96,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.6812,
+       1.02,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.6169,
+         0.325,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       0.25,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.6169,
+         1.4,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       1.9,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.6169,
+         3.9,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       3.1,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.6169,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       1.0,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.6169,
+         6.96,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.7063,
+       1.02,
+       0.3
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         6.5535,
+         -0.25
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.2568,
+         6.4726,
+         -0.25
+        ],
+        "orientation": [
+         [
+          0.5,
+          0.866,
+          0.0
+         ],
+         [
+          0.866,
+          -0.5,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.4776,
+         6.2517,
+         -0.25
+        ],
+        "orientation": [
+         [
+          0.866,
+          0.5,
+          0.0
+         ],
+         [
+          0.5,
+          -0.866,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.5585,
+         5.95,
+         -0.25
+        ],
+        "orientation": [
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          -1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.4776,
+         5.6483,
+         -0.25
+        ],
+        "orientation": [
+         [
+          0.866,
+          -0.5,
+          0.0
+         ],
+         [
+          -0.5,
+          -0.866,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.2568,
+         5.4274,
+         -0.25
+        ],
+        "orientation": [
+         [
+          0.5,
+          -0.866,
+          0.0
+         ],
+         [
+          -0.866,
+          -0.5,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         5.3465,
+         -0.25
+        ],
+        "orientation": [
+         [
+          0.0,
+          -1.0,
+          0.0
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.3467,
+         5.4274,
+         -0.25
+        ],
+        "orientation": [
+         [
+          -0.5,
+          -0.866,
+          0.0
+         ],
+         [
+          -0.866,
+          0.5,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.5676,
+         5.6483,
+         -0.25
+        ],
+        "orientation": [
+         [
+          -0.866,
+          -0.5,
+          0.0
+         ],
+         [
+          -0.5,
+          0.866,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.6485,
+         5.95,
+         -0.25
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.5676,
+         6.2517,
+         -0.25
+        ],
+        "orientation": [
+         [
+          -0.866,
+          0.5,
+          0.0
+         ],
+         [
+          0.5,
+          0.866,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.3467,
+         6.4726,
+         -0.25
+        ],
+        "orientation": [
+         [
+          -0.5,
+          0.866,
+          0.0
+         ],
+         [
+          0.866,
+          0.5,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         6.5535,
+         0.11
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.2568,
+         6.4726,
+         0.11
+        ],
+        "orientation": [
+         [
+          0.5,
+          0.866,
+          0.0
+         ],
+         [
+          0.866,
+          -0.5,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.4776,
+         6.2517,
+         0.11
+        ],
+        "orientation": [
+         [
+          0.866,
+          0.5,
+          0.0
+         ],
+         [
+          0.5,
+          -0.866,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.5585,
+         5.95,
+         0.11
+        ],
+        "orientation": [
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          -1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.4776,
+         5.6483,
+         0.11
+        ],
+        "orientation": [
+         [
+          0.866,
+          -0.5,
+          0.0
+         ],
+         [
+          -0.5,
+          -0.866,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.2568,
+         5.4274,
+         0.11
+        ],
+        "orientation": [
+         [
+          0.5,
+          -0.866,
+          0.0
+         ],
+         [
+          -0.866,
+          -0.5,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         5.3465,
+         0.1
+        ],
+        "orientation": [
+         [
+          0.0,
+          -1.0,
+          0.0
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.04
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.3467,
+         5.4274,
+         0.1
+        ],
+        "orientation": [
+         [
+          -0.5,
+          -0.866,
+          0.0
+         ],
+         [
+          -0.866,
+          0.5,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.04
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.5676,
+         5.6483,
+         0.1
+        ],
+        "orientation": [
+         [
+          -0.866,
+          -0.5,
+          0.0
+         ],
+         [
+          -0.5,
+          0.866,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.04
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.6485,
+         5.95,
+         0.085
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.07
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.5676,
+         6.2517,
+         0.11
+        ],
+        "orientation": [
+         [
+          -0.866,
+          0.5,
+          0.0
+         ],
+         [
+          0.5,
+          0.866,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.3467,
+         6.4726,
+         0.11
+        ],
+        "orientation": [
+         [
+          -0.5,
+          0.866,
+          0.0
+         ],
+         [
+          0.866,
+          0.5,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.287,
+       0.4083,
+       0.06
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.08,
+       1.0,
+       0.1
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         5.95,
+         -0.07
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.0,
+       0.08,
+       0.1
+      ],
+      "Color": [
+       0.7882,
+       0.5412,
+       0.2941
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.9018,
+         6.1796,
+         -0.256
+        ],
+        "orientation": [
+         [
+          0.766,
+          0.6428,
+          0.0
+         ],
+         [
+          0.6428,
+          -0.766,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.06
+      ],
+      "Color": [
+       0.3725,
+       0.7216,
+       0.3529
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.6722,
+         6.5772,
+         -0.251
+        ],
+        "orientation": [
+         [
+          0.9848,
+          0.1736,
+          0.0
+         ],
+         [
+          0.1736,
+          -0.9848,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.05
+      ],
+      "Color": [
+       0.4078,
+       0.7686,
+       0.3608
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.2746,
+         6.8068,
+         -0.256
+        ],
+        "orientation": [
+         [
+          0.9397,
+          -0.342,
+          0.0
+         ],
+         [
+          -0.342,
+          -0.9397,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.06
+      ],
+      "Color": [
+       0.3725,
+       0.7216,
+       0.3529
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.1846,
+         6.8068,
+         -0.251
+        ],
+        "orientation": [
+         [
+          0.6428,
+          -0.766,
+          0.0
+         ],
+         [
+          -0.766,
+          -0.6428,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.05
+      ],
+      "Color": [
+       0.4078,
+       0.7686,
+       0.3608
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.5822,
+         6.5772,
+         -0.256
+        ],
+        "orientation": [
+         [
+          0.1736,
+          -0.9848,
+          0.0
+         ],
+         [
+          -0.9848,
+          -0.1736,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.06
+      ],
+      "Color": [
+       0.3725,
+       0.7216,
+       0.3529
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.8118,
+         6.1796,
+         -0.251
+        ],
+        "orientation": [
+         [
+          -0.342,
+          -0.9397,
+          0.0
+         ],
+         [
+          -0.9397,
+          0.342,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.05
+      ],
+      "Color": [
+       0.4078,
+       0.7686,
+       0.3608
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.8118,
+         5.7204,
+         -0.256
+        ],
+        "orientation": [
+         [
+          -0.766,
+          -0.6428,
+          0.0
+         ],
+         [
+          -0.6428,
+          0.766,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.06
+      ],
+      "Color": [
+       0.3725,
+       0.7216,
+       0.3529
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.5822,
+         5.3228,
+         -0.251
+        ],
+        "orientation": [
+         [
+          -0.9848,
+          -0.1736,
+          0.0
+         ],
+         [
+          -0.1736,
+          0.9848,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.05
+      ],
+      "Color": [
+       0.4078,
+       0.7686,
+       0.3608
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.1846,
+         5.0932,
+         -0.256
+        ],
+        "orientation": [
+         [
+          -0.9397,
+          0.342,
+          0.0
+         ],
+         [
+          0.342,
+          0.9397,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.06
+      ],
+      "Color": [
+       0.3725,
+       0.7216,
+       0.3529
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.2746,
+         5.0932,
+         -0.251
+        ],
+        "orientation": [
+         [
+          -0.6428,
+          0.766,
+          0.0
+         ],
+         [
+          0.766,
+          0.6428,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.05
+      ],
+      "Color": [
+       0.4078,
+       0.7686,
+       0.3608
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.6722,
+         5.3228,
+         -0.256
+        ],
+        "orientation": [
+         [
+          -0.1736,
+          0.9848,
+          0.0
+         ],
+         [
+          0.9848,
+          0.1736,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.06
+      ],
+      "Color": [
+       0.3725,
+       0.7216,
+       0.3529
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.9018,
+         5.7204,
+         -0.251
+        ],
+        "orientation": [
+         [
+          0.342,
+          0.9397,
+          0.0
+         ],
+         [
+          0.9397,
+          -0.342,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.3,
+       0.13,
+       0.05
+      ],
+      "Color": [
+       0.4078,
+       0.7686,
+       0.3608
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.28,
+         1.22,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       1.2,
+       0.22,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.68,
+         1.22,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.2,
+       0.2,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.63,
+         1.22,
+         -0.2725
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.08,
+       0.08,
+       0.025
+      ],
+      "Color": [
+       0.6627,
+       0.6863,
+       0.7216
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.22,
+         1.22,
+         -0.2725
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.08,
+       0.08,
+       0.025
+      ],
+      "Color": [
+       0.6627,
+       0.6863,
+       0.7216
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.0665,
+         6.95,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       3.627,
+       0.22,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.747,
+         6.95,
+         -0.24
+        ],
+        "orientation": [
+         [
+          -0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.2,
+       0.2,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.63,
+         6.95,
+         -0.2725
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.08,
+       0.08,
+       0.025
+      ],
+      "Color": [
+       0.6627,
+       0.6863,
+       0.7216
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.8852,
+         6.95,
+         -0.2725
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.08,
+       0.08,
+       0.025
+      ],
+      "Color": [
+       0.6627,
+       0.6863,
+       0.7216
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.88,
+         1.22,
+         -0.22
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.42,
+       0.14,
+       0.14
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "Shape": "Cylinder"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         2.88,
+         6.95,
+         -0.22
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.42,
+       0.14,
+       0.14
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "Shape": "Cylinder"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.47,
+         3.4,
+         -0.235
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.26,
+       0.36,
+       0.03
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.47,
+         3.315,
+         -0.27
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.169,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.3463,
+         3.2637,
+         -0.27
+        ],
+        "orientation": [
+         [
+          0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.7071,
+          -0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.169,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.295,
+         3.14,
+         -0.27
+        ],
+        "orientation": [
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          -1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.169,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.3463,
+         3.0163,
+         -0.27
+        ],
+        "orientation": [
+         [
+          0.7071,
+          -0.7071,
+          0.0
+         ],
+         [
+          -0.7071,
+          -0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.169,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.47,
+         2.965,
+         -0.27
+        ],
+        "orientation": [
+         [
+          0.0,
+          -1.0,
+          0.0
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.169,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.5937,
+         3.0163,
+         -0.27
+        ],
+        "orientation": [
+         [
+          -0.7071,
+          -0.7071,
+          0.0
+         ],
+         [
+          -0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.169,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.645,
+         3.14,
+         -0.27
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.169,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.5937,
+         3.2637,
+         -0.27
+        ],
+        "orientation": [
+         [
+          -0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.7071,
+          0.7071,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.169,
+       0.04
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -2.295,
+         3.4,
+         0.14
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.45,
+       0.1,
+       0.12
+      ],
+      "Color": [
+       0.1686,
+       0.1686,
+       0.2078
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": false,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         3.3,
+         0.12
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.55,
+       0.4,
+       0.08
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         6.95,
+         0.12
+        ],
+        "orientation": [
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       5.55,
+       0.4,
+       0.08
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "name": "CatCafe_Door_GardenGate_Back_Leaf",
+     "className": "Part",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.045,
+         5.125,
+         0.115
+        ],
+        "orientation": [
+         [
+          -0.8383,
+          0.5453,
+          0.0
+         ],
+         [
+          0.5453,
+          0.8383,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          -1.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       6.1437,
+       0.32,
+       0.07
+      ],
+      "Color": [
+       0.2431,
+       0.498,
+       0.3059
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    },
+    {
+     "className": "Model",
+     "attributes": {
+      "Rojo_Target_PrimaryPart": "CatCafe_Door_GardenGate_Back/2"
+     },
+     "children": [
+      {
+       "name": "CatCafe_Door_GardenGate_Back_Leaf_Glass",
+       "className": "Part",
+       "properties": {
+        "CFrame": {
+         "CFrame": {
+          "position": [
+           -0.045,
+           5.95,
+           -0.07
+          ],
+          "orientation": [
+           [
+            -1.0,
+            0.0,
+            0.0
+           ],
+           [
+            0.0,
+            1.0,
+            0.0
+           ],
+           [
+            0.0,
+            0.0,
+            -1.0
+           ]
+          ]
+         }
+        },
+        "Size": [
+         0.99,
+         0.99,
+         0.04
+        ],
+        "Color": [
+         0.8118,
+         0.9137,
+         0.8902
+        ],
+        "Material": "SmoothPlastic",
+        "Anchored": true,
+        "CanCollide": false,
+        "CanTouch": false,
+        "CastShadow": false,
+        "TopSurface": "Smooth",
+        "BottomSurface": "Smooth",
+        "Transparency": 0.6,
+        "PivotOffset": {
+         "CFrame": {
+          "position": [
+           -2.925,
+           -5.95,
+           0.15
+          ],
+          "orientation": [
+           [
+            -1.0,
+            0.0,
+            0.0
+           ],
+           [
+            0.0,
+            1.0,
+            0.0
+           ],
+           [
+            0.0,
+            0.0,
+            -1.0
+           ]
+          ]
+         }
+        }
+       },
+       "attributes": {
+        "Rojo_Id": "CatCafe_Door_GardenGate_Back/2"
+       }
+      }
+     ],
+     "properties": {
+      "WorldPivotData": {
+       "OptionalCFrame": {
+        "position": [
+         2.88,
+         0.0,
+         -0.22
+        ],
+        "orientation": [
+         [
+          1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          1.0
+         ]
+        ]
+       }
+      }
+     },
+     "name": "CatCafe_Door_GardenGate_Back_Leaf_Glass"
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       2.88,
+       0.0,
+       -0.22
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Door_GardenGate_Back_Leaf"
+  }
+ ],
+ "properties": {
+  "WorldPivotData": {
+   "OptionalCFrame": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "orientation": [
+     [
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      1.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ]
+   }
+  }
+ }
+}
