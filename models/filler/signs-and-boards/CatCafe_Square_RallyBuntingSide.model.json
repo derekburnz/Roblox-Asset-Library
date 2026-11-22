@@ -1,0 +1,2950 @@
+{
+ "className": "Model",
+ "attributes": {
+  "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/0",
+  "PartBuilt": true
+ },
+ "children": [
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -8.9948,
+       9.4472,
+       -0.0
+      ],
+      "orientation": [
+       [
+        0.983,
+        0.1837,
+        0.0
+       ],
+       [
+        -0.1837,
+        0.983,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.7137,
+     0.07,
+     0.11
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth",
+    "PivotOffset": {
+     "CFrame": {
+      "position": [
+       10.5769,
+       -7.6346,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.983,
+        -0.1837,
+        0.0
+       ],
+       [
+        0.1837,
+        0.983,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "attributes": {
+    "Rojo_Id": "CatCafe_Square_RallyBuntingSide/0"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -7.3594,
+       9.1694,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.9885,
+        0.1511,
+        0.0
+       ],
+       [
+        -0.1511,
+        0.9885,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.7044,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -5.724,
+       8.9472,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.993,
+        0.1181,
+        0.0
+       ],
+       [
+        -0.1181,
+        0.993,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.6969,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -4.0885,
+       8.7806,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.9964,
+        0.0846,
+        0.0
+       ],
+       [
+        -0.0846,
+        0.9964,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.6913,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -2.4531,
+       8.6694,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.9987,
+        0.0509,
+        0.0
+       ],
+       [
+        -0.0509,
+        0.9987,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.6875,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.8177,
+       8.6139,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.9999,
+        0.017,
+        0.0
+       ],
+       [
+        -0.017,
+        0.9999,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.6857,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.8177,
+       8.6139,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.9999,
+        -0.017,
+        0.0
+       ],
+       [
+        0.017,
+        0.9999,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.6857,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       2.4531,
+       8.6694,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.9987,
+        -0.0509,
+        0.0
+       ],
+       [
+        0.0509,
+        0.9987,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.6875,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       4.0885,
+       8.7806,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.9964,
+        -0.0846,
+        0.0
+       ],
+       [
+        0.0846,
+        0.9964,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.6913,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       5.724,
+       8.9472,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.993,
+        -0.1181,
+        0.0
+       ],
+       [
+        0.1181,
+        0.993,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.6969,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       7.3594,
+       9.1694,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.9885,
+        -0.1511,
+        0.0
+       ],
+       [
+        0.1511,
+        0.9885,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.7044,
+     0.07,
+     0.07
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Square_RallyBuntingSide",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       8.9948,
+       9.4472,
+       -0.0
+      ],
+      "orientation": [
+       [
+        0.983,
+        -0.1837,
+        0.0
+       ],
+       [
+        0.1837,
+        0.983,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     1.7137,
+     0.07,
+     0.11
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/1"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -8.3025,
+         8.7623,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9368,
+          -0.35
+         ],
+         [
+          0.0,
+          0.35,
+          0.9368
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7349,
+       0.7671
+      ],
+      "Color": [
+       0.851,
+       0.2824,
+       0.2314
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.6001
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          1.0
+         ],
+         [
+          0.9368,
+          0.35,
+          0.0
+         ],
+         [
+          -0.35,
+          0.9368,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/1"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -8.5125,
+         9.3244,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9368,
+          0.35
+         ],
+         [
+          0.0,
+          0.35,
+          -0.9368
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7349,
+       0.4331
+      ],
+      "Color": [
+       0.851,
+       0.2824,
+       0.2314
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       -8.5125,
+       9.3244,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag01_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/2"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -6.9929,
+         8.5542,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9356,
+          -0.3531
+         ],
+         [
+          0.0,
+          0.3531,
+          0.9356
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7415,
+       0.7753
+      ],
+      "Color": [
+       1.0,
+       0.9765,
+       0.949
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5947
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          1.0
+         ],
+         [
+          0.9356,
+          0.3531,
+          0.0
+         ],
+         [
+          -0.3531,
+          0.9356,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/2"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -7.2029,
+         9.1107,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9356,
+          0.3531
+         ],
+         [
+          0.0,
+          0.3531,
+          -0.9356
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7415,
+       0.4142
+      ],
+      "Color": [
+       1.0,
+       0.9765,
+       0.949
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       -7.2029,
+       9.1107,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag02_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/3"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -5.6833,
+         8.3818,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9344,
+          -0.3563
+         ],
+         [
+          0.0,
+          0.3563,
+          0.9344
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7482,
+       0.7834
+      ],
+      "Color": [
+       0.2353,
+       0.4902,
+       0.851
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5894
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          1.0
+         ],
+         [
+          0.9344,
+          0.3563,
+          0.0
+         ],
+         [
+          -0.3563,
+          0.9344,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/3"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -5.8933,
+         8.9325,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9344,
+          0.3563
+         ],
+         [
+          0.0,
+          0.3563,
+          -0.9344
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7482,
+       0.3954
+      ],
+      "Color": [
+       0.2353,
+       0.4902,
+       0.851
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       -5.8933,
+       8.9325,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag03_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/4"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -4.3737,
+         8.245,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9331,
+          -0.3596
+         ],
+         [
+          0.0,
+          0.3596,
+          0.9331
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7551,
+       0.7915
+      ],
+      "Color": [
+       1.0,
+       0.7882,
+       0.302
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5841
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          1.0
+         ],
+         [
+          0.9331,
+          0.3596,
+          0.0
+         ],
+         [
+          -0.3596,
+          0.9331,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/4"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -4.5837,
+         8.79,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9331,
+          0.3596
+         ],
+         [
+          0.0,
+          0.3596,
+          -0.9331
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7551,
+       0.3767
+      ],
+      "Color": [
+       1.0,
+       0.7882,
+       0.302
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       -4.5837,
+       8.79,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag04_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/5"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -3.064,
+         8.1439,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9318,
+          -0.3629
+         ],
+         [
+          0.0,
+          0.3629,
+          0.9318
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.762,
+       0.7994
+      ],
+      "Color": [
+       0.851,
+       0.2824,
+       0.2314
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5787
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          1.0
+         ],
+         [
+          0.9318,
+          0.3629,
+          0.0
+         ],
+         [
+          -0.3629,
+          0.9318,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/5"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -3.274,
+         8.6832,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9318,
+          0.3629
+         ],
+         [
+          0.0,
+          0.3629,
+          -0.9318
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.762,
+       0.358
+      ],
+      "Color": [
+       0.851,
+       0.2824,
+       0.2314
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       -3.274,
+       8.6832,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag05_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/6"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.7544,
+         8.0783,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9305,
+          -0.3662
+         ],
+         [
+          0.0,
+          0.3662,
+          0.9305
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7691,
+       0.8073
+      ],
+      "Color": [
+       1.0,
+       0.9765,
+       0.949
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5734
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          1.0
+         ],
+         [
+          0.9305,
+          0.3662,
+          0.0
+         ],
+         [
+          -0.3662,
+          0.9305,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/6"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -1.9644,
+         8.6119,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9305,
+          0.3662
+         ],
+         [
+          0.0,
+          0.3662,
+          -0.9305
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7691,
+       0.3395
+      ],
+      "Color": [
+       1.0,
+       0.9765,
+       0.949
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       -1.9644,
+       8.6119,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag06_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/7"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.4448,
+         8.0484,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9292,
+          -0.3697
+         ],
+         [
+          0.0,
+          0.3697,
+          0.9292
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7763,
+       0.8151
+      ],
+      "Color": [
+       0.2353,
+       0.4902,
+       0.851
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5681
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          1.0
+         ],
+         [
+          0.9292,
+          0.3697,
+          0.0
+         ],
+         [
+          -0.3697,
+          0.9292,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/7"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.6548,
+         8.5763,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.9292,
+          0.3697
+         ],
+         [
+          0.0,
+          0.3697,
+          -0.9292
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7763,
+       0.3211
+      ],
+      "Color": [
+       0.2353,
+       0.4902,
+       0.851
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       -0.6548,
+       8.5763,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag07_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/8"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.4448,
+         8.0484,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9292,
+          0.3697
+         ],
+         [
+          0.0,
+          0.3697,
+          0.9292
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7763,
+       0.8151
+      ],
+      "Color": [
+       1.0,
+       0.7882,
+       0.302
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5681
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          -1.0
+         ],
+         [
+          -0.9292,
+          0.3697,
+          0.0
+         ],
+         [
+          0.3697,
+          0.9292,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/8"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.6548,
+         8.5763,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9292,
+          -0.3697
+         ],
+         [
+          0.0,
+          0.3697,
+          -0.9292
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7763,
+       0.3211
+      ],
+      "Color": [
+       1.0,
+       0.7882,
+       0.302
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       0.6548,
+       8.5763,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag08_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/9"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.7544,
+         8.0783,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9305,
+          0.3662
+         ],
+         [
+          0.0,
+          0.3662,
+          0.9305
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7691,
+       0.8073
+      ],
+      "Color": [
+       0.851,
+       0.2824,
+       0.2314
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5734
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          -1.0
+         ],
+         [
+          -0.9305,
+          0.3662,
+          0.0
+         ],
+         [
+          0.3662,
+          0.9305,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/9"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         1.9644,
+         8.6119,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9305,
+          -0.3662
+         ],
+         [
+          0.0,
+          0.3662,
+          -0.9305
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7691,
+       0.3395
+      ],
+      "Color": [
+       0.851,
+       0.2824,
+       0.2314
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       1.9644,
+       8.6119,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag09_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/10"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         3.064,
+         8.1439,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9318,
+          0.3629
+         ],
+         [
+          0.0,
+          0.3629,
+          0.9318
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.762,
+       0.7994
+      ],
+      "Color": [
+       1.0,
+       0.9765,
+       0.949
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5787
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          -1.0
+         ],
+         [
+          -0.9318,
+          0.3629,
+          0.0
+         ],
+         [
+          0.3629,
+          0.9318,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/10"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         3.274,
+         8.6832,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9318,
+          -0.3629
+         ],
+         [
+          0.0,
+          0.3629,
+          -0.9318
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.762,
+       0.358
+      ],
+      "Color": [
+       1.0,
+       0.9765,
+       0.949
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       3.274,
+       8.6832,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag10_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/11"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         4.3737,
+         8.245,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9331,
+          0.3596
+         ],
+         [
+          0.0,
+          0.3596,
+          0.9331
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7551,
+       0.7915
+      ],
+      "Color": [
+       0.2353,
+       0.4902,
+       0.851
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5841
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          -1.0
+         ],
+         [
+          -0.9331,
+          0.3596,
+          0.0
+         ],
+         [
+          0.3596,
+          0.9331,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/11"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         4.5837,
+         8.79,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9331,
+          -0.3596
+         ],
+         [
+          0.0,
+          0.3596,
+          -0.9331
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7551,
+       0.3767
+      ],
+      "Color": [
+       0.2353,
+       0.4902,
+       0.851
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       4.5837,
+       8.79,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag11_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/12"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         5.6833,
+         8.3818,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9344,
+          0.3563
+         ],
+         [
+          0.0,
+          0.3563,
+          0.9344
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7482,
+       0.7834
+      ],
+      "Color": [
+       1.0,
+       0.7882,
+       0.302
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5894
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          -1.0
+         ],
+         [
+          -0.9344,
+          0.3563,
+          0.0
+         ],
+         [
+          0.3563,
+          0.9344,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/12"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         5.8933,
+         8.9325,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9344,
+          -0.3563
+         ],
+         [
+          0.0,
+          0.3563,
+          -0.9344
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7482,
+       0.3954
+      ],
+      "Color": [
+       1.0,
+       0.7882,
+       0.302
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       5.8933,
+       8.9325,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag12_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/13"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         6.9929,
+         8.5542,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9356,
+          0.3531
+         ],
+         [
+          0.0,
+          0.3531,
+          0.9356
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7415,
+       0.7753
+      ],
+      "Color": [
+       0.851,
+       0.2824,
+       0.2314
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.5947
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          -1.0
+         ],
+         [
+          -0.9356,
+          0.3531,
+          0.0
+         ],
+         [
+          0.3531,
+          0.9356,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/13"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         7.2029,
+         9.1107,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9356,
+          -0.3531
+         ],
+         [
+          0.0,
+          0.3531,
+          -0.9356
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7415,
+       0.4142
+      ],
+      "Color": [
+       0.851,
+       0.2824,
+       0.2314
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       7.2029,
+       9.1107,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag13_Pennant"
+  },
+  {
+   "className": "Model",
+   "attributes": {
+    "Rojo_Target_PrimaryPart": "CatCafe_Square_RallyBuntingSide/14"
+   },
+   "children": [
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         8.3025,
+         8.7623,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9368,
+          0.35
+         ],
+         [
+          0.0,
+          0.35,
+          0.9368
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7349,
+       0.7671
+      ],
+      "Color": [
+       1.0,
+       0.9765,
+       0.949
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth",
+      "PivotOffset": {
+       "CFrame": {
+        "position": [
+         0.0,
+         0.0,
+         0.6001
+        ],
+        "orientation": [
+         [
+          0.0,
+          0.0,
+          -1.0
+         ],
+         [
+          -0.9368,
+          0.35,
+          0.0
+         ],
+         [
+          0.35,
+          0.9368,
+          0.0
+         ]
+        ]
+       }
+      }
+     },
+     "attributes": {
+      "Rojo_Id": "CatCafe_Square_RallyBuntingSide/14"
+     }
+    },
+    {
+     "name": "Cloth",
+     "className": "WedgePart",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         8.5125,
+         9.3244,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          -0.9368,
+          -0.35
+         ],
+         [
+          0.0,
+          0.35,
+          -0.9368
+         ],
+         [
+          1.0,
+          0.0,
+          0.0
+         ]
+        ]
+       }
+      },
+      "Size": [
+       0.05,
+       0.7349,
+       0.4331
+      ],
+      "Color": [
+       1.0,
+       0.9765,
+       0.949
+      ],
+      "Material": "SmoothPlastic",
+      "Anchored": true,
+      "CanCollide": false,
+      "CanTouch": false,
+      "CastShadow": true,
+      "TopSurface": "Smooth",
+      "BottomSurface": "Smooth"
+     }
+    }
+   ],
+   "properties": {
+    "WorldPivotData": {
+     "OptionalCFrame": {
+      "position": [
+       8.5125,
+       9.3244,
+       0.0
+      ],
+      "orientation": [
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "name": "CatCafe_Square_RallyBuntingSide_Flag14_Pennant"
+  }
+ ],
+ "properties": {
+  "WorldPivotData": {
+   "OptionalCFrame": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "orientation": [
+     [
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      1.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ]
+   }
+  }
+ }
+}

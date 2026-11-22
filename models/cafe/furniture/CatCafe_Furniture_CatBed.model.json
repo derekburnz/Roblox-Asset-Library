@@ -1,0 +1,1408 @@
+{
+ "className": "Model",
+ "attributes": {
+  "Rojo_Target_PrimaryPart": "CatCafe_Furniture_CatBed/0",
+  "PartBuilt": true
+ },
+ "children": [
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.0,
+       0.23,
+       0.05
+      ],
+      "orientation": [
+       [
+        0.0,
+        -1.0,
+        0.0
+       ],
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.26,
+     1.88,
+     1.88
+    ],
+    "Color": [
+     1.0,
+     0.9765,
+     0.949
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth",
+    "Shape": "Cylinder",
+    "PivotOffset": {
+     "CFrame": {
+      "position": [
+       -0.23,
+       0.0,
+       -0.05
+      ],
+      "orientation": [
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    }
+   },
+   "attributes": {
+    "Rojo_Id": "CatCafe_Furniture_CatBed/0"
+   },
+   "children": [
+    {
+     "name": "Sleep",
+     "className": "Attachment",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         0.13,
+         0.0,
+         0.0
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          1.0
+         ]
+        ]
+       }
+      }
+     }
+    },
+    {
+     "name": "Foot",
+     "className": "Attachment",
+     "properties": {
+      "CFrame": {
+       "CFrame": {
+        "position": [
+         -0.23,
+         0.0,
+         -1.55
+        ],
+        "orientation": [
+         [
+          0.0,
+          1.0,
+          0.0
+         ],
+         [
+          -1.0,
+          0.0,
+          0.0
+         ],
+         [
+          0.0,
+          0.0,
+          1.0
+         ]
+        ]
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.0,
+       0.05,
+       0.0
+      ],
+      "orientation": [
+       [
+        0.0,
+        -1.0,
+        0.0
+       ],
+       [
+        1.0,
+        0.0,
+        0.0
+       ],
+       [
+        0.0,
+        0.0,
+        1.0
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.1,
+     2.5,
+     2.5
+    ],
+    "Color": [
+     0.3686,
+     0.2745,
+     0.2039
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth",
+    "Shape": "Cylinder"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       1.0722,
+       0.4,
+       0.2873
+      ],
+      "orientation": [
+       [
+        0.9659,
+        0.0,
+        -0.2588
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.2588,
+        0.0,
+        0.9659
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.6,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       1.0722,
+       0.73,
+       0.2873
+      ],
+      "orientation": [
+       [
+        0.9659,
+        0.0,
+        -0.2588
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.2588,
+        0.0,
+        0.9659
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.7849,
+       0.4,
+       0.7849
+      ],
+      "orientation": [
+       [
+        0.7071,
+        0.0,
+        -0.7071
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.7071,
+        0.0,
+        0.7071
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.6,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.7849,
+       0.73,
+       0.7849
+      ],
+      "orientation": [
+       [
+        0.7071,
+        0.0,
+        -0.7071
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.7071,
+        0.0,
+        0.7071
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.2873,
+       0.4,
+       1.0722
+      ],
+      "orientation": [
+       [
+        0.2588,
+        0.0,
+        -0.9659
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.9659,
+        0.0,
+        0.2588
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.6,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.2873,
+       0.73,
+       1.0722
+      ],
+      "orientation": [
+       [
+        0.2588,
+        0.0,
+        -0.9659
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.9659,
+        0.0,
+        0.2588
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.2873,
+       0.4,
+       1.0722
+      ],
+      "orientation": [
+       [
+        -0.2588,
+        0.0,
+        -0.9659
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.9659,
+        0.0,
+        -0.2588
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.6,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.2873,
+       0.73,
+       1.0722
+      ],
+      "orientation": [
+       [
+        -0.2588,
+        0.0,
+        -0.9659
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.9659,
+        0.0,
+        -0.2588
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.7849,
+       0.4,
+       0.7849
+      ],
+      "orientation": [
+       [
+        -0.7071,
+        0.0,
+        -0.7071
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.7071,
+        0.0,
+        -0.7071
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.6,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.7849,
+       0.73,
+       0.7849
+      ],
+      "orientation": [
+       [
+        -0.7071,
+        0.0,
+        -0.7071
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.7071,
+        0.0,
+        -0.7071
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -1.0722,
+       0.4,
+       0.2873
+      ],
+      "orientation": [
+       [
+        -0.9659,
+        0.0,
+        -0.2588
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.2588,
+        0.0,
+        -0.9659
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.6,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -1.0722,
+       0.73,
+       0.2873
+      ],
+      "orientation": [
+       [
+        -0.9659,
+        0.0,
+        -0.2588
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        0.2588,
+        0.0,
+        -0.9659
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -1.0722,
+       0.3906,
+       -0.2873
+      ],
+      "orientation": [
+       [
+        -0.9659,
+        0.0,
+        0.2588
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.2588,
+        0.0,
+        -0.9659
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.5812,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -1.0722,
+       0.7112,
+       -0.2873
+      ],
+      "orientation": [
+       [
+        -0.9659,
+        0.0,
+        0.2588
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.2588,
+        0.0,
+        -0.9659
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.7849,
+       0.33,
+       -0.7849
+      ],
+      "orientation": [
+       [
+        -0.7071,
+        0.0,
+        0.7071
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.7071,
+        0.0,
+        -0.7071
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.46,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.7849,
+       0.59,
+       -0.7849
+      ],
+      "orientation": [
+       [
+        -0.7071,
+        0.0,
+        0.7071
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.7071,
+        0.0,
+        -0.7071
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.2873,
+       0.2694,
+       -1.0722
+      ],
+      "orientation": [
+       [
+        -0.2588,
+        0.0,
+        0.9659
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.9659,
+        0.0,
+        -0.2588
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.3388,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       -0.2873,
+       0.4688,
+       -1.0722
+      ],
+      "orientation": [
+       [
+        -0.2588,
+        0.0,
+        0.9659
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.9659,
+        0.0,
+        -0.2588
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.2873,
+       0.2694,
+       -1.0722
+      ],
+      "orientation": [
+       [
+        0.2588,
+        0.0,
+        0.9659
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.9659,
+        0.0,
+        0.2588
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.3388,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.2873,
+       0.4688,
+       -1.0722
+      ],
+      "orientation": [
+       [
+        0.2588,
+        0.0,
+        0.9659
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.9659,
+        0.0,
+        0.2588
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.7849,
+       0.33,
+       -0.7849
+      ],
+      "orientation": [
+       [
+        0.7071,
+        0.0,
+        0.7071
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.7071,
+        0.0,
+        0.7071
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.46,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       0.7849,
+       0.59,
+       -0.7849
+      ],
+      "orientation": [
+       [
+        0.7071,
+        0.0,
+        0.7071
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.7071,
+        0.0,
+        0.7071
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       1.0722,
+       0.3906,
+       -0.2873
+      ],
+      "orientation": [
+       [
+        0.9659,
+        0.0,
+        0.2588
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.2588,
+        0.0,
+        0.9659
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.38,
+     0.5812,
+     0.6998
+    ],
+    "Color": [
+     0.9098,
+     0.6275,
+     0.6275
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": true,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  },
+  {
+   "name": "CatCafe_Furniture_CatBed",
+   "className": "Part",
+   "properties": {
+    "CFrame": {
+     "CFrame": {
+      "position": [
+       1.0722,
+       0.7112,
+       -0.2873
+      ],
+      "orientation": [
+       [
+        0.9659,
+        0.0,
+        0.2588
+       ],
+       [
+        0.0,
+        1.0,
+        0.0
+       ],
+       [
+        -0.2588,
+        0.0,
+        0.9659
+       ]
+      ]
+     }
+    },
+    "Size": [
+     0.24,
+     0.06,
+     0.6798
+    ],
+    "Color": [
+     0.7882,
+     0.7216,
+     0.9098
+    ],
+    "Material": "SmoothPlastic",
+    "Anchored": true,
+    "CanCollide": false,
+    "CanTouch": false,
+    "CastShadow": true,
+    "TopSurface": "Smooth",
+    "BottomSurface": "Smooth"
+   }
+  }
+ ],
+ "properties": {
+  "WorldPivotData": {
+   "OptionalCFrame": {
+    "position": [
+     0.0,
+     0.0,
+     0.0
+    ],
+    "orientation": [
+     [
+      1.0,
+      0.0,
+      0.0
+     ],
+     [
+      0.0,
+      1.0,
+      0.0
+     ],
+     [
+      0.0,
+      0.0,
+      1.0
+     ]
+    ]
+   }
+  }
+ }
+}
