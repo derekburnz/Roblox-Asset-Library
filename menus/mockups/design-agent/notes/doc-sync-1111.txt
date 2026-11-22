@@ -1,0 +1,8 @@
+
+ docs/design/cat-cafe/camp-extras.md           |  1 +
+ docs/design/cat-cafe/camp-stations.md         |  3 ++-
+ docs/design/cat-cafe/data-model.md            | 15 +++++++++++++++
+ docs/design/cat-cafe/economy-ladder.md        |  4 ++++
+ docs/design/cat-cafe/late-stations.md         |  1 +
+ docs/design/cat-cafe/luck-and-rare-moments.md |  3 ++-
+ 6 files changed, 25 insertions(+), 2 deletions(-)

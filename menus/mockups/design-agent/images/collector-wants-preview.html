@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Collector Wants Preview</title>
+<style>
+:root{--bg:#f4efe6;--ink:#2b2a33;--muted:#6b6878;--card:#fffaf2;--dark:#2a2633;--common:#8E97B2;--rare:#5FA8FF;--epic:#C07CFF;--legend:#FFB938;--myth:#FF6FB0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1b22;--ink:#eee;--muted:#aaa;--card:#2a2731}}
+:root[data-theme="dark"]{--bg:#1d1b22;--ink:#eee;--muted:#aaa;--card:#2a2731}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,sans-serif;padding:16px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:20px 0 8px;color:var(--muted);font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:16px}
+.screen{background:linear-gradient(#9fd2ff,#cfe9c8);border-radius:14px;position:relative;overflow:hidden;flex:0 0 auto}
+.phone{width:333px;height:188px}.tablet{width:384px;height:288px}
+.label{font-size:12px;color:var(--muted);margin-top:4px}
+.old{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:86%;background:rgba(40,40,60,.85);color:#fff;border-radius:8px;padding:6px 10px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.banner{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(30,28,40,.88);color:#fff;border-radius:12px;padding:6px 12px 6px 6px;max-width:88%}
+.face{width:40px;height:40px;border-radius:50%;background:#ffe7c4;display:grid;place-items:center;font-size:26px;flex:none;border:3px solid var(--r)}
+.l1{font-size:12px;opacity:.85}.l2{font-size:15px;font-weight:700;line-height:1.15}
+.rar{color:var(--r);font-weight:800}
+.tag{position:absolute;left:50%;bottom:44px;transform:translateX(-50%);text-align:center;color:#fff;text-shadow:0 0 3px #000,0 0 3px #000;font-weight:700}
+.tag .t1{font-size:15px}.tag .t2{display:flex;align-items:center;gap:5px;justify-content:center;font-size:13px;margin-top:2px}
+.tag .face{width:28px;height:28px;font-size:18px;border-width:2px}
+.npc{position:absolute;left:50%;bottom:8px;transform:translateX(-50%);font-size:32px}
+</style></head><body>
+<h1>Collector wants: preview for #3132</h1>
+<div style="color:var(--muted)">The cat face is shown as an emoji here. In game it is the CatPortrait picture, framed in the cat's rarity colour.</div>
+
+<h2>Today: the text toast cuts off the name</h2>
+<div class="row"><div><div class="screen phone"><div class="old">The Cat Collector is at your cafe! He wants your Gold Midnight Maine Coon.</div><div class="npc">🧐</div></div><div class="label">Phone 667×375 (half scale)</div></div></div>
+
+<h2>New: arrival banner (3 s, tap opens his card) and the tag over him</h2>
+<div class="row">
+ <div><div class="screen phone">
+  <div class="banner" style="--r:var(--legend)"><div class="face">🐈</div><div><div class="l1">Collector wants</div><div class="l2">Midnight Maine Coon · <span class="rar">Gold Legendary</span></div></div></div>
+  <div class="tag"><div class="t1">🧐 Cat Collector</div><div class="t2" style="--r:var(--legend)"><span class="face">🐈</span>Midnight Maine Coon · <span class="rar">Legendary</span> · 2:41</div></div>
+  <div class="npc">🧐</div></div><div class="label">Phone: a long name wraps to 2 lines and is never cut off</div></div>
+ <div><div class="screen tablet">
+  <div class="banner" style="--r:var(--rare)"><div class="face">🐱</div><div><div class="l1">Collector wants</div><div class="l2">Tabby · <span class="rar">Rare</span></div></div></div>
+  <div class="tag"><div class="t1">🧐 Cat Collector</div><div class="t2" style="--r:var(--rare)"><span class="face">🐱</span>Tabby · <span class="rar">Rare</span> · 2:58</div></div>
+  <div class="npc">🧐</div></div><div class="label">Tablet 1024×768 (⅜ scale)</div></div>
+</div>
+</body></html>

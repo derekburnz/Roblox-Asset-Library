@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spa Picker Preview</title>
+<style>
+:root{--bg:#f4efe6;--ink:#2b2a33;--muted:#6b6878;--panel:#2a2633;--card:#3a3446;--sub:#bdb5cc;--caramel:#e0a35a;--common:#8E97B2;--rare:#5FA8FF;--epic:#C07CFF;--legend:#FFB938;--myth:#FF6FB0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1b22;--ink:#eee;--muted:#aaa}}
+:root[data-theme="dark"]{--bg:#1d1b22;--ink:#eee;--muted:#aaa}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,sans-serif;padding:16px}
+h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:20px 0 8px;color:var(--muted)}
+.row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+.icons{display:flex;gap:16px;align-items:center}
+.icons figure{margin:0;text-align:center;font-size:12px;color:var(--muted)}
+.emoji{font-size:56px;width:96px;height:96px;display:grid;place-items:center;background:#fff;border-radius:16px}
+.panel{width:340px;max-width:100%;background:var(--panel);color:#fff;border-radius:16px;padding:12px}
+.title{font-weight:800;font-size:17px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.search{width:100%;box-sizing:border-box;background:#211e29;border:2px solid #4b4458;border-radius:10px;padding:9px 10px;color:#fff;font-size:15px}
+.chips{display:flex;gap:6px;margin:8px 0}.chip{font-size:12px;padding:4px 9px;border-radius:99px;background:#4b4458}.chip.on{background:var(--caramel);color:#2a2633;font-weight:700}
+.list{display:flex;flex-direction:column;gap:6px;max-height:300px;overflow:auto}
+.r{display:flex;align-items:center;gap:10px;background:var(--card);border-radius:10px;padding:6px;border-left:6px solid var(--c)}
+.face{width:44px;height:44px;border-radius:50%;background:#ffe7c4;display:grid;place-items:center;font-size:28px;border:3px solid var(--c);flex:none}
+.n{font-weight:700}.s{font-size:12px;color:var(--sub)}
+.b{margin-left:auto;background:#5cc36b;color:#123;font-weight:800;border-radius:9px;padding:8px 12px;font-size:13px}
+.note{font-size:12px;color:var(--muted);max-width:340px}
+</style></head><body>
+<h1>Oasis Spa: preview for #3136</h1>
+<h2>1. The spa's picture (on its card title and the Cat Cannon menu)</h2>
+<div class="icons">
+ <figure><div class="emoji">♨️</div>Today: emoji</figure>
+ <figure><svg width="96" height="96" viewBox="0 0 96 96" role="img" aria-label="New spa icon concept">
+  <rect width="96" height="96" rx="16" fill="#fff"/>
+  <g stroke="#1b1a22" stroke-width="3" stroke-linecap="round" fill="none">
+   <path d="M34 22c-5 6 5 9 0 15M48 18c-5 7 5 10 0 17M62 22c-5 6 5 9 0 15" stroke="#9fb8c9"/>
+  </g>
+  <ellipse cx="48" cy="66" rx="34" ry="14" fill="#3fb7c9" stroke="#1b1a22" stroke-width="3"/>
+  <ellipse cx="48" cy="62" rx="28" ry="8" fill="#8fe3ec"/>
+  <path d="M33 60c0-12 6-18 15-18s15 6 15 18" fill="#f2b56b" stroke="#1b1a22" stroke-width="3"/>
+  <path d="M35 47l-3-10 9 6M61 47l3-10-9 6" fill="#f2b56b" stroke="#1b1a22" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M41 52q2-2 4 0M51 52q2-2 4 0" stroke="#1b1a22" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <rect x="38" y="38" width="20" height="6" rx="3" fill="#fff" stroke="#1b1a22" stroke-width="2.5"/>
+  <ellipse cx="48" cy="62" rx="28" ry="5" fill="#8fe3ec" opacity=".9"/>
+ </svg><div>New: concept (cat soaking, towel, steam)</div></figure>
+</div>
+<p class="note">This is a concept only. The final art is drawn in the clean icon style (black outline, flat colour) and uploaded once Derek approves it.</p>
+
+<h2>2. The cat picker with search and faces</h2>
+<div class="row">
+<div class="panel">
+ <div class="title">♨️ Pick a cat to relax</div>
+ <input class="search" placeholder="🔍 Search cats" value="mo">
+ <div class="chips"><span class="chip on">All</span><span class="chip">Resting</span><span class="chip">Working</span></div>
+ <div class="list">
+  <div class="r" style="--c:var(--legend)"><div class="face">🐈</div><div><div class="n">Mochi</div><div class="s">Lv 37 · ★★★ · Legendary</div></div><div class="b">Relax</div></div>
+  <div class="r" style="--c:var(--epic)"><div class="face">🐱</div><div><div class="n">Moon Sphinx</div><div class="s">Lv 22 · ★★ · Working</div></div><div class="b">Relax</div></div>
+  <div class="r" style="--c:var(--rare)"><div class="face">😺</div><div><div class="n">Momo</div><div class="s">Lv 9 · ★</div></div><div class="b">Relax</div></div>
+  <div class="r" style="--c:var(--common)"><div class="face">🐈‍⬛</div><div><div class="n">Moss</div><div class="s">Lv 4 · ★</div></div><div class="b">Relax</div></div>
+ </div>
+</div>
+<div class="note">
+<b>No lag, even with hundreds of cats:</b>
+<ul>
+<li>Rows are built once when the picker opens. Typing only hides or shows rows, so nothing is rebuilt.</li>
+<li>Faces load only for rows on screen or close to it, the same way the Cats window already does it. Rows that scroll away keep their face, and only about 15 load at a time.</li>
+<li>The face is the head shot the Cats window already uses, so no new image is needed.</li>
+</ul>
+</div>
+</div>
+</body></html>

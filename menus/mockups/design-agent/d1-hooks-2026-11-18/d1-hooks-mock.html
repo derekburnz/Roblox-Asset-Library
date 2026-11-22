@@ -1,0 +1,64 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+body{margin:0;background:#2b2320;font-family:"Fredoka","Arial Rounded MT Bold",Arial,sans-serif;color:#fff;padding:24px;width:1500px}
+h1{font-size:28px;margin:0 0 16px}
+.row{display:flex;gap:24px}
+.ph{width:460px;height:260px;border-radius:18px;background:linear-gradient(#8fc6e8,#cfe8c4 60%,#9bc47a);position:relative;overflow:hidden;border:4px solid #111}
+.cap{width:460px;font-size:17px;line-height:1.35;margin-top:10px;color:#f3e6da}
+.cap b{color:#ffd45c}
+.card{position:absolute;background:#5a3a2a;border:3px solid #111;border-radius:14px;padding:10px 14px;box-shadow:0 4px 0 #111}
+.btn{display:inline-block;background:#4cc35a;border:3px solid #111;border-radius:10px;padding:5px 14px;font-weight:bold;margin-top:6px;box-shadow:0 3px 0 #111}
+.btn.gold{background:#f2b632;color:#2b1a10}
+.chip{position:absolute;background:#5a3a2a;border:3px solid #111;border-radius:20px;padding:4px 12px;font-size:15px}
+.coins{position:absolute;top:10px;left:10px;font-size:18px;background:#5a3a2a;border:3px solid #111;border-radius:12px;padding:3px 10px}
+.cafe{position:absolute;bottom:0;left:0;right:0;height:90px;background:#c58b57;border-top:4px solid #111}
+.jar{position:absolute;width:46px;height:58px;border:3px solid #111;border-radius:10px 10px 14px 14px;background:linear-gradient(transparent 35%,#ffd45c 35%);}
+.cat{position:absolute;width:44px;height:34px;background:#111;border-radius:50% 50% 40% 40%}
+.cat:before,.cat:after{content:"";position:absolute;top:-10px;width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:14px solid #111}
+.cat:before{left:2px}.cat:after{right:2px}
+.bowl{position:absolute;width:70px;height:22px;background:#e05a4a;border:3px solid #111;border-radius:0 0 30px 30px}
+.gift{position:absolute;width:52px;height:44px;background:#e8463c;border:3px solid #111;border-radius:6px}
+.gift:before{content:"";position:absolute;left:21px;top:0;width:8px;height:100%;background:#ffd45c}
+.tag{position:absolute;background:#fff3d6;color:#5a3a2a;border:2px solid #111;border-radius:6px;font-size:13px;padding:2px 6px}
+.pile{position:absolute;font-size:30px}
+</style></head><body>
+<h1>Day 1 hooks: the top 3 (Design-Agent, Nov 18)</h1>
+<div class="row">
+ <div>
+  <div class="ph">
+   <div class="coins">$ 2,480</div>
+   <div class="chip" style="top:10px;left:150px">💤 While you're away: <b style="color:#ffd45c">+$3,600</b> by tomorrow</div>
+   <div class="cafe"></div>
+   <div class="jar" style="left:205px;bottom:70px"></div>
+   <div class="tag" style="left:178px;bottom:136px">Away Jar</div>
+   <div class="card" style="right:12px;top:70px;width:170px;font-size:14px">Welcome back!<br><span style="font-size:22px;color:#ffd45c">$3,600</span><br>Your cats kept working.<div class="btn gold">Collect</div></div>
+   <div class="pile" style="left:80px;bottom:60px">🪙🪙🪙</div>
+  </div>
+  <div class="cap"><b>1. Away Jar.</b> From minute 3, a chip under the coins counts up what the cafe will earn by tomorrow at the real offline rate. A jar on the counter fills as you play. On return, coins are piled by the jar and the player taps Collect for a big coin burst. It makes "cats earn offline" a number you can see, not a line of text.</div>
+ </div>
+ <div>
+  <div class="ph">
+   <div class="coins">$ 2,480</div>
+   <div class="cafe"></div>
+   <div class="bowl" style="left:60px;bottom:70px"></div>
+   <div class="cat" style="left:72px;bottom:94px;opacity:.85"></div>
+   <div class="tag" style="left:40px;bottom:140px">Arrives tomorrow</div>
+   <div class="card" style="right:12px;top:40px;width:200px;font-size:14px">Leave a Sleepover Bowl out?<br>A <b style="color:#5aa8ff">Rare or better</b> cat will be sleeping in it when you come back.<br><div class="btn">Fill it, free</div></div>
+  </div>
+  <div class="cap"><b>2. Sleepover Bowl.</b> On the first day, after the first bowl cat, the player gets one free overnight bowl. A dark-shape cat curls up in it with the tag "Arrives tomorrow", and the cat is Rare or better. It is a real cat that is theirs, waiting, which is the strongest pull a collection game has. The player taps to fill it.</div>
+ </div>
+ <div>
+  <div class="ph">
+   <div class="coins">$ 2,480</div>
+   <div class="cafe"></div>
+   <div style="position:absolute;left:30px;top:60px;display:flex;gap:4px">
+     <div class="tag" style="position:static;background:#cde8b5">Day 1 ✔</div>
+     <div class="tag" style="position:static;background:#ffd45c;font-weight:bold;transform:scale(1.25);margin:0 8px">Day 2: 🐟 500</div>
+     <div class="tag" style="position:static">3</div><div class="tag" style="position:static">4</div></div>
+   <div class="gift" style="left:120px;bottom:72px"></div>
+   <div class="tag" style="left:100px;bottom:126px">Opens tomorrow</div>
+   <div class="card" style="right:12px;top:110px;width:200px;font-size:14px">Tomorrow: <b style="color:#ffd45c">500 Golden Fish</b> and a golden crate!<br>Want a reminder?<br><div class="btn gold">Remind me</div></div>
+  </div>
+  <div class="cap"><b>3. Tomorrow Board.</b> The Daily Treat goes on the cafe wall, and day 2 becomes 500 Golden Fish (enough for Speed Shoes). It glows as "Tomorrow", with the golden crate wrapped below it. Tapping it offers Remind me, which is Roblox's notification opt-in and the only thing that reaches a player after they leave. A gold dot sits on the Daily Treat button when a stamp is due.</div>
+ </div>
+</div>
+</body></html>
